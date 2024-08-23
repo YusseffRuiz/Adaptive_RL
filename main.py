@@ -294,7 +294,7 @@ def mpo_train_main(world_size):
 
     env_name = 'Walker2d-v4'
     env = gym.make(env_name)
-    num_envs = 4
+    num_envs = 3
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     action_space = env.action_space
@@ -312,9 +312,8 @@ def mpo_train_main(world_size):
 
 
     # Run the training loop
-    trainer.train(n_updates=2000)
+    trainer.train(n_updates=4000)
 
-    cleanup()
 
     # After training, evaluate the agent
     # Implement an evaluation loop or method in MPOTrainer if needed
@@ -322,18 +321,21 @@ def mpo_train_main(world_size):
     save_weights = True
     load_weights = False
 
-    actor_weights_path = "weights/actor_weights_MPO.h5"
-    critic_weights_path = "weights/critic_weights_MPO.h5"
+    actor_weights_path = "weights_1/FinalWeights/actor_weights_MPO.h5"
+    critic_weights_path = "weights_1/FinalWeights/critic_weights_MPO.h5"
 
-    if not os.path.exists("weights"):
-        os.mkdir("weights")
+    if not os.path.exists("weights_1"):
+        os.mkdir("weights_1/FinalWeights")
 
     """ save network weights """
     if save_weights:
         torch.save(agent.actor.state_dict(), actor_weights_path)
         torch.save(agent.critic.state_dict(), critic_weights_path)
+        print("saved weights")
 
     print("Done")
+
+
 
 
 def setup():

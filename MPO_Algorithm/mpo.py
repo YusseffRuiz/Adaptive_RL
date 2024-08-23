@@ -277,7 +277,6 @@ class MPOTrainer:
         """
 
         current_states = self.reset_envs()
-        total_steps = 0
 
         for _ in range(self.n_steps_per_update):
             state_tensors = torch.tensor(current_states, dtype=torch.float32, device=self.device)
