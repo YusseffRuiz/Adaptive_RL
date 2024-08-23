@@ -1,2 +1,1 @@
-DRL Central Pattern Generation Algorithm with Matsuoka Networks controlled by MPO algorithm
-
+Branch created to implement Matsuoka Networks in MPO
