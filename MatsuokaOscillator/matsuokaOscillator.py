@@ -5,21 +5,25 @@ from torch import nn
 
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size, output_size, device):
         """
         :param input_size: size of input data, number of sensory inputs influencing oscillators
         :param hidden_size:
         :param output_size: number of parameters the NN will control (weights, decay)
         """
         super(NeuralNetwork,self).__init__()
-        self.linear_relu_stack = nn.Sequential(
+        self.neuron = nn.Sequential(
             nn.Linear(input_size, hidden_size),  # Input to hidden layer
-            nn.ReLU(),  # Activation function
+            nn.LayerNorm(hidden_size),
+            nn.SiLU(),  # Activation function
+            nn.Linear(hidden_size, hidden_size),
+            nn.LayerNorm(hidden_size),
+            nn.SiLU(),
             nn.Linear(hidden_size, output_size)  # Hidden to output layer
-        )
+        ).to(device)
 
     def forward(self, x):
-        out = self.linear_relu_stack(x)
+        out = self.neuron(x)
         return out
 
 
@@ -77,7 +81,7 @@ class MatsuokaNetwork:
 
 
 class MatsuokaOscillator:
-    def __init__(self, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None, beta=2.5, dt=0.01):
+    def __init__(self, action_space, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None, beta=2.5, dt=0.01):
         """
                 Initialize the Matsuoka Oscillator.
 
@@ -90,13 +94,14 @@ class MatsuokaOscillator:
                 - beta (float): Adaptation coefficient.
                 - dt (float): Time step for integration.
                 """
+        self.action_space = action_space
         self.neuron_number = neuron_number
         self.tau_r = tau_r
         self.tau_a = tau_a
         self.beta = beta
         self.dt = dt
-        self.x = np.linspace(0, self.neuron_number, self.neuron_number)
-        self.y = np.zeros(neuron_number)
+        self.x = np.linspace(0, self.neuron_number, self.neuron_number)  # Neuron initial membrane potential
+        self.y = np.zeros(neuron_number)  # Output, it should be the regulated Action Space.
         self.z = np.zeros(neuron_number)
 
         if weights is None:
@@ -128,12 +133,12 @@ class MatsuokaOscillator:
         if weights is not None:
             assert len(weights) == self.neuron_number, \
                 "Weights must be a square matrix with size equal to the number of neurons."
-            self.weights = np.array(weights)
+            self.weights = weights
         if beta is not None:
             self.beta = beta
 
         # Update membrane potentials
-        dx = [0.0 for element in range(self.neuron_number)]
+        dx = [0.0 for _ in range(self.neuron_number)]
         for i in range(self.neuron_number):
             if i == self.neuron_number-1:
                 dx[i] = (-self.x[i] - self.weights[i] * self.y[0] + self.u[i] - self.beta*self.z[i]) * self.dt/self.tau_r
@@ -144,13 +149,30 @@ class MatsuokaOscillator:
 
         # Update outputs
         self.y = np.maximum(0.0, self.x)
+        action = torch.tensor(self.y, dtype=torch.float32, device="cuda")
+
+        action = torch.clamp(action, self.action_space.low[0], self.action_space.high[0])
+
+        self.y = action.cpu().numpy()
 
         # Update adaptation variables
         dz = [((math.pow(self.y[i], 1) - self.z[i]) * self.dt / self.tau_a) for i in range(self.neuron_number)]
         for i in range(self.neuron_number):
             self.z[i] += dz[i]
 
+        right_output = action[0]
+        left_output = action[1]  # Opposite Phase
+        return right_output, left_output
+
     def run(self, steps=1000, tau_r_seq=None, weights_seq=None, beta_seq=None):
+        """
+        Method implemented to be used by itself.
+        :param steps:
+        :param tau_r_seq:
+        :param weights_seq:
+        :param beta_seq:
+        :return:
+        """
         y_output = np.zeros((steps, self.neuron_number))
         for i in range(steps):
             tau_r = tau_r_seq[i] if tau_r_seq is not None else None
@@ -162,25 +184,110 @@ class MatsuokaOscillator:
 
 
 class MatsuokaNetworkWithNN:
-    def __init__(self, num_oscillators, nn_model, neuron_number=2, tau_r=1.0, tau_a=12.0, dt=0.01):
-        self.oscillators = [MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, dt=dt) for _ in
+    """
+    A class that represents a network of Matsuoka oscillators controlled by a neural network model.
+
+    Attributes:
+    -----------
+    num_oscillators : int
+        The number of Matsuoka oscillators in the network.
+    nn_model : torch.nn.Module
+        The neural network model that controls the parameters of the oscillators.
+    neuron_number : int, optional
+        The number of neurons in each Matsuoka oscillator (default is 2).
+    action_space : int
+        The dimension of the action space, which represents the number of control outputs (default is 6).
+    oscillators : list
+        A list of MatsuokaOscillator objects, one for each oscillator in the network.
+
+    Methods:
+    --------
+    step(sensory_input):
+        Takes a single step in the simulation, updating the state of each oscillator based on the sensory input and
+        the neural network output. Returns the control actions as a torch tensor.
+
+    run(steps=1000, sensory_input_seq=None):
+        Runs the simulation for a given number of steps, returning the outputs of the oscillators over time.
+    """
+
+    def __init__(self, num_oscillators, nn_model, action_dim, action_space, neuron_number=2, tau_r=2.0, tau_a=12.0, dt=0.1):
+        """
+        Initializes the MatsuokaNetworkWithNN with a specified number of oscillators and a neural network model.
+
+        Parameters:
+        -----------
+        num_oscillators : int
+            The number of Matsuoka oscillators in the network.
+        nn_model : torch.nn.Module
+            The neural network model used to control the parameters of the oscillators.
+        neuron_number : int, optional
+            The number of neurons in each Matsuoka oscillator (default is 2).
+        tau_r : float, optional
+            The time constant for the rise time of the oscillator neurons (default is 2.0).
+        tau_a : float, optional
+            The time constant for the adaptation time of the oscillator neurons (default is 12.0).
+        dt : float, optional
+            The time step for the simulation (default is 0.1).
+            TODO
+            update the state of the oscillators based on the sensory input and the
+            neural network output. Returns the control actions as a torch tensor.
+        """
+
+        self.oscillators = [MatsuokaOscillator(action_space=action_space, neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, dt=dt) for _ in
                             range(num_oscillators)]
         self.num_oscillators = num_oscillators
         self.nn_model = nn_model
         self.neuron_number = neuron_number
+        self.action_space = action_dim
 
     def step(self, sensory_input):
-        nn_input = torch.tensor(sensory_input, dtype=torch.float32)
-        nn_output = self.nn_model(nn_input).detach().numpy()
+        """
+                Takes a single step in the simulation, updating the state of each oscillator based on the sensory input and
+                the neural network output.
+
+                Parameters:
+                -----------
+                sensory_input : torch.Tensor
+                    The input to the neural network, which influences the oscillator parameters.
+
+                Returns:
+                --------
+                output_actions : torch.Tensor
+                    A tensor representing the control actions for the environment, with a dimension matching the action space.
+                """
+
+        nn_output = self.nn_model(sensory_input)
 
         tau_r_seq = nn_output[:, 0]
         weights_seq = nn_output[:, 1:1 + self.oscillators[0].neuron_number]
         beta_seq = nn_output[:, 2]
 
+        output_actions = torch.zeros(self.action_space, dtype=torch.float32, device="cuda")
+
         for i in range(self.num_oscillators):
-            self.oscillators[i].step(tau_r=tau_r_seq[i], weights=weights_seq[i], beta=beta_seq[i])
+            right_output, left_output = self.oscillators[i].step(tau_r=tau_r_seq[i], weights=weights_seq[i],
+                                                                 beta=beta_seq[i])
+            output_actions[0:3] = right_output
+            output_actions[3:6] = left_output
+        return output_actions
 
     def run(self, steps=1000, sensory_input_seq=None):
+        """
+                Runs the simulation for a specified number of steps, returning the outputs of the oscillators over time.
+
+                Parameters:
+                -----------
+                steps : int, optional
+                    The number of time steps to run the simulation (default is 1000).
+                sensory_input_seq : numpy.ndarray, optional
+                    A sequence of sensory inputs to be fed into the network at each time step (default is None, which uses ones).
+
+                Returns:
+                --------
+                y_outputs : numpy.ndarray
+                    A 3D array containing the outputs of the oscillators at each time step. The shape of the array is
+                    (steps, num_oscillators, neuron_number).
+                """
         y_outputs = np.zeros((steps, self.num_oscillators, self.neuron_number))
 
         for t in range(steps):

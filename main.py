@@ -38,7 +38,7 @@ def matsuoka_main():
         hidden_size = 10  # Hidden layer size
         output_size = 3  # tau_r, weights, and beta for each oscillator
 
-        nn_model = NeuralNetwork(input_size, hidden_size, output_size)
+        nn_model = NeuralNetwork(input_size, hidden_size, output_size, device="cuda")
         matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, nn_model)
         # Create a sample sensory input sequence
         sensory_input_seq = np.random.rand(steps, num_oscillators, input_size)
@@ -92,6 +92,53 @@ def matsuoka_main():
             plt.show()
 
 
+def matsuoka_env_main():
+    num_oscillators = 1
+    neuron_number = 2
+    tau_r = 2
+    tau_a = 12
+    w12 = 2.5
+    u1 = 2.5
+    beta = 2.5
+    dt = 0.1
+    steps = 1000
+    time = np.linspace(0, steps * dt, steps)
+
+    env = gym.make('Walker2d-v4', render_mode='human')
+
+    input_size = env.observation_space.shape[0]  # Size of state input
+    hidden_size = 128  # Hidden layer size
+    output_size = env.action_space.shape[0]  # tau_r, weights, and beta for each oscillator
+    print("observation_space: ", input_size)
+    print("output_size: ", output_size)
+
+    nn_model = NeuralNetwork(input_size, hidden_size, output_size, device="cuda")
+    matsuoka_network = MatsuokaNetworkWithNN(num_oscillators=num_oscillators, nn_model=nn_model, action_dim=output_size, action_space=env.action_space, neuron_number=neuron_number)
+
+    # Run the environment in a loop
+
+    total_rewards = []
+    for episode in range(5):
+        episode_reward = 0
+        done = False
+        state, *_ = env.reset()
+        while not done:
+            # Get the output from the oscillator network
+            state_tensor = torch.tensor(state, dtype=torch.float32, device="cuda").unsqueeze(0)  # Convert state to tensor
+            actions = matsuoka_network.step(state_tensor)  # Update the oscillator network
+
+            # Step the environment using the actions
+            next_state, reward, done, *_ = env.step(actions.flatten().cpu().numpy())
+            state = next_state
+
+            episode_reward += reward
+            # Render the environment
+            env.render()
+        total_rewards.append(episode_reward)
+        print(f"Episode {episode + 1}/{5}: Reward = {episode_reward}")
+    env.close()
+
+
 # Training of the A2C algorithm
 def a2c_train_main():
     # Check if CUDA is available
@@ -112,7 +159,7 @@ def a2c_train_main():
     critic_lr = 0.005
 
     # Note: the actor has a slower learning rate so that the value targets become
-    # more stationary and are theirfore easier to estimate for the critic
+    # more stationary and are therefore easier to estimate for the critic
 
     # environment setup
 
@@ -294,7 +341,7 @@ def mpo_train_main(world_size):
 
     env_name = 'Walker2d-v4'
     env = gym.make(env_name)
-    num_envs = 3
+    num_envs = 4
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     action_space = env.action_space
@@ -365,4 +412,4 @@ def run_mp():
 
 # Training of MPO method
 if __name__ == "__main__":
-    mpo_train_main(1)
+    matsuoka_env_main()

@@ -25,6 +25,7 @@ import gymnasium as gym
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from .replay_buffer import ReplayBuffer
+from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetworkWithNN, MatsuokaNetwork, NeuralNetwork
 
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -74,6 +75,13 @@ class MPOAgent:
         # Optimizers for both networks
         self.actor_optimizer = optim.AdamW(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=critic_lr)
+
+        # Define Matsuoka NN
+        num_oscillators = 4
+        output_size = 3  # tau_r, weights, and beta for each oscillator
+
+        nn_mat_model = NeuralNetwork(input_size=num_oscillators, hidden_size=hidden_dim, output_size=output_size, device=self.device)
+        self.matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, self.actor, neuron_number=2)
 
     def select_action(self, state):
         """
@@ -244,7 +252,7 @@ class MPOTrainer:
         self.lam = lam
 
         # Initialize environment and agent
-        torch.set_num_threads(10)
+        torch.set_num_threads(n_envs)
         self.agent = agent
         self.agent.actor = (self.agent.actor.to(self.device))
         self.agent.critic = (self.agent.critic.to(self.device))
