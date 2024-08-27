@@ -25,13 +25,12 @@ import gymnasium as gym
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from .replay_buffer import ReplayBuffer
-from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetworkWithNN, MatsuokaNetwork, NeuralNetwork
 
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 class MPOAgent:
-    def __init__(self, state_dim, action_dim, action_space, hidden_dim=128, kl_epsilon=0.01, actor_lr=3e-4,
+    def __init__(self, state_dim, action_dim, action_space=None, hidden_dim=128, kl_epsilon=0.01, actor_lr=3e-4,
                  critic_lr=3e-4, device=torch.device("cpu")):
         """
         Initializes the MPOAgent with the policy and value networks, optimizers, and other necessary parameters.
@@ -49,11 +48,12 @@ class MPOAgent:
         print(f"\nUsing {device} device")
         self.kl_epsilon = kl_epsilon
         self.action_space = action_space
+        self.kl_epsilon = kl_epsilon
 
         # Define the policy network (actor)
         self.actor = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),  # Batch Normalization
+            nn.LayerNorm(hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),  # Layer Normalization
@@ -75,13 +75,6 @@ class MPOAgent:
         # Optimizers for both networks
         self.actor_optimizer = optim.AdamW(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=critic_lr)
-
-        # Define Matsuoka NN
-        num_oscillators = 4
-        output_size = 3  # tau_r, weights, and beta for each oscillator
-
-        nn_mat_model = NeuralNetwork(input_size=num_oscillators, hidden_size=hidden_dim, output_size=output_size, device=self.device)
-        self.matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, self.actor, neuron_number=2)
 
     def select_action(self, state):
         """
@@ -109,7 +102,9 @@ class MPOAgent:
         action = dist.sample()
 
         # Clamp the actions to the valid range
-        action = torch.clamp(action, self.action_space.low[0], self.action_space.high[0])
+        if self.action_space is not None:
+            action = torch.clamp(action, self.action_space.low[0], self.action_space.high[0])
+
         log_prob = dist.log_prob(action).sum(dim=-1)
         entropy = dist.entropy().sum(dim=-1)
 
@@ -252,7 +247,7 @@ class MPOTrainer:
         self.lam = lam
 
         # Initialize environment and agent
-        torch.set_num_threads(n_envs)
+        torch.set_num_threads(10)
         self.agent = agent
         self.agent.actor = (self.agent.actor.to(self.device))
         self.agent.critic = (self.agent.critic.to(self.device))
@@ -262,8 +257,8 @@ class MPOTrainer:
         self.writer = SummaryWriter(log_dir=log_dir)
 
         # Replay Buffer implementation
-        self.replay_buffer = ReplayBuffer(replay_buffer_capacity, self.envs.observation_space.shape[1],
-                                          self.envs.action_space.shape[1])
+        self.replay_buffer = ReplayBuffer.from_mpo(replay_buffer_capacity, self.envs.observation_space.shape[1],
+                                                   self.envs.action_space.shape[1])
         self.batch_size = batch_size
 
     def reset_envs(self):
@@ -443,6 +438,3 @@ class MPOTrainer:
                 self.writer.add_scalar('Average Reward', avg_reward, update)
                 self.writer.add_scalar('Average Entropy', avg_entropy, update)
                 self.save_weights(update, n_updates, avg_reward, weights_path)
-
-
-

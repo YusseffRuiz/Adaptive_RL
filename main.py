@@ -2,8 +2,7 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import pandas as pd
-from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, NeuralNetwork, MatsuokaNetworkWithNN
+from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaAgent, MatsuokaNetworkWithNN, MpoMatsuokaTrainer
 from MPO_Algorithm import MPOAgent, MPOTrainer
 
 import gymnasium as gym
@@ -18,7 +17,7 @@ import torch.distributed as dist
 # Basic Matsuoka Oscillator Implementation
 def matsuoka_main():
     # Parameters
-    neural_net = True
+    neural_net = False
     num_oscillators = 2
     neuron_number = 2
     tau_r = 2
@@ -38,10 +37,10 @@ def matsuoka_main():
         hidden_size = 10  # Hidden layer size
         output_size = 3  # tau_r, weights, and beta for each oscillator
 
-        nn_model = NeuralNetwork(input_size, hidden_size, output_size, device="cuda")
-        matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, nn_model)
+        nn_model = MatsuokaAgent(input_size, hidden_size, 1, output_size, 1, device="cuda")
+        matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, nn_model, action_space=None, action_dim=6)
         # Create a sample sensory input sequence
-        sensory_input_seq = np.random.rand(steps, num_oscillators, input_size)
+        sensory_input_seq = torch.rand(steps, num_oscillators, input_size, dtype=torch.float32, device="cuda")
 
         # Run the coupled system with NN control
         outputs = matsuoka_network.run(steps=steps, sensory_input_seq=sensory_input_seq)
@@ -62,7 +61,7 @@ def matsuoka_main():
         if num_oscillators == 1:
             # Create Matsuoka Oscillator with N neurons
             oscillator = MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, weights=weights, u=u,
-                                            beta=beta, dt=dt)
+                                            beta=beta, dt=dt, action_space=None)
             y_output = oscillator.run(steps=steps)
 
             for i in range(y_output.shape[1]):
@@ -93,31 +92,23 @@ def matsuoka_main():
 
 
 def matsuoka_env_main():
-    num_oscillators = 1
+    num_oscillators = 2
     neuron_number = 2
-    tau_r = 2
-    tau_a = 12
-    w12 = 2.5
-    u1 = 2.5
-    beta = 2.5
     dt = 0.1
     steps = 1000
     time = np.linspace(0, steps * dt, steps)
 
     env = gym.make('Walker2d-v4', render_mode='human')
 
-    input_size = env.observation_space.shape[0]  # Size of state input
-    hidden_size = 128  # Hidden layer size
-    output_size = env.action_space.shape[0]  # tau_r, weights, and beta for each oscillator
-    print("observation_space: ", input_size)
-    print("output_size: ", output_size)
 
-    nn_model = NeuralNetwork(input_size, hidden_size, output_size, device="cuda")
-    matsuoka_network = MatsuokaNetworkWithNN(num_oscillators=num_oscillators, nn_model=nn_model, action_dim=output_size, action_space=env.action_space, neuron_number=neuron_number)
+    matsuoka_network = MatsuokaNetworkWithNN(num_oscillators=num_oscillators, observation_space=env.observation_space.shape[0],
+                                             action_dim=env.action_space.shape[0], action_space=env.action_space,
+                                             neuron_number=neuron_number)
 
     # Run the environment in a loop
 
     total_rewards = []
+    state, *_ = env.reset()
     for episode in range(5):
         episode_reward = 0
         done = False
@@ -125,10 +116,11 @@ def matsuoka_env_main():
         while not done:
             # Get the output from the oscillator network
             state_tensor = torch.tensor(state, dtype=torch.float32, device="cuda").unsqueeze(0)  # Convert state to tensor
+            # sensory_input = torch.rand(num_oscillators, 2, dtype=torch.float32, device="cuda")
             actions = matsuoka_network.step(state_tensor)  # Update the oscillator network
 
             # Step the environment using the actions
-            next_state, reward, done, *_ = env.step(actions.flatten().cpu().numpy())
+            next_state, reward, done, *_ = env.step(actions.detach().cpu().numpy())
             state = next_state
 
             episode_reward += reward
@@ -138,6 +130,50 @@ def matsuoka_env_main():
         print(f"Episode {episode + 1}/{5}: Reward = {episode_reward}")
     env.close()
 
+
+def matsuoka_mpo_main():
+    env_name = 'Walker2d-v4'
+    env = gym.make(env_name)
+    num_envs = 4
+    state_dim = env.observation_space.shape[0]
+    action_space = env.action_space
+    params_dim = 2  # Weights number, 1 per neuron
+
+    # setup()
+
+    # Initialize MPOAgent
+    agent = MPOAgent(state_dim=state_dim, action_dim=params_dim, action_space=action_space, hidden_dim=128,
+                     kl_epsilon=0.1, actor_lr=3e-4, critic_lr=3e-4,
+                     device="cuda")
+
+    # Initialize MPOTrainer
+    trainer = MpoMatsuokaTrainer(env=env_name, n_envs=num_envs, agent=agent, n_steps_per_update=2048, gamma=0.99,
+                                 lam=0.95, device="cuda", weights_path="weights_2")
+
+    # Run the training loop
+    trainer.train(n_updates=1000)
+
+    # After training, evaluate the agent
+    # Implement an evaluation loop or method in MPOTrainer if needed
+
+    save_weights = True
+    load_weights = False
+
+    actor_weights_path = "weights_2/FinalWeights/actor_weights_MPO.h5"
+    critic_weights_path = "weights_2/FinalWeights/critic_weights_MPO.h5"
+
+    if not os.path.exists("weights_2"):
+        os.mkdir("weights_2")
+        if not os.path.exists("weights_2/FinalWeights"):
+            os.mkdir("weights_2/FinalWeights")
+
+    """ save network weights """
+    if save_weights:
+        torch.save(agent.actor.state_dict(), actor_weights_path)
+        torch.save(agent.critic.state_dict(), critic_weights_path)
+        print("saved weights")
+
+    print("Done")
 
 # Training of the A2C algorithm
 def a2c_train_main():
@@ -359,7 +395,7 @@ def mpo_train_main(world_size):
 
 
     # Run the training loop
-    trainer.train(n_updates=4000)
+    trainer.train(n_updates=10001)
 
 
     # After training, evaluate the agent
@@ -372,7 +408,10 @@ def mpo_train_main(world_size):
     critic_weights_path = "weights_1/FinalWeights/critic_weights_MPO.h5"
 
     if not os.path.exists("weights_1"):
-        os.mkdir("weights_1/FinalWeights")
+        os.mkdir("weights_1")
+        if not os.path.exists("weights_1/FinalWeights"):
+            os.mkdir("weights_1/FinalWeights")
+
 
     """ save network weights """
     if save_weights:
@@ -412,4 +451,6 @@ def run_mp():
 
 # Training of MPO method
 if __name__ == "__main__":
-    matsuoka_env_main()
+    # mpo_train_main(1)
+    matsuoka_mpo_main()
+    # matsuoka_env_main()
