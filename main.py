@@ -131,7 +131,7 @@ def matsuoka_env_main():
     env.close()
 
 
-def matsuoka_mpo_main():
+def matsuoka_mpo_main(world_size):
     env_name = 'Walker2d-v4'
     env = gym.make(env_name)
     num_envs = 4
@@ -139,7 +139,7 @@ def matsuoka_mpo_main():
     action_space = env.action_space
     params_dim = 2  # Weights number, 1 per neuron
 
-    # setup()
+    setup()
 
     # Initialize MPOAgent
     agent = MPOAgent(state_dim=state_dim, action_dim=params_dim, action_space=action_space, hidden_dim=128,
@@ -152,6 +152,7 @@ def matsuoka_mpo_main():
 
     # Run the training loop
     trainer.train(n_updates=1000)
+    cleanup()
 
     # After training, evaluate the agent
     # Implement an evaluation loop or method in MPOTrainer if needed
@@ -446,11 +447,12 @@ def cleanup():
 
 
 def run_mp():
-    mp.spawn(mpo_train_main, nprocs=2, join=True)
+    mp.spawn(matsuoka_mpo_main, nprocs=1, join=True)
 
 
 # Training of MPO method
 if __name__ == "__main__":
     # mpo_train_main(1)
-    matsuoka_mpo_main()
+    # matsuoka_mpo_main(1)
     # matsuoka_env_main()
+    run_mp()

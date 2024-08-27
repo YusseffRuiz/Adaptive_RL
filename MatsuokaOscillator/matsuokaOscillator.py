@@ -30,6 +30,8 @@ class MatsuokaAgent(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LayerNorm(hidden_size),
             nn.SiLU(),  # Activation Function
+            nn.Linear(hidden_size, hidden_size),
+            nn.SiLU(),
             nn.Linear(hidden_size, num_oscillators * neuron_number * 2)
             # Hidden to output layer, output size y the neuron number
         ).to(device)
@@ -121,8 +123,10 @@ class MatsuokaAgent(nn.Module):
         policy_loss = (new_log_probs.view(-1) - old_log_probs.view(-1)).mean() + kl_penalty - 0.001 * entropy.mean()
         # Update the policy network
         self.input_optimizer.zero_grad()
+        self.output_optimizer.zero_grad()
         policy_loss.backward()
         self.input_optimizer.step()
+        self.output_optimizer.step()
 
 
 class MatsuokaNetwork:
@@ -202,7 +206,7 @@ class MatsuokaOscillator:
         self.x = torch.arange(0, self.neuron_number, 1, dtype=torch.float32).to(self.device)
         # Neuron initial membrane potential
         self.y = torch.zeros(neuron_number, dtype=torch.float32, device=self.device)
-        # Output, it should be the regulated Action Space.
+        # Output, it is the neurons update, which is mapped via NN to the action space.
         self.z = torch.zeros(neuron_number, dtype=torch.float32, device=self.device)  # Correction value
 
         if weights is None:
@@ -257,20 +261,16 @@ class MatsuokaOscillator:
         left_output = self.y[0:self.neuron_number//2:self.neuron_number]  # Opposite Phase
         return right_output, left_output
 
-    def run(self, steps=1000, tau_r_seq=None, weights_seq=None, beta_seq=None):
+    def run(self, steps=1000, weights_seq=None):
         """
         Method implemented to be used by itself.
         :param steps:
-        :param tau_r_seq:
         :param weights_seq:
-        :param beta_seq:
         :return:
         """
         y_output = torch.zeros(steps, self.neuron_number, dtype=torch.float32, device=self.device)
         for i in range(steps):
-            tau_r = tau_r_seq[i] if tau_r_seq is not None else None
             weights = weights_seq[i] if weights_seq is not None else None
-            beta = beta_seq[i] if beta_seq is not None else None
             self.step(weights=weights)
             y_output[i, :] = self.y
         return y_output
