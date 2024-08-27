@@ -37,8 +37,8 @@ def matsuoka_main():
         hidden_size = 10  # Hidden layer size
         output_size = 3  # tau_r, weights, and beta for each oscillator
 
-        nn_model = MatsuokaAgent(input_size, hidden_size, 1, output_size, 1, device="cuda")
-        matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, nn_model, action_space=None, action_dim=6)
+        nn_model = MatsuokaAgent(input_size, hidden_size, 1, output_size, 1, action_space=None, device="cuda")
+        matsuoka_network = MatsuokaNetworkWithNN(num_oscillators, nn_model, action_space=None, action_dim=6, n_envs=1)
         # Create a sample sensory input sequence
         sensory_input_seq = torch.rand(steps, num_oscillators, input_size, dtype=torch.float32, device="cuda")
 
@@ -100,10 +100,9 @@ def matsuoka_env_main():
 
     env = gym.make('Walker2d-v4', render_mode='human')
 
-
     matsuoka_network = MatsuokaNetworkWithNN(num_oscillators=num_oscillators, observation_space=env.observation_space.shape[0],
                                              action_dim=env.action_space.shape[0], action_space=env.action_space,
-                                             neuron_number=neuron_number)
+                                             neuron_number=neuron_number, n_envs=1)
 
     # Run the environment in a loop
 
@@ -131,7 +130,7 @@ def matsuoka_env_main():
     env.close()
 
 
-def matsuoka_mpo_main(world_size):
+def matsuoka_mpo_main(shared_best_rw, world_size):
     env_name = 'Walker2d-v4'
     env = gym.make(env_name)
     num_envs = 4
@@ -148,7 +147,7 @@ def matsuoka_mpo_main(world_size):
 
     # Initialize MPOTrainer
     trainer = MpoMatsuokaTrainer(env=env_name, n_envs=num_envs, agent=agent, n_steps_per_update=2048, gamma=0.99,
-                                 lam=0.95, device="cuda", weights_path="weights_2")
+                                 lam=0.95, device="cuda", weights_path="weights_2", shared_best_reward=shared_best_rw)
 
     # Run the training loop
     trainer.train(n_updates=1000)
@@ -447,7 +446,9 @@ def cleanup():
 
 
 def run_mp():
-    mp.spawn(matsuoka_mpo_main, nprocs=1, join=True)
+    num_processes = 4
+    shared_best_reward = mp.Value('d', -float('inf'))  # Shared variable to store the best reward
+    mp.spawn(matsuoka_mpo_main, args=(shared_best_reward,), nprocs=num_processes, join=True)
 
 
 # Training of MPO method

@@ -10,13 +10,14 @@ from torch.utils.tensorboard import SummaryWriter
 from MPO_Algorithm.replay_buffer import ReplayBuffer
 from MPO_Algorithm import MPOTrainer
 from MatsuokaOscillator import MatsuokaNetworkWithNN, MatsuokaAgent
+import torch.multiprocessing as mp
 
-from torch.nn.parallel import DistributedDataParallel as DDP
+lock = mp.Lock()  # Lock to synchronize access to shared_best_reward
 
 
 class MpoMatsuokaTrainer(MPOTrainer):
     def __init__(self, env, agent, n_envs=4, n_steps_per_update=2048, gamma=0.99, lam=0.95, device="cpu",
-                 weights_path=None, log_dir="runs/", replay_buffer_capacity=100000, batch_size=64):
+                 weights_path=None, log_dir="runs/", replay_buffer_capacity=100000, batch_size=64, shared_best_reward=None):
         super().__init__(env, agent, n_envs, n_steps_per_update, gamma, lam, device, weights_path, log_dir,
                          replay_buffer_capacity, batch_size)
 
@@ -25,6 +26,8 @@ class MpoMatsuokaTrainer(MPOTrainer):
         self.output_values = self.envs.action_space.shape[1]
         self.action_space = self.agent.action_space
         self.neuron_number = 2
+        self.shared_best_reward = shared_best_reward
+        self.shared_best_reward = -1000
 
         num_oscillators = 2  # One for each leg, then we can try using one per DoF.
 
@@ -78,7 +81,6 @@ class MpoMatsuokaTrainer(MPOTrainer):
                 save_interval (int): Number of steps between saving checkpoints.
                 save (bool): Flag indicating whether to save checkpoints.
         """
-
         # Check and load existing weights if available
         weights_path = "weights" if self.weights_path is None else self.weights_path
         start_iteration = self.load_checkpoint(weights_path)
@@ -110,7 +112,11 @@ class MpoMatsuokaTrainer(MPOTrainer):
             avg_reward = reward.mean()
             avg_entropy = entropy.mean()
 
+            lock.acquire()
             if ((update + 1) % save_interval == 0) and save:
+                if avg_reward > self.shared_best_reward:
+                    self.shared_best_reward = avg_reward
                 self.writer.add_scalar('Average Reward', avg_reward, update)
                 self.writer.add_scalar('Average Entropy', avg_entropy, update)
-                self.save_weights(update, n_updates, avg_reward, weights_path)
+                self.save_weights(update, n_updates, self.shared_best_reward, weights_path)
+            lock.release()
