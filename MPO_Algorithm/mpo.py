@@ -26,8 +26,24 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from .replay_buffer import ReplayBuffer
 
-from torch.nn.parallel import DistributedDataParallel as DDP
 
+def compute_kl_divergence(old_mean, old_log_std, new_mean, new_log_std):
+    """
+    Computes the KL divergence between the old and new policy distributions.
+
+    Args:
+        old_mean (torch.Tensor): Mean of the old policy distribution.
+        old_log_std (torch.Tensor): Log std of the old policy distribution.
+        new_mean (torch.Tensor): Mean of the new policy distribution.
+        new_log_std (torch.Tensor): Log std of the new policy distribution.
+
+    Returns:
+        kl_divergence (torch.Tensor): KL divergence between the old and new policies.
+    """
+    old_std = torch.exp(old_log_std)
+    new_std = torch.exp(new_log_std)
+    kl_div = torch.log(new_std / old_std) + (old_std ** 2 + (old_mean - new_mean) ** 2) / (2 * new_std ** 2) - 0.5
+    return kl_div.sum(dim=-1)
 
 class MPOAgent:
     def __init__(self, state_dim, action_dim, action_space=None, hidden_dim=128, kl_epsilon=0.01, actor_lr=3e-4,
@@ -76,58 +92,6 @@ class MPOAgent:
         self.actor_optimizer = optim.AdamW(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = optim.AdamW(self.critic.parameters(), lr=critic_lr)
 
-    def select_action(self, state):
-        """
-        Selects an action based on the current policy.
-
-        Args:
-            state (torch.Tensor): The current state.
-
-        Returns:
-            action (torch.Tensor): The selected continuous action.
-            log_prob (torch.Tensor): Log probability of the selected action.
-        """
-        params = self.actor(state)
-
-        # Split the output into mean and log_std for each action dimension
-        mean, log_std = params[:, :params.shape[1] // 2], params[:, params.shape[1] // 2:]
-        if torch.isnan(log_std).any():
-            log_std = torch.zeros_like(log_std)
-        if torch.isnan(mean).any():
-            mean = torch.zeros_like(mean)
-        std = torch.exp(log_std)
-
-        # Create a normal distribution and sample a continuous action
-        dist = torch.distributions.Normal(mean, std)
-        action = dist.sample()
-
-        # Clamp the actions to the valid range
-        if self.action_space is not None:
-            action = torch.clamp(action, self.action_space.low[0], self.action_space.high[0])
-
-        log_prob = dist.log_prob(action).sum(dim=-1)
-        entropy = dist.entropy().sum(dim=-1)
-
-        return action, log_prob, entropy
-
-    @staticmethod
-    def compute_kl_divergence(old_mean, old_log_std, new_mean, new_log_std):
-        """
-        Computes the KL divergence between the old and new policy distributions.
-
-        Args:
-            old_mean (torch.Tensor): Mean of the old policy distribution.
-            old_log_std (torch.Tensor): Log std of the old policy distribution.
-            new_mean (torch.Tensor): Mean of the new policy distribution.
-            new_log_std (torch.Tensor): Log std of the new policy distribution.
-
-        Returns:
-            kl_divergence (torch.Tensor): KL divergence between the old and new policies.
-        """
-        old_std = torch.exp(old_log_std)
-        new_std = torch.exp(new_log_std)
-        kl_div = torch.log(new_std / old_std) + (old_std ** 2 + (old_mean - new_mean) ** 2) / (2 * new_std ** 2) - 0.5
-        return kl_div.sum(dim=-1)
 
     def update_policy(self, states, actions, old_log_probs, old_mean, old_log_std):
         """

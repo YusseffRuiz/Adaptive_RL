@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaAgent, MatsuokaNetworkWithNN, MpoMatsuokaTrainer
 from MPO_Algorithm import MPOAgent, MPOTrainer
+from mpo import MPO
 
 import gymnasium as gym
 from reinforce import A2C
@@ -422,6 +423,27 @@ def mpo_train_main(world_size):
     print("Done")
 
 
+def mpo_ext_train_main():
+    env = gym.make('Walker2d-v4')
+    save_weights = True
+    model = MPO(device="cuda", env=env, evaluate_period=20)
+    if os.path.exists("log_continuous/model/"):
+        model.load_model("log_continuous/model/model_latest.pt")
+        print("Loaded weights")
+
+    model.train(iteration_num=1000, log_dir="log_continuous")
+
+    env.close()
+
+    """ save network weights """
+    actor_weights_path = "log_continuous/FinalWeights/actor_weights_MPO.h5"
+    critic_weights_path = "log_continuous/FinalWeights/critic_weights_MPO.h5"
+    if save_weights:
+        torch.save(model.target_actor.state_dict(), actor_weights_path)
+        torch.save(model.critic.state_dict(), critic_weights_path)
+        print("saved weights")
+
+    print("Done")
 
 
 def setup():
@@ -456,4 +478,5 @@ if __name__ == "__main__":
     # mpo_train_main(1)
     # matsuoka_mpo_main(1)
     # matsuoka_env_main()
-    run_mp()
+    # run_mp()
+    mpo_ext_train_main()
