@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
+from torch.distributions import MultivariateNormal
 
 class Actor(nn.Module):
     def __init__(self, env):
@@ -11,27 +12,38 @@ class Actor(nn.Module):
         self.action_space = env.action_space
         hidden_dim = 256
         # Define the policy network (actor)
-        self.actor = nn.Sequential(
-            nn.Linear(self.observation_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),  # Layer Normalization
-            nn.SiLU(),
-            nn.Linear(hidden_dim, self.action_dim * 2)  # Outputs mean and log_std for each action dimension
-        )
+        self.fc1 = nn.Linear(self.observation_dim, hidden_dim)
+        self.fc2 = nn.LayerNorm(hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc4 = nn.LayerNorm(hidden_dim)
+        self.mean_layer = nn.Linear(hidden_dim, self.action_dim)
+        self.cholesky_layer = nn.Linear(hidden_dim, (self.action_dim * (self.action_dim + 1)) // 2)
 
     def forward(self, state):
         device = state.device
         action_low = torch.from_numpy(self.env.action_space.low)[None, ...].to(device)  # (1, da)
         action_high = torch.from_numpy(self.env.action_space.high)[None, ...].to(device)  # (1, da)
-        params = self.actor(state)
-        mean, output = params[:, :params.shape[0] // 2], params[:, params.shape[1] // 2:]
+
+        # Activation Functions
+        x = self.fc1(state)
+        x = self.fc2(x)
+        x = F.silu(x)
+        x = self.fc3(x)
+        x = F.silu(x)
+        mean = F.sigmoid(self.mean_layer(x))
         mean = action_low + (action_high - action_low) * mean
 
-        return mean, output
+        cholesky_vector = self.cholesky_layer(x)  # (B, (da*(da+1))//2)
+        cholesky_diag_index = torch.arange(self.action_dim, dtype=torch.long) + 1
+        cholesky_diag_index = (cholesky_diag_index * (cholesky_diag_index + 1)) // 2 - 1
+        cholesky_vector[:, cholesky_diag_index] = F.softplus(cholesky_vector[:, cholesky_diag_index])
+        tril_indices = torch.tril_indices(row=self.action_dim, col=self.action_dim, offset=0)
+        cholesky = torch.zeros(size=(state.size(0), self.action_dim, self.action_dim), dtype=torch.float32).to(device)
+        cholesky[:, tril_indices[0], tril_indices[1]] = cholesky_vector
 
-    def action(self, state):
+        return mean, cholesky
+
+    def select_action(self, state):
         """
                 Selects an action based on the current policy.
 
@@ -40,21 +52,10 @@ class Actor(nn.Module):
 
                 Returns:
                     action (torch.Tensor): The selected continuous action.
-                    log_prob (torch.Tensor): Log probability of the selected action.
                 """
-        device = state.device
-        # Split the output into mean and log_std for each action dimension
-        mean, log_std = self.actor(state).to(device)
-        std = torch.exp(log_std)
+        with torch.no_grad():
+            mean, cholesky = self.forward(state[None, ...])
+            action_distribution = MultivariateNormal(mean, scale_tril=cholesky)
+            action = action_distribution.sample()
 
-        # Create a normal distribution and sample a continuous action
-        dist = torch.distributions.Normal(mean, std)
-        action = dist.sample()
-
-        # Clamp the actions to the valid range
-        if self.action_space is not None:
-            action = torch.clamp(action, self.action_space.low[0], self.action_space.high[0])
-
-        entropy = dist.entropy().sum(dim=-1)
-
-        return action, entropy
+        return action[0]

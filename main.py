@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaAgent, MatsuokaNetworkWithNN, MpoMatsuokaTrainer
-from MPO_Algorithm import MPOAgent, MPOTrainer
-from mpo import MPO
+from MPO_Algorithm import MPO
 
 import gymnasium as gym
 from reinforce import A2C
@@ -426,10 +425,13 @@ def mpo_train_main(world_size):
 def mpo_ext_train_main():
     env = gym.make('Walker2d-v4')
     save_weights = True
-    model = MPO(device="cuda", env=env, evaluate_period=20)
+    model = MPO(device="cuda:0", env=env, evaluate_period=20)
+
     if os.path.exists("log_continuous/model/"):
-        model.load_model("log_continuous/model/model_latest.pt")
+        #model.load_model("log_continuous/model/model_latest.pt")
         print("Loaded weights")
+    else:
+        print("No weights found, training from scratch")
 
     model.train(iteration_num=1000, log_dir="log_continuous")
 

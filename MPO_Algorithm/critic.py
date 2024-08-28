@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 
 
 class Critic(nn.Module):
@@ -11,7 +12,7 @@ class Critic(nn.Module):
         self.action_space = env.action_space
         hidden_dim = 256
         self.critic = nn.Sequential(
-            nn.Linear(self.observation_dim, hidden_dim),
+            nn.Linear(self.observation_dim + self.action_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),  # Batch Normalization
             nn.SiLU(),  # Advanced Activation Function
             nn.Linear(hidden_dim, hidden_dim),
@@ -20,5 +21,5 @@ class Critic(nn.Module):
             nn.Linear(hidden_dim, 1)
         )
 
-    def forward(self, state):
-        return self.critic(state)
+    def forward(self, state, action):
+        return self.critic(torch.cat([state, action], dim=1))

@@ -8,14 +8,14 @@ import gymnasium as gym
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from MPO_Algorithm.replay_buffer import ReplayBuffer
-from MPO_Algorithm import MPOTrainer
+from MPO_Algorithm import MPO
 from MatsuokaOscillator import MatsuokaNetworkWithNN, MatsuokaAgent
 import torch.multiprocessing as mp
 
 lock = mp.Lock()  # Lock to synchronize access to shared_best_reward
 
 
-class MpoMatsuokaTrainer(MPOTrainer):
+class MpoMatsuokaTrainer(MPO):
     def __init__(self, env, agent, n_envs=4, n_steps_per_update=2048, gamma=0.99, lam=0.95, device="cpu",
                  weights_path=None, log_dir="runs/", replay_buffer_capacity=100000, batch_size=64, shared_best_reward=None):
         super().__init__(env, agent, n_envs, n_steps_per_update, gamma, lam, device, weights_path, log_dir,
