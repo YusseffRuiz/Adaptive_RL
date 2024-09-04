@@ -21,8 +21,6 @@ class Actor(nn.Module):
 
     def forward(self, state):
         device = state.device
-        action_low = torch.from_numpy(self.env.action_space.low)[None, ...].to(device)  # (1, da)
-        action_high = torch.from_numpy(self.env.action_space.high)[None, ...].to(device)  # (1, da)
 
         # Activation Functions
         x = self.fc1(state)
@@ -30,8 +28,7 @@ class Actor(nn.Module):
         x = F.silu(x)
         x = self.fc3(x)
         x = F.silu(x)
-        mean = F.sigmoid(self.mean_layer(x))
-        mean = action_low + (action_high - action_low) * mean
+        mean = self.calculate_mean(x, device)
 
         cholesky_vector = self.cholesky_layer(x)  # (B, (da*(da+1))//2)
         cholesky_diag_index = torch.arange(self.action_dim, dtype=torch.long) + 1
@@ -42,6 +39,19 @@ class Actor(nn.Module):
         cholesky[:, tril_indices[0], tril_indices[1]] = cholesky_vector
 
         return mean, cholesky
+
+    def calculate_mean(self, x, device):
+        """
+        :param x: Layer to calculate mean
+        :param device: Device to send tensors: cpu or GPU
+        :return: mean of the action space
+        """
+        action_low = torch.from_numpy(self.env.action_space.low)[None, ...].to(device)  # (1, da)
+        action_high = torch.from_numpy(self.env.action_space.high)[None, ...].to(device)  # (1, da)
+        mean = F.sigmoid(self.mean_layer(x))
+        mean = action_low + (action_high - action_low) * mean
+
+        return mean
 
     def select_action(self, state):
         """
@@ -59,3 +69,4 @@ class Actor(nn.Module):
             action = action_distribution.sample()
 
         return action[0]
+

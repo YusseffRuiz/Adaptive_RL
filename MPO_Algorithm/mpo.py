@@ -112,9 +112,9 @@ class MPO(object):
                  kl_mean_constraint=0.01,
                  kl_var_constraint=0.0001,
                  kl_constraint=0.01,
-                 discount_factor=0.99,
-                 alpha_mean_scale=1.0,
-                 alpha_var_scale=100.0,
+                 discount_factor=0.995,
+                 alpha_mean_scale=0.1,
+                 alpha_var_scale=0.1,
                  alpha_scale=10.0,
                  alpha_mean_max=0.1,
                  alpha_var_max=10.0,
@@ -170,7 +170,7 @@ class MPO(object):
             target_param.data.copy_(param.data)
             target_param.requires_grad = False
 
-        self.actor_optimizer = torch.optim.AdamW(self.actor.parameters(), lr=3e-4)
+        self.actor_optimizer = torch.optim.AdamW(self.actor.parameters(), lr=1e-4)
         self.critic_optimizer = torch.optim.AdamW(self.critic.parameters(), lr=3e-4)
         self.norm_loss_q = nn.SmoothL1Loss()
 
@@ -203,9 +203,9 @@ class MPO(object):
               log_dir='log',
               model_save_period=10):
         """
-        :param iteration_num:
-        :param log_dir:
-        :param model_save_period:
+        :param iteration_num: max numbers of iterations to complete
+        :param log_dir: where the weights are being saved
+        :param model_save_period: how many iterations to save the weights
         """
 
         model_save_dir = os.path.join(log_dir, 'model')
@@ -298,9 +298,7 @@ class MPO(object):
                         )
                         mean_loss_p.append((-loss_p).item())
 
-                        kl_μ, kl_Σ, Σi_det, Σ_det = gaussian_kl(
-                            μi=b_μ, μ=μ,
-                            Ai=b_A, A=A)
+                        kl_μ, kl_Σ, Σi_det, Σ_det = gaussian_kl(μi=b_μ, μ=μ, Ai=b_A, A=A)
                         max_kl_μ.append(kl_μ.item())
                         max_kl_Σ.append(kl_Σ.item())
                         mean_Σ_det.append(Σ_det.item())
@@ -337,8 +335,10 @@ class MPO(object):
             return_eval = None
             if it % self.evaluate_period == 0:
                 self.actor.eval()
-                return_eval = self.__evaluate()
+                return_eval = self._evaluate()
                 self.actor.train()
+                if return_eval is None:
+                    return_eval = self.max_return_eval
                 self.max_return_eval = max(self.max_return_eval, return_eval)
 
             mean_loss_q = np.mean(mean_loss_q)
@@ -427,7 +427,7 @@ class MPO(object):
         }
         torch.save(data, path)
 
-    def __sample_trajectory_worker(self, i):
+    def _sample_trajectory_worker(self, i):
         buff = []
         state, _ = self.env.reset()
         for steps in range(self.sample_episode_maxstep):
@@ -444,11 +444,14 @@ class MPO(object):
 
     def __sample_trajectory(self, sample_episode_num):
         self.replay_buffer.clear()
-        episodes = [self.__sample_trajectory_worker(i)
+        episodes = [self._sample_trajectory_worker(i)
                     for i in tqdm(range(sample_episode_num), desc='sample_trajectory')]
         self.replay_buffer.store_episodes(episodes)
 
-    def __evaluate(self):
+    def sample_trajectory_public(self, sample_episode_num):
+        self.__sample_trajectory(sample_episode_num)
+
+    def _evaluate(self):
         """
         :return: average return over 100 consecutive episodes
         """
@@ -513,3 +516,6 @@ class MPO(object):
         # Update critic parameters
         for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
             target_param.data.copy_(param.data)
+
+    def update_param_public(self):
+        self.__update_param()
