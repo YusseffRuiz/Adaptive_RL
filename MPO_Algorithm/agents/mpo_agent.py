@@ -1,9 +1,7 @@
 import torch
+import os
 from MPO_Algorithm import logger, ReplayBuffer, neural_networks
 from MPO_Algorithm.agents import base_agent
-
-# from tonic import logger, replays  # noqa
-# from tonic.torch import agents, models, normalizers, updaters
 
 
 class MPO(base_agent.BaseAgent):
@@ -16,6 +14,7 @@ class MPO(base_agent.BaseAgent):
     def __init__(
         self, model=None, hidden_size=256, critic_updater=None,
             return_step=5, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.last_actions = None
         self.last_observations = None
         self.model = model or neural_networks.BaseModel(hidden_size=hidden_size).get_model()
@@ -31,7 +30,7 @@ class MPO(base_agent.BaseAgent):
 
     def step(self, observations, steps):
         actions = self._step(observations)
-        actions = actions.numpy()
+        actions = actions.cpu().numpy()
 
         # Keep some values for the next update.
         self.last_observations = observations.copy()
@@ -41,7 +40,7 @@ class MPO(base_agent.BaseAgent):
 
     def test_step(self, observations, steps):
         # Sample actions for testing.
-        return self._test_step(observations).numpy()
+        return self._test_step(observations).cpu().numpy()
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store the last transitions in the replay.
@@ -81,7 +80,7 @@ class MPO(base_agent.BaseAgent):
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.numpy())
+                    logger.store(key + '/' + k, v.cpu().numpy())
 
         # Update the normalizers.
         if self.model.observation_normalizer:
@@ -97,6 +96,18 @@ class MPO(base_agent.BaseAgent):
         self.model.update_targets()
         return dict(critic=critic_infos, actor=actor_infos)
 
+    def save(self, path):
+        path = path + '.pt'
+        logger.log(f'\nSaving weights to {path}')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path):
+        if not path[-3:] == '.pt':
+            path = path + '.pt'
+        logger.log(f'\nLoading weights from {path}')
+        self.model.load_state_dict(torch.load(path, weights_only=True))
+
 
 FLOAT_EPSILON = 1e-8
 
@@ -109,6 +120,7 @@ class MaximumAPosterioriPolicyOptimization:
         min_log_dual=-18., per_dim_constraining=True, action_penalization=True,
         gradient_clip=0, lr_actor=3e-4, lr_dual=3e-4,
     ):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.log_alpha_std = None
         self.log_alpha_mean = None
         self.actor_variables = None
@@ -215,25 +227,25 @@ class MaximumAPosterioriPolicyOptimization:
         distributions = self.model.actor(observations)
         distributions = independent_normals(distributions)
 
-        temperature = torch.nn.functional.softplus(
-            self.log_temperature) + FLOAT_EPSILON
-        alpha_mean = torch.nn.functional.softplus(
-            self.log_alpha_mean) + FLOAT_EPSILON
-        alpha_std = torch.nn.functional.softplus(
-            self.log_alpha_std) + FLOAT_EPSILON
+        temperature = (torch.nn.functional.softplus(
+            self.log_temperature) + FLOAT_EPSILON).to(self.device)
+        alpha_mean = (torch.nn.functional.softplus(
+            self.log_alpha_mean) + FLOAT_EPSILON).to(self.device)
+        alpha_std = (torch.nn.functional.softplus(
+            self.log_alpha_std) + FLOAT_EPSILON).to(self.device)
         weights, temperature_loss = weights_and_temperature_loss(
             values, self.epsilon, temperature)
 
         # Action penalization is quadratic beyond [-1, 1].
         penalty_temperature = 0
         if self.action_penalization:
-            penalty_temperature = torch.nn.functional.softplus(
-                self.log_penalty_temperature) + FLOAT_EPSILON
+            penalty_temperature = (torch.nn.functional.softplus(
+                self.log_penalty_temperature) + FLOAT_EPSILON).to(self.device)
             diff_bounds = actions - torch.clamp(actions, -1, 1)
             action_bound_costs = -torch.norm(diff_bounds, dim=-1)
             penalty_weights, penalty_temperature_loss = \
                 weights_and_temperature_loss(
-                    action_bound_costs,
+                    action_bound_costs.to(self.device),
                     self.epsilon_penalty, penalty_temperature)
             weights += penalty_weights
             temperature_loss += penalty_temperature_loss

@@ -1,12 +1,9 @@
-import tonic.torch.agents
-
 from stable_baselines3 import PPO, SAC
-
 import gymnasium as gym
-from reinforce import A2C
-
-import os
 import torch
+import MPO_Algorithm
+import Experiments.experiments_utils as trials
+import tonic
 
 import logging
 from gymnasium.envs.registration import register
@@ -46,8 +43,7 @@ def main_running():
     num_episodes = 3
 
     env_name = "Walker2d-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False)
 
     video_record = False
     algorithm_mpo = "mpo"
@@ -60,7 +56,7 @@ def main_running():
     if algorithm == "mpo":
         agent = tonic.torch.agents.MPO()
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-        path_tmp = f"{env_name}/tonic_train_1/0/checkpoints/step_2325008"
+        path_tmp = f"{env_name}/tonic_train/0/checkpoints/step_3950004"
         agent.load(path_tmp)
     elif algorithm == "sac":
         path_tmp = f"{save_folder}/logs/{env_name}/best_model.zip"
@@ -68,19 +64,7 @@ def main_running():
         agent = SAC.load(path_tmp)
         print(f"model {save_folder} loaded")
     else:
-        # agent hyperparams
-        actor_lr = 0.001
-        critic_lr = 0.005
-        obs_shape = env.observation_space.shape[0]
-        action_shape = env.action_space.shape[0]
-        actor_weights_path = "weights_1/FinalWeights/actor_weights.h5"
-        critic_weights_path = "weights_1/FinalWeights/critic_weights.h5"
-        agent = A2C(obs_shape, action_shape, torch.device(device), critic_lr, actor_lr, n_envs=1)
-
-        agent.actor.load_state_dict(torch.load(actor_weights_path, weights_only=True))
-        agent.critic.load_state_dict(torch.load(critic_weights_path, weights_only=True))
-        agent.actor.eval()
-        agent.critic.eval()
+        agent = None
 
     print("Loaded weights from {} algorithm".format(algorithm))
 
@@ -117,8 +101,44 @@ def register_new_env():
     )
 
 
+def evaluate_experiment(agent, env, alg):
+    import numpy as np
+
+    total_rewards = []
+    range_episodes = 1500
+    obs, *_ = env.reset()
+    for i in range(range_episodes):
+        with torch.no_grad():
+            if alg == "mpo":
+                action = agent.test_step(obs, _)
+            elif alg == "sac":
+                action, *_ = agent.predict(obs, deterministic=True)
+            else:
+                action = env.action_space.sample()
+        obs, reward, done, *_ = env.step(action)
+        if i == 1000:
+            vel_env_1 = trials.get_velocity(obs)
+            print(vel_env_1, " m/s")
+
+        total_rewards.append(reward)
+    average_reward = np.mean(total_rewards)
+    print(f"Average Reward over {range_episodes} episodes: {average_reward}")
+
+
+def test_get_values():
+    env_name = "Walker2d-v4"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False)
+    env = gym.make(env_name, render_mode="human", max_episode_steps=1000, autoreset=False)
+    agent = MPO_Algorithm.agents.MPO()
+    agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+    path = f"{env_name}/tonic_train/0/checkpoints/step_4675008.pt"
+    agent.load(path)
+    evaluate_experiment(agent, env, "mpo")
+    env.close()
+
+
 if __name__ == '__main__':
     register_new_env()
     main_running()
-
+    # test_get_values()
 

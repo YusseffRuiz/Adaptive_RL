@@ -9,7 +9,7 @@ pattern movements. To be controlled by manual parameters or a DRL algorithm.
 
 **How to use**
 
-To train a new environment, everything can be ran in main.py class.
+To train a new environment, everything can be run in main.py class.
 
 Create the agent, specifying learning rates, however, they can be left for the default values:
 

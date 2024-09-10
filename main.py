@@ -148,7 +148,7 @@ def matsuoka_main():
             plt.show()
 
 
-def get_name_environment(name, cpg_flag=False, algorithm="mpo", experiment_number=0):
+def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0):
     """
     :param algorithm: algorithm being used to create the required folder
     :param name: of the environment
@@ -164,7 +164,10 @@ def get_name_environment(name, cpg_flag=False, algorithm="mpo", experiment_numbe
 
     print(f"Creating env {env_name}")
     # Create log dir
-    save_folder = f"{env_name}-{algorithm}"
+    if algorithm is not None:
+        save_folder = f"{env_name}-{algorithm}"
+    else:
+        save_folder = f"{env_name}"
     if experiment_number > 0:
         log_dir = f"{env_name}/logs/{save_folder}/{experiment_number}"
     else:
@@ -184,7 +187,7 @@ def evaluate(model, env, algorithm):
         while not done:
             with torch.no_grad():
                 if algorithm == "mpo":
-                    action = model.test_step(obs)
+                    action = model.test_step(obs, _)
                 elif algorithm == "sac":
                     action, *_ = model.predict(obs, deterministic=True)
                 else:
@@ -296,6 +299,7 @@ def train_mpo(
     :param path: Path where the experiment to check for checkpoints
     :param log_dir:: Path to add the logs of the experiment
     """
+    torch.set_default_device('cuda')
     path = log_dir
     args = dict(locals())
     checkpoint_path = None
@@ -352,17 +356,16 @@ def train_mpo(
 
 def mpo_tonic_train_main():
     env_name = "Ant-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False, algorithm="mpo",
-                                                          experiment_number=1)
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO")
     max_steps = int(5e6)
-    epochs = max_steps/500
-    save_steps = max_steps/200
-    agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213)
+    epochs = max_steps / 500
+    save_steps = max_steps / 200
+    agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213, hidden_size=512)
     train_mpo(agent=agent,
-                environment=env_name,
-                sequential=5, parallel=5,
-                trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                log_dir=log_dir)
+              environment=env_name,
+              sequential=5, parallel=5,
+              trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+              log_dir=log_dir)
     env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
     evaluate(agent, env, algorithm="mpo")
