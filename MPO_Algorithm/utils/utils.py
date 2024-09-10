@@ -48,16 +48,6 @@ def load_checkpoint(checkpoint, path):
 
 
 def register_new_env():
-    register(
-        # unique identifier for the env `name-version`
-        id="Hopper_CPG_v1",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:HopperCPG",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
-    print("Registered new env Hopper_CPG_v1")
 
     register(
         # unique identifier for the env `name-version`
