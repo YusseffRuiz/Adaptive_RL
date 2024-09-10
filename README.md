@@ -49,7 +49,7 @@ Development and Implementation of Hodgkin-Huxley neurons CPG.
 
 | Model name                                                         | Algorithm | Movement                                              |
 |--------------------------------------------------------------------|-----------|-------------------------------------------------------|
-| **Walker-2d-v4** <br> - 8 Action Space <br> - 17 Observation State | SAC       | ![](Experiments/Videos/sac-agent-Walker2d-v4.mp4)     |
+| **Walker-2d-v4** <br> - 8 Action Space <br> - 17 Observation State | SAC       | ![](https://github.com/YusseffRuiz/MPO_CPG/blob/main/Experiments/Videos/mpo-agent-Walker2d-v4-CPG.mp4)     |
 |                                                                    | SAC + CPG | ![](Experiments/Videos/sac-agent-Walker2d-v4-CPG.mp4) |
 |                                                                    | MPO       | ![](Experiments/Videos/mpo-agent-Walker2d-v4.mp4)     |
 |                                                                    | MPO + CPG | ![](Experiments/Videos/mpo-agent-Walker2d-v4-CPG.mp4) |
