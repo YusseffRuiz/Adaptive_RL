@@ -481,7 +481,7 @@ def a2c_train_main():
     """
 
 
-def train_tonic(
+def train_mpo(
         agent, environment, trainer=MPO_Algorithm.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, log_dir=None):
     """
@@ -557,7 +557,7 @@ def mpo_tonic_train_main():
     epochs = max_steps/500
     save_steps = max_steps/200
     agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213)
-    train_tonic(agent=agent,
+    train_mpo(agent=agent,
                 environment=env_name,
                 sequential=2, parallel=3,
                 trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
@@ -571,9 +571,4 @@ def mpo_tonic_train_main():
 # Training of MPO method
 if __name__ == "__main__":
     register_new_env()
-    # mpo_train_main(1)
-    # matsuoka_mpo_main(1)
-    # matsuoka_env_main()
-    # mpo_ext_train_main()
-    # training_stable()
     mpo_tonic_train_main()
