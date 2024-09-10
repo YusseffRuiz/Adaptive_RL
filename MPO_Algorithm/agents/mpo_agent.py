@@ -92,8 +92,7 @@ class MPO(base_agent.BaseAgent):
     def _update_actor_critic(
         self, observations, actions, next_observations, rewards, discounts
     ):
-        critic_infos = self.critic_updater(
-            observations, actions, next_observations, rewards, discounts)
+        critic_infos = self.critic_updater(observations, actions, next_observations, rewards, discounts)
         actor_infos = self.actor_updater(observations)
         self.model.update_targets()
         return dict(critic=critic_infos, actor=actor_infos)

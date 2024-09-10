@@ -129,11 +129,10 @@ class ExpectedSARSA:
             next_actions = next_target_distributions.rsample(
                 (self.num_samples,))
             next_actions = next_actions.view(next_actions.shape[0] * next_actions.shape[1], *next_actions.shape[2:])
-            next_observations = next_observations.repeat([self.num_samples] + [1] * len(next_observations))
+            next_observations = next_observations[None].repeat([self.num_samples] + [1] * len(next_observations.shape))
             next_observations = next_observations.view(next_observations.shape[0] * next_observations.shape[1],
                                                        *next_observations.shape[2:])
-            next_values = self.model.target_critic(
-                next_observations, next_actions)
+            next_values = self.model.target_critic(next_observations, next_actions)
             next_values = next_values.view(self.num_samples, -1)
             next_values = next_values.mean(dim=0)
             returns = rewards + discounts * next_values
