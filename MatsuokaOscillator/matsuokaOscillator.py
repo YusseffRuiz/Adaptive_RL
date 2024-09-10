@@ -1,7 +1,5 @@
 import numpy as np
-import math
 import torch
-from .matsuoka_actor import MatsuokaActor
 
 
 class MatsuokaNetwork:
@@ -20,25 +18,20 @@ class MatsuokaNetwork:
         - dt (float): Time step for integration.
         """
         self.neuron_number = neuron_number
-        self.oscillators = [
-            MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, weights=weights, u=u, beta=beta,
-                               dt=dt, action_space=action_space) for _ in range(num_oscillators)]
         self.num_oscillators = num_oscillators
+        self.oscillators = MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, weights=weights,
+                                              u=u, beta=beta,
+                                              dt=dt, action_space=action_space, num_oscillators=num_oscillators)
 
     def step(self):
         """
         Perform a single step for all coupled oscillators.
         Each oscillator's output is fed as input to the next oscillator.
         """
-        outputs = [oscillator.y for oscillator in self.oscillators]
+        outputs = self.oscillators.y
 
         # Update each oscillator with the output of the previous one
-        for i in range(self.num_oscillators):
-            if i == 0:
-                # For the first oscillator, input is from the last oscillator (wrap-around)
-                self.oscillators[i].step(weights=outputs[-1])
-            else:
-                self.oscillators[i].step(weights=outputs[i - 1])
+        self.oscillators.step()
 
     def run(self, steps=1000):
         """
@@ -55,7 +48,7 @@ class MatsuokaNetwork:
         for step_ in range(steps):
             self.step()
             for i in range(self.num_oscillators):
-                y_outputs[i][step_, :] = self.oscillators[i].y.detach().cpu().numpy
+                y_outputs[i][step_, :] = self.oscillators.y[i].detach().cpu().numpy
 
         return y_outputs
 
@@ -67,11 +60,14 @@ class MatsuokaOscillator:
                 Initialize the Matsuoka Oscillator.
 
                 Parameters:
+                - action_space (array): Action space of all oscillators. - to be removed
                 - neuron_number (int): Number of neurons in the oscillator network.
+                - num_oscillators (int): Number of oscillators to connect.
                 - tau_r (float): Time constant for neuron recovery.
                 - tau_a (float): Time constant for neuron adaptation.
-                - weights (array): Weight matrix for neuron interactions (default: None, initialized as identity matrix).
-                - u (array): External input (firing rate) to the neurons (default: None, initialized as ones).
+                - weights (array): Weight matrix for neuron interactions
+                    (default: None, initialized as neurons*osc matrix)
+                - u (array): External input (firing rate) to the neurons (default: None, initialized as 2.5).
                 - beta (float): Adaptation coefficient.
                 - dt (float): Time step for integration.
                 """
@@ -84,13 +80,18 @@ class MatsuokaOscillator:
         self.tau_a = tau_a
         self.beta = beta
         self.dt = dt
-        x = torch.arange(0, num_oscillators * neuron_number, 1, dtype=torch.float32).to(self.device)
-        self.x = x.view(num_oscillators, neuron_number)
-        # Neuron initial membrane potential
-        self.y = torch.zeros((num_oscillators, neuron_number), dtype=torch.float32, device=self.device)
-        # Output, it is the neurons update, which is mapped via NN to the action space.
-        self.z = torch.zeros((num_oscillators, neuron_number), dtype=torch.float32,
-                             device=self.device)  # Correction value
+        excitation_signal = 2.5
+        self.x = torch.arange(0, num_oscillators * neuron_number, 1, dtype=torch.float32).to(self.device)
+        if num_oscillators > 1:
+            self.x = self.x.view(num_oscillators, neuron_number)
+            # Neuron initial membrane potential
+            self.y = torch.zeros((num_oscillators, neuron_number), dtype=torch.float32, device=self.device)
+            # Output, it is the neurons update, which is mapped via NN to the action space.
+            self.z = torch.zeros((num_oscillators, neuron_number), dtype=torch.float32,
+                                 device=self.device)  # Correction value
+        else:
+            self.y = torch.zeros(neuron_number, dtype=torch.float32, device=self.device)
+            self.z = torch.zeros(neuron_number, dtype=torch.float32, device=self.device)
 
         if weights is None:
             self.weights = torch.ones(neuron_number, dtype=torch.float32, device=self.device)
@@ -101,32 +102,45 @@ class MatsuokaOscillator:
 
         # Initialize external input (ones by default)
         if u is None:
-            self.u = torch.full((num_oscillators, neuron_number), 2.5, dtype=torch.float32).to(self.device)
+            if num_oscillators > 1:
+                self.u = torch.full((num_oscillators-1, neuron_number), excitation_signal,
+                                    dtype=torch.float32, device=self.device)
+            else:
+                self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device)*excitation_signal
         else:
             assert len(u) == neuron_number, "Input array u - (fire rate) must match the number of neurons."
             self.u = torch.tensor(u, dtype=torch.float32, device=self.device)
 
-    def step(self, weights=None, num_oscillators=1):
+    def step(self, weights_in=None, num_oscillators=1):
         """
-               Perform a single update step for the Matsuoka oscillator network.
+          Perform a single update step for the Matsuoka oscillator network.
 
-               Parameters:
-               - tau_r (float): Optional. Time constant for neuron recovery.
-               - weights (array): Optional. Weight matrix for neuron interactions.
-               - beta (float): Optional. Adaptation coefficient.
-               """
+           Parameters:
+           - tau_r (float): Optional. Time constant for neuron recovery.
+           - weights (array): Optional. Weight matrix for neuron interactions.
+            - beta (float): Optional. Adaptation coefficient.
+        """
         # Update parameters if provided
+
+        # Verify input comes in tensor form
+        if not torch.is_tensor(weights_in):
+            weights = torch.tensor(weights_in, dtype=torch.float32, device=self.device)
+        else:
+            weights = weights_in
 
         if weights is not None:
             self.weights = weights
-        weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
-        output = weights[self.neuron_number:]
-        weights = weights[:self.neuron_number]
+        else:
+            weights = self.weights
+
         # Reshape params if necessary
-        if weights.dim() > 2:
+        if weights.dim() >= 2:
+            output = weights[:, self.neuron_number:]  # Used for only controlling certain part of the action space
+            weights = weights[:, :self.neuron_number]  # Uncomment only for separate OSC from the rest of the AS
+
             # Shape comes in shape [N, K, paramsDim]
-            assert weights.size(2) == self.param_dim, \
-                    "Weights must be a matrix with size equal to the number of neurons."
+            # assert weights.size(2) == self.param_dim, \
+            #    "Weights must be a matrix with size equal to the number of neurons."
             batch_size = weights.size(0) * weights.size(1)
             oscillator_number = num_oscillators
             params_input = weights.reshape(batch_size, oscillator_number, self.neuron_number)
@@ -160,10 +174,11 @@ class MatsuokaOscillator:
             neuron_indices = torch.arange(self.neuron_number).repeat(num_oscillators)  # [0, 1, 0, 1, 0, 1, ...]
 
             # Use advanced indexing to fill the output tensor
-            output_tensor = local_y[:, osc_indices, neuron_indices]
+            output_tensor = torch.cat((local_y[:, osc_indices, neuron_indices], output), dim=-1)
+            # output_tensor = local_y[:, osc_indices, neuron_indices]
 
-            right_output = output_tensor[:, :self.action_dim//2]
-            left_output = output_tensor[:, self.action_dim//2:]
+            right_output = output_tensor[:, :self.action_dim // 2]
+            left_output = output_tensor[:, self.action_dim // 2:]
             self.x = local_x[0, :, :]
             self.y = local_y[0, :, :]
             self.z = local_z[0, :, :]
@@ -171,18 +186,28 @@ class MatsuokaOscillator:
             # right_output = local_y[:, :, :self.param_dim // 2].reshape(batch_size, -1) # output for NN, not used
             # left_output = local_y[:, :, self.param_dim // 2:].reshape(batch_size, -1) # output for NN, not used
         else:
-            assert len(weights) == self.param_dim, \
-                    "Weights must be a matrix with size equal to the number of neurons, right now is {len(weights)}."
-            weights = weights.reshape(num_oscillators, self.neuron_number)
-            y_prev = torch.roll(self.y, shifts=1, dims=1)
-            y_prev[0] = self.y[0]
+            # output = weights[self.neuron_number:]  # Used for only controlling certain part of the action space
+            # weights = weights[:self.neuron_number]  # Uncomment only for separate OSC from the rest of the AS
+            weights_tmp = weights[:self.param_dim]
+            weights_tmp[0] = weights[0]
+            weights_tmp[1] = weights[1]
+            weights_tmp[2] = weights[4]
+            weights_tmp[3] = weights[5]
+            assert len(weights_tmp) == self.param_dim, \
+                f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
+            if num_oscillators > 1:
+                weights_tmp = weights_tmp.reshape(num_oscillators, self.neuron_number)
+                y_prev = torch.roll(self.y, shifts=1, dims=1)
+            else:
+                y_prev = torch.roll(self.y, shifts=1)
 
-            dx = (-self.x - weights * y_prev + self.u - self.beta * self.z) * self.dt / self.tau_r
+            dx = (-self.x - weights_tmp * y_prev + self.u - self.beta * self.z) * self.dt / self.tau_r
 
             self.x += dx
 
             # Update membrane potentials and output
-            #self.y = torch.clamp(self.x, min=self.action_space.low[0],
+            # Clamp if we have the action space
+            # self.y = torch.clamp(self.x, min=self.action_space.low[0],
             #                     max=self.action_space.high[0])
 
             # Update adaptation variables
@@ -194,13 +219,20 @@ class MatsuokaOscillator:
             neuron_indices = torch.arange(self.neuron_number).repeat(num_oscillators)  # [0, 1, 0, 1, 0, 1, ...]
 
             # Use advanced indexing to fill the output tensor
-            output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
+            # output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
+            # output_tensor = self.y[osc_indices, neuron_indices]
+            output_tensor = torch.zeros(self.action_dim, dtype=torch.float32, device=self.device)
+            output_tensor[0] = self.y[0, 0]  # Hip right
+            output_tensor[1] = weights[2]  # Knee right
+            output_tensor[2] = self.y[1, 0]  # Ankle right
+            output_tensor[3] = self.y[0, 1]  # Hip left
+            output_tensor[4] = weights[3]  # Knee left
+            output_tensor[5] = self.y[1, 1]  # Ankle Left
 
             right_output = output_tensor[:self.action_dim // 2]
             left_output = output_tensor[self.action_dim // 2:]
             # right_output = self.y[:, :self.param_dim // 2].reshape(-1) # Output for NN, not used
             # left_output = self.y[:, self.param_dim // 2:].reshape(-1)  # Output for NN, not used
-
         return right_output, left_output
 
     def run(self, steps=1000, weights_seq=None):
@@ -213,33 +245,27 @@ class MatsuokaOscillator:
         y_output = torch.zeros(steps, self.neuron_number, dtype=torch.float32, device=self.device)
         for i in range(steps):
             weights = weights_seq[i] if weights_seq is not None else None
-            self.step(weights=weights)
+            self.step(weights_in=weights)
             y_output[i, :] = self.y
         return y_output
 
 
 class MatsuokaNetworkWithNN:
     """
-    A class that represents a network of Matsuoka oscillators controlled by a neural network model.
+    A class that represents a network of Matsuoka oscillators controlled by a neural network , which can be DRL.
 
     Attributes:
     -----------
     num_oscillators : int
-        The number of Matsuoka oscillators in the network.
-    nn_model : torch.nn.Module
-        The neural network model that controls the parameters of the oscillators.
+        The number of Matsuoka oscillators in the network, these are the number of joints to be controlled.
     neuron_number : int, optional
-        The number of neurons in each Matsuoka oscillator (default is 2).
-    action_space : int
-        The dimension of the action space, which represents the number of control outputs (default is 6).
-    oscillators : list
-        A list of MatsuokaOscillator objects, one for each oscillator in the network.
+        The number of neurons in each Matsuoka oscillator (default is 2), number of limbs to be controlled.
 
     Methods:
     --------
     step(sensory_input):
-        Takes a single step in the simulation, updating the state of each oscillator based on the sensory input and
-        the neural network output. Returns the control actions as a torch tensor.
+        Takes a single step in the simulation, updating the state of each oscillator based on the sensory input.
+         Returns the control actions as a torch tensor.
 
     run(steps=1000, sensory_input_seq=None):
         Runs the simulation for a given number of steps, returning the outputs of the oscillators over time.
@@ -254,8 +280,6 @@ class MatsuokaNetworkWithNN:
         -----------
         num_oscillators : int
             The number of Matsuoka oscillators in the network.
-        nn_model : torch.nn.Module
-            The neural network model used to control the parameters of the oscillators.
         neuron_number : int, optional
             The number of neurons in each Matsuoka oscillator (default is 2).
         tau_r : float, optional
@@ -265,19 +289,19 @@ class MatsuokaNetworkWithNN:
         dt : float, optional
             The time step for the simulation (default is 0.1).
         """
-        #self.env = env
+        # self.env = env
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_oscillators = num_oscillators
-        self.observation_space = env[0]#env.observation_space
-        self.action_space = None#env.action_space
+        self.observation_space = env[0]  #env.observation_space
+        self.action_space = None  #env.action_space
         self.neuron_number = neuron_number
-        self.action_dim = env[1]#env.action_space.shape[0]
+        self.action_dim = env[1]  #env.action_space.shape[0]
         self.n_envs = n_envs
         self.parameters_dimension = self.num_oscillators * self.neuron_number
         self.oscillators = MatsuokaOscillator(action_space=self.action_dim, num_oscillators=num_oscillators,
                                               neuron_number=neuron_number, tau_r=tau_r,
                                               tau_a=tau_a, dt=dt)
-        #self.nn_model = MatsuokaActor(env, neuron_number=self.neuron_number, num_oscillators=self.num_oscillators).to(
+        # self.nn_model = MatsuokaActor(env, neuron_number=self.neuron_number, num_oscillators=self.num_oscillators).to(
         #    self.device)
 
     def step(self, params_input):
@@ -302,7 +326,7 @@ class MatsuokaNetworkWithNN:
 
         # Original inputs are in the shape [B, sample, num_oscillators*neuron_number
         # Rearrange inputs in the form num_oscillators*neuron_numer
-        right_output, left_output = self.oscillators.step(weights=params_input, num_oscillators=self.num_oscillators)
+        right_output, left_output = self.oscillators.step(weights_in=params_input, num_oscillators=self.num_oscillators)
 
         # Combine the right and left outputs as needed
         output_actions = torch.cat((right_output, left_output), dim=-1)
