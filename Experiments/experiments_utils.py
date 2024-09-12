@@ -11,11 +11,11 @@ def get_velocity(obs):
     :return: velocity of the agent
     """
     # Extract velocity of the agent
-    velocity = obs[8]
+    velocity = obs[8]  # Velocity in the X direction
     return velocity
 
 
-def get_motion(env):
+def get_motion(action):
     pass
 
 
@@ -23,11 +23,11 @@ def get_energy_consumption(env):
     pass
 
 
-def compare_velocity(envs_list):
+def compare_velocity(obs_list):
     pass
 
 
-def compare_motion(envs_list):
+def compare_motion(action_list):
     pass
 
 

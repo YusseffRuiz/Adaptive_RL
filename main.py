@@ -6,7 +6,6 @@ from stable_baselines3.common.vec_env import VecMonitor
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
 
 import gymnasium as gym
-from tqdm import tqdm
 import os
 
 from gymnasium.envs.registration import register
@@ -148,12 +147,13 @@ def matsuoka_main():
             plt.show()
 
 
-def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0):
+def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False):
     """
     :param algorithm: algorithm being used to create the required folder
     :param name: of the environment
     :param cpg_flag: either we are looking for the cpg env or not
     :param experiment_number: if required, we can create a subfolder
+    :param create: If required, create new folder if it doesn't exist'
     :return: env_name, save_folder, log_dir
     """
     env_name = name
@@ -163,7 +163,7 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
         env_name = env_name + "-CPG"
 
     print(f"Creating env {env_name}")
-    # Create log dir
+
     if algorithm is not None:
         save_folder = f"{env_name}-{algorithm}"
     else:
@@ -172,13 +172,16 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
         log_dir = f"{env_name}/logs/{save_folder}/{experiment_number}"
     else:
         log_dir = f"{env_name}/logs/{save_folder}"
-    os.makedirs(log_dir, exist_ok=True)
+    if create:
+        # Create log dir
+        os.makedirs(log_dir, exist_ok=True)
+        print(f"Folder {log_dir} created")
     return env_name, save_folder, log_dir
 
 
-def evaluate(model, env, algorithm):
+def evaluate(model, env, algorithm, num_episodes=5):
     total_rewards = []
-    range_episodes = 3
+    range_episodes = num_episodes
     for i in range(range_episodes):
         obs, *_ = env.reset()
         done = False
@@ -251,13 +254,13 @@ def training_stable():
 
     if os.path.exists(f"{save_folder}"):
         path = f"{save_folder}/{env_name}-SAC-top"
-        # path = "walker_sac/Walker2d-v4-CPG-SAC.zip" # Testing path
+        # path = "walker_sac/Walker2d-v4-CPG-MPO-SAC.zip" # Testing path
         model = SAC.load(path)
         print("model loaded")
 
     print("Starting")
 
-    evaluate(model, env, algorithm="sac")
+    evaluate(model, env, algorithm="sac", num_episodes=5)
     env.close()
 
 
@@ -275,14 +278,14 @@ def register_new_env():
 
     register(
         # unique identifier for the env `name-version`
-        id="Walker2d-v4-CPG",
+        id="Walker2d-v4-CPG-MPO",
         # path to the class for creating the env
         # Note: entry_point also accept a class as input (and not only a string)
         entry_point="gymnasium.envs.mujoco:Walker2dCPGEnv",
         # Max number of steps per episode, using a `TimeLimitWrapper`
         max_episode_steps=1000,
     )
-    print("Registered new env Walker2d-v4-CPG")
+    print("Registered new env Walker2d-v4-CPG-MPO")
 
 
 def train_mpo(
@@ -299,7 +302,7 @@ def train_mpo(
     :param path: Path where the experiment to check for checkpoints
     :param log_dir:: Path to add the logs of the experiment
     """
-    torch.set_default_device('cuda')
+    torch.set_default_device('cuda' if torch.cuda.is_available() else "cpu")
     path = log_dir
     args = dict(locals())
     checkpoint_path = None
@@ -355,8 +358,8 @@ def train_mpo(
 
 
 def mpo_tonic_train_main():
-    env_name = "Ant-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO")
+    env_name = "Walker-v4"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True)
     max_steps = int(5e6)
     epochs = max_steps / 500
     save_steps = max_steps / 200
@@ -368,7 +371,7 @@ def mpo_tonic_train_main():
               log_dir=log_dir)
     env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
-    evaluate(agent, env, algorithm="mpo")
+    evaluate(agent, env, algorithm="mpo", num_episodes=4)
     env.close()
 
 

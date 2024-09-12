@@ -186,13 +186,14 @@ class MatsuokaOscillator:
             # right_output = local_y[:, :, :self.param_dim // 2].reshape(batch_size, -1) # output for NN, not used
             # left_output = local_y[:, :, self.param_dim // 2:].reshape(batch_size, -1) # output for NN, not used
         else:
-            # output = weights[self.neuron_number:]  # Used for only controlling certain part of the action space
-            # weights = weights[:self.neuron_number]  # Uncomment only for separate OSC from the rest of the AS
-            weights_tmp = weights[:self.param_dim]
+            weights_tmp = torch.zeros(self.param_dim, dtype=torch.float32, device=self.device)
             weights_tmp[0] = weights[0]
-            weights_tmp[1] = weights[1]
-            weights_tmp[2] = weights[4]
-            weights_tmp[3] = weights[5]
+            weights_tmp[1] = weights[3]
+            # weights_tmp[0] = weights[0]
+            # weights_tmp[1] = weights[1]
+            # weights_tmp[2] = weights[4]
+            # weights_tmp[3] = weights[5]
+            # weights_tmp[:] = [weights[0], weights[6], weights[4], weights[2]]
             assert len(weights_tmp) == self.param_dim, \
                 f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
             if num_oscillators > 1:
@@ -221,13 +222,17 @@ class MatsuokaOscillator:
             # Use advanced indexing to fill the output tensor
             # output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
             # output_tensor = self.y[osc_indices, neuron_indices]
-            output_tensor = torch.zeros(self.action_dim, dtype=torch.float32, device=self.device)
-            output_tensor[0] = self.y[0, 0]  # Hip right
-            output_tensor[1] = weights[2]  # Knee right
-            output_tensor[2] = self.y[1, 0]  # Ankle right
-            output_tensor[3] = self.y[0, 1]  # Hip left
-            output_tensor[4] = weights[3]  # Knee left
-            output_tensor[5] = self.y[1, 1]  # Ankle Left
+            output_tensor = weights
+            # output_tensor[0] = self.y[0, 0]
+            # output_tensor[1] = weights[1]
+            # output_tensor[2] = self.y[1, 1]
+            # output_tensor[3] = weights[3]
+            # output_tensor[4] = self.y[1, 0]
+            # output_tensor[5] = weights[5]
+            # output_tensor[6] = self.y[0, 1]
+            # output_tensor[7] = weights[7]
+            output_tensor[0] = self.y[0]
+            output_tensor[3] = self.y[1]
 
             right_output = output_tensor[:self.action_dim // 2]
             left_output = output_tensor[self.action_dim // 2:]

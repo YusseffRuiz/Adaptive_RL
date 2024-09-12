@@ -42,8 +42,8 @@ def main_running():
     """ play a couple of showcase episodes """
     num_episodes = 3
 
-    env_name = "Walker2d-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False)
+    env_name = "Ant-v4"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO")
 
     video_record = False
     algorithm_mpo = "mpo"
@@ -54,10 +54,13 @@ def main_running():
     env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
     if algorithm == "mpo":
-        agent = tonic.torch.agents.MPO()
+        #  agent = tonic.torch.agents.MPO()  # For walker2d no CPG
+        agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213, hidden_size=512)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-        path_tmp = f"{env_name}/tonic_train/0/checkpoints/step_3950004"
-        agent.load(path_tmp)
+        path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
+        path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
+        path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_1400000.pt"
+        agent.load(path_ant2d_cpg)
     elif algorithm == "sac":
         path_tmp = f"{save_folder}/logs/{env_name}/best_model.zip"
         path_final = f"{save_folder}/{env_name}-SAC-top"
@@ -75,7 +78,7 @@ def main_running():
 
     else:
         """ load network weights """
-        evaluate(agent, env, algorithm)
+        evaluate(agent, env, algorithm, num_episodes)
     env.close()
 
 
@@ -92,7 +95,7 @@ def register_new_env():
 
     register(
         # unique identifier for the env `name-version`
-        id="Walker2d-v4-CPG",
+        id="Walker2d-v4-CPG-MPO",
         # path to the class for creating the env
         # Note: entry_point also accept a class as input (and not only a string)
         entry_point="gymnasium.envs.mujoco:Walker2dCPGEnv",

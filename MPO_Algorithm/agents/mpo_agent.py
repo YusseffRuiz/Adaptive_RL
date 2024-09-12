@@ -112,6 +112,14 @@ class MPO(base_agent.BaseAgent):
 FLOAT_EPSILON = 1e-8
 
 
+def actor_optimizer(params, lr_actor=3e-4):
+    return torch.optim.AdamW(params, lr=lr_actor)
+
+
+def dual_optimizer(params, lr_dual=3e-4):
+    return torch.optim.AdamW(params, lr=lr_dual)
+
+
 class MaximumAPosterioriPolicyOptimization:
     def __init__(
         self, num_samples=20, epsilon=1e-1, epsilon_penalty=1e-3,
@@ -136,9 +144,9 @@ class MaximumAPosterioriPolicyOptimization:
         self.action_penalization = action_penalization
         self.epsilon_penalty = epsilon_penalty
         self.per_dim_constraining = per_dim_constraining
-        self.actor_optimizer_fun = lambda params: torch.optim.AdamW(params, lr=lr_actor)
-        self.dual_optimizer_fun = lambda params: torch.optim.AdamW(params, lr=lr_dual)
         self.gradient_clip = gradient_clip
+        self.lr_actor = lr_actor
+        self.lr_dual = lr_dual
 
         # Dual Variables
         self.dual_variables = []
@@ -153,7 +161,7 @@ class MaximumAPosterioriPolicyOptimization:
     def initialize(self, model, action_space):
         self.model = model
         self.actor_variables = base_agent.trainable_variables(self.model.actor)
-        self.actor_optimizer = self.actor_optimizer_fun(self.actor_variables)
+        self.actor_optimizer = actor_optimizer(self.actor_variables, lr_actor=self.lr_actor)
 
         # Dual variables.
         shape = [action_space.shape[0]] if self.per_dim_constraining else [1]
@@ -163,7 +171,7 @@ class MaximumAPosterioriPolicyOptimization:
         self.log_alpha_std = torch.nn.Parameter(torch.full(
             shape, self.initial_log_alpha_std, dtype=torch.float32))
         self.dual_variables.append(self.log_alpha_std)
-        self.dual_optimizer = self.dual_optimizer_fun(self.dual_variables)
+        self.dual_optimizer = dual_optimizer(self.dual_variables, self.lr_dual)
 
     def __call__(self, observations):
         def parametric_kl_and_dual_losses(kl, alpha, epsilon):

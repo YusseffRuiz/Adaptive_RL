@@ -266,8 +266,8 @@ class AntCPGEnv(MujocoEnv, utils.EzPickle):
             low=-np.inf, high=np.inf, shape=(obs_shape,), dtype=np.float64
         )
 
-        num_oscillators = 2 # 1 oscillator per 2 hips
-        neuron_number = 2 # 1 neuron per hip
+        num_oscillators = 2  # 1 oscillator per 2 hips
+        neuron_number = 2  # 1 neuron per hip
         da = 8  # neuron_number * num_oscillators, 1 oscillator per every 2 hips
         # Definition of the Matsuoka Network using the actor agent, only to control the hip joint
         self.matsuoka_network = MatsuokaNetworkWithNN(num_oscillators=num_oscillators,

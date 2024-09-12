@@ -105,19 +105,23 @@ class ValueHead(torch.nn.Module):
         return out
 
 
+def actor_optimizer(params, lr_actor=3e-4):
+    return torch.optim.AdamW(params, lr=lr_actor)
+
+
 class ExpectedSARSA:
     def __init__(
         self, num_samples=20, gradient_clip=0, lr_critic=3e-4
     ):
         self.num_samples = num_samples
         self.loss = torch.nn.MSELoss()
-        self.optimizer_fun = lambda params: torch.optim.AdamW(params, lr=lr_critic)
         self.gradient_clip = gradient_clip
+        self.lr_critic = lr_critic
 
     def initialize(self, model):
         self.model = model
         self.variables = trainable_variables(self.model.critic)
-        self.optimizer = self.optimizer_fun(self.variables)
+        self.optimizer = actor_optimizer(self.variables, self.lr_critic)
 
     def __call__(
         self, observations, actions, next_observations, rewards, discounts
