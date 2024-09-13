@@ -4,6 +4,8 @@ import torch
 import MPO_Algorithm
 import Experiments.experiments_utils as trials
 import tonic
+import warnings
+
 
 import logging
 from gymnasium.envs.registration import register
@@ -12,6 +14,8 @@ from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
 from main import get_name_environment, evaluate
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def record_video(env_name, video_folder, alg, agent):
@@ -40,27 +44,31 @@ def record_video(env_name, video_folder, alg, agent):
 
 def main_running():
     """ play a couple of showcase episodes """
-    num_episodes = 3
+    num_episodes = 1
 
-    env_name = "Ant-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO")
+    env_name = "Walker2d-v4"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False, algorithm="MPO")
 
     video_record = False
+    experiment = True
     algorithm_mpo = "mpo"
     algorithm_a2c = "a2c"
     algorithm_sac = "sac"
     algorithm = algorithm_mpo
 
-    env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
+    if experiment:
+        env = gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)
+    else:
+        env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
     if algorithm == "mpo":
-        #  agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-        agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213, hidden_size=512)
+        agent = tonic.torch.agents.MPO()  # For walker2d no CPG
+        # agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213, hidden_size=512)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
         path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-        path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
+        path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
         path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_1400000.pt"
-        agent.load(path_ant2d_cpg)
+        agent.load(path_walker2d)
     elif algorithm == "sac":
         path_tmp = f"{save_folder}/logs/{env_name}/best_model.zip"
         path_final = f"{save_folder}/{env_name}-SAC-top"
@@ -75,6 +83,9 @@ def main_running():
         video_folder = "videos/" + env_name
         record_video(env_name, video_folder, algorithm, agent)
         print("Video Recorded")
+
+    elif experiment:
+        trials.evaluate_experiment(agent, env, "mpo", episodes_num=num_episodes)
 
     else:
         """ load network weights """
@@ -102,42 +113,6 @@ def register_new_env():
         # Max number of steps per episode, using a `TimeLimitWrapper`
         max_episode_steps=1000,
     )
-
-
-def evaluate_experiment(agent, env, alg):
-    import numpy as np
-
-    total_rewards = []
-    range_episodes = 1500
-    obs, *_ = env.reset()
-    for i in range(range_episodes):
-        with torch.no_grad():
-            if alg == "mpo":
-                action = agent.test_step(obs, _)
-            elif alg == "sac":
-                action, *_ = agent.predict(obs, deterministic=True)
-            else:
-                action = env.action_space.sample()
-        obs, reward, done, *_ = env.step(action)
-        if i == 1000:
-            vel_env_1 = trials.get_velocity(obs)
-            print(vel_env_1, " m/s")
-
-        total_rewards.append(reward)
-    average_reward = np.mean(total_rewards)
-    print(f"Average Reward over {range_episodes} episodes: {average_reward}")
-
-
-def test_get_values():
-    env_name = "Walker2d-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False)
-    env = gym.make(env_name, render_mode="human", max_episode_steps=1000, autoreset=False)
-    agent = MPO_Algorithm.agents.MPO()
-    agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-    path = f"{env_name}/tonic_train/0/checkpoints/step_4675008.pt"
-    agent.load(path)
-    evaluate_experiment(agent, env, "mpo")
-    env.close()
 
 
 if __name__ == '__main__':

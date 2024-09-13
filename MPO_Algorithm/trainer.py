@@ -127,7 +127,7 @@ class Trainer:
 
             while True:
                 # Select an action.
-                actions = self.agent.test_step(self.test_observations, _)
+                actions = self.agent.test_step(self.test_observations)
                 assert not np.isnan(actions.sum())
                 logger.store('test/action', actions, stats=True)
 

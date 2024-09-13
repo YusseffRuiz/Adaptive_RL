@@ -24,7 +24,7 @@ class BaseAgent(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def test_step(self, observations, steps):
+    def test_step(self, observations):
         """Returns actions during testing."""
         pass
 

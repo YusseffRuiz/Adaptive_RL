@@ -190,7 +190,7 @@ def evaluate(model, env, algorithm, num_episodes=5):
         while not done:
             with torch.no_grad():
                 if algorithm == "mpo":
-                    action = model.test_step(obs, _)
+                    action = model.test_step(obs)
                 elif algorithm == "sac":
                     action, *_ = model.predict(obs, deterministic=True)
                 else:
@@ -358,7 +358,7 @@ def train_mpo(
 
 
 def mpo_tonic_train_main():
-    env_name = "Walker-v4"
+    env_name = "Ant-v4"
     env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True)
     max_steps = int(5e6)
     epochs = max_steps / 500

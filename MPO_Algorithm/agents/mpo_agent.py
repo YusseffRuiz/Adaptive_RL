@@ -38,7 +38,7 @@ class MPO(base_agent.BaseAgent):
 
         return actions
 
-    def test_step(self, observations, steps):
+    def test_step(self, observations):
         # Sample actions for testing.
         return self._test_step(observations).cpu().numpy()
 
