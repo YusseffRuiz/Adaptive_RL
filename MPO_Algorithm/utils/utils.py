@@ -61,7 +61,7 @@ def register_new_env():
 
     register(
         # unique identifier for the env `name-version`
-        id="Walker2d-v4-CPG-MPO",
+        id="Walker2d-v4-CPG",
         # path to the class for creating the env
         # Note: entry_point also accept a class as input (and not only a string)
         entry_point="gymnasium.envs.mujoco:Walker2dCPGEnv",
@@ -80,3 +80,14 @@ def register_new_env():
         max_episode_steps=1000,
     )
     print("Registered new env Ant-v4-CPG")
+
+    register(
+        # unique identifier for the env `name-version`
+        id="Humanoid-v4-CPG",
+        # path to the class for creating the env
+        # Note: entry_point also accept a class as input (and not only a string)
+        entry_point="gymnasium.envs.mujoco:HumanoidEnvCPG",
+        # Max number of steps per episode, using a `TimeLimitWrapper`
+        max_episode_steps=1000,
+    )
+    print("Registered new env Humanoid-v4-CPG-MPO")

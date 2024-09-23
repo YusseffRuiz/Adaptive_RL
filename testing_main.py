@@ -44,13 +44,15 @@ def record_video(env_name, video_folder, alg, agent):
 
 def main_running():
     """ play a couple of showcase episodes """
-    num_episodes = 1
+    num_episodes = 5
 
+    # env_name = "Ant-v4"
     env_name = "Walker2d-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=False, algorithm="MPO")
+    # env_name = "Humanoid-v4"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", experiment_number=1)
 
     video_record = False
-    experiment = True
+    experiment = False
     algorithm_mpo = "mpo"
     algorithm_a2c = "a2c"
     algorithm_sac = "sac"
@@ -62,13 +64,15 @@ def main_running():
         env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
     if algorithm == "mpo":
-        agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-        # agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213, hidden_size=512)
+        # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
+        agent = MPO_Algorithm.agents.MPO(hidden_size=256)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
         path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-        path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-        path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_1400000.pt"
-        agent.load(path_walker2d)
+        # path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
+        path_walker2d_cpg = f"{env_name}/logs/{save_folder}/1/checkpoints/step_4450000.pt"
+        path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
+        path_humanoid_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_2350000.pt"
+        agent.load(path_walker2d_cpg)
     elif algorithm == "sac":
         path_tmp = f"{save_folder}/logs/{env_name}/best_model.zip"
         path_final = f"{save_folder}/{env_name}-SAC-top"

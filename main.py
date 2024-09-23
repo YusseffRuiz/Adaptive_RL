@@ -20,6 +20,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 import MPO_Algorithm
 import yaml
 import argparse
+import Experiments.experiments_utils as trials
 
 
 class SaveOnBestTrainingRewardCallback(BaseCallback):
@@ -358,18 +359,18 @@ def train_mpo(
 
 
 def mpo_tonic_train_main():
-    env_name = "Ant-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True)
-    max_steps = int(5e6)
+    env_name = "Humanoid-v4"
+    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True, experiment_number=1)
+    max_steps = int(1e7)
     epochs = max_steps / 500
     save_steps = max_steps / 200
-    agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213, hidden_size=512)
+    agent = MPO_Algorithm.agents.MPO(lr_actor=3.4e-4, lr_critic=3.5e-3, lr_dual=3e-4, hidden_size=256)
     train_mpo(agent=agent,
               environment=env_name,
-              sequential=5, parallel=5,
+              sequential=4, parallel=4,
               trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
               log_dir=log_dir)
-    env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
+    env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
     evaluate(agent, env, algorithm="mpo", num_episodes=4)
     env.close()

@@ -103,10 +103,10 @@ class MatsuokaOscillator:
         # Initialize external input (ones by default)
         if u is None:
             if num_oscillators > 1:
-                self.u = torch.full((num_oscillators-1, neuron_number), excitation_signal,
+                self.u = torch.full((num_oscillators - 1, neuron_number), excitation_signal,
                                     dtype=torch.float32, device=self.device)
             else:
-                self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device)*excitation_signal
+                self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * excitation_signal
         else:
             assert len(u) == neuron_number, "Input array u - (fire rate) must match the number of neurons."
             self.u = torch.tensor(u, dtype=torch.float32, device=self.device)
@@ -186,14 +186,8 @@ class MatsuokaOscillator:
             # right_output = local_y[:, :, :self.param_dim // 2].reshape(batch_size, -1) # output for NN, not used
             # left_output = local_y[:, :, self.param_dim // 2:].reshape(batch_size, -1) # output for NN, not used
         else:
-            weights_tmp = torch.zeros(self.param_dim, dtype=torch.float32, device=self.device)
-            weights_tmp[0] = weights[0]
-            weights_tmp[1] = weights[3]
-            # weights_tmp[0] = weights[0]
-            # weights_tmp[1] = weights[1]
-            # weights_tmp[2] = weights[4]
-            # weights_tmp[3] = weights[5]
-            # weights_tmp[:] = [weights[0], weights[6], weights[4], weights[2]]
+            weights_tmp = env_selection(self.action_dim, weights, self.device)
+
             assert len(weights_tmp) == self.param_dim, \
                 f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
             if num_oscillators > 1:
@@ -222,17 +216,7 @@ class MatsuokaOscillator:
             # Use advanced indexing to fill the output tensor
             # output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
             # output_tensor = self.y[osc_indices, neuron_indices]
-            output_tensor = weights
-            # output_tensor[0] = self.y[0, 0]
-            # output_tensor[1] = weights[1]
-            # output_tensor[2] = self.y[1, 1]
-            # output_tensor[3] = weights[3]
-            # output_tensor[4] = self.y[1, 0]
-            # output_tensor[5] = weights[5]
-            # output_tensor[6] = self.y[0, 1]
-            # output_tensor[7] = weights[7]
-            output_tensor[0] = self.y[0]
-            output_tensor[3] = self.y[1]
+            output_tensor = env_selection(self.action_dim, weights, self.device, output=self.y)
 
             right_output = output_tensor[:self.action_dim // 2]
             left_output = output_tensor[self.action_dim // 2:]
@@ -362,3 +346,66 @@ class MatsuokaNetworkWithNN:
             self.step(sensory_input)
             y_outputs[t, :, :] = self.oscillators.y
         return y_outputs
+
+
+def env_selection(action_dim, weights, device, output=None):
+    """
+    Used to determine automatically which environment we are working now
+    :param action_dim: action dimension for the different enviroments
+    :param weights: weights comming from the DRL algorithm
+    :param device: device to run the algorithm on
+    :param output: None when weights are received, otherwise the output of the CPG
+    :return: either weights if weights are received or the output of the CPG
+    """
+    if action_dim == 6:
+        cpg_values = weight_conversion_walker(weights, device, output=output)
+    elif action_dim == 17:
+        cpg_values = weight_conversion_humanoid(weights, device, output=output)
+    else:
+        cpg_values = weight_conversion_ant(weights, device, output=output)
+
+    return cpg_values
+
+
+def weight_conversion_ant(weights, device, output=None):
+    if output is None:
+        weights_tmp = torch.tensor([weights[0], weights[6], weights[4], weights[2]], dtype=torch.float32,
+                                   device=device)
+        return weights_tmp
+    else:
+        output_tensor = weights
+        output_tensor[0] = output[0, 0]
+        output_tensor[2] = output[1, 1]
+        output_tensor[4] = output[1, 0]
+        output_tensor[6] = output[0, 1]
+        return output_tensor
+
+
+def weight_conversion_walker(weights, device, output=None):
+    if output is None:
+        weights_tmp = torch.tensor([weights[0], weights[3]], dtype=torch.float32, device=device)
+        return weights_tmp
+    else:
+        output_tensor = weights
+        output_tensor[0] = output[0]
+        output_tensor[3] = output[1]
+        return output_tensor
+
+
+def weight_conversion_humanoid(weights, device, output=None):
+    if output is None:
+        weights_tmp = torch.tensor([weights[3], weights[7], weights[4], weights[8], weights[5], weights[9],
+                                    weights[11], weights[13]], dtype=torch.float32, device=device)
+        return weights_tmp
+    else:
+        output_tensor = weights
+        output_tensor[3] = output[0, 0]
+        output_tensor[7] = output[0, 1]
+        output_tensor[4] = output[1, 0]
+        output_tensor[8] = output[1, 1]
+        output_tensor[5] = output[2, 0]
+        output_tensor[9] = output[2, 1]
+        output_tensor[11] = output[3, 0]
+        output_tensor[13] = output[3, 1]
+        return output_tensor
+
