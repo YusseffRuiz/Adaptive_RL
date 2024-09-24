@@ -1,2 +1,3 @@
-from .actor_critics import ActorCriticWithTargets, ExpectedSARSA
+from .actors import ActorCriticWithTargets, DeterministicPolicyGradient, TwinCriticSoftDeterministicPolicyGradient, MaximumAPosterioriPolicyOptimization
 from .base_network import BaseModel
+from .critics import ExpectedSARSA, DeterministicQLearning, TwinCriticSoftQLearning

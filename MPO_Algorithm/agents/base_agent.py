@@ -11,7 +11,7 @@ class BaseAgent(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def step(self, observations):
+    def step(self, observations, steps):
         """
         Returns actions during training.
         """

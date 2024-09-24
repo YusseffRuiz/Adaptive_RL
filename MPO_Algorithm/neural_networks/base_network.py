@@ -1,5 +1,6 @@
 import torch
-from .actor_critics import ActorCriticWithTargets, Actor, Critic, ValueHead
+from .actors import ActorCriticWithTargets, Actor
+from .critics import Critic, ValueHead
 from MPO_Algorithm import normalizers
 
 
