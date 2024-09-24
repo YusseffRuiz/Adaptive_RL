@@ -11,7 +11,7 @@ import logging
 from gymnasium.envs.registration import register
 from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
 
-from main import get_name_environment, evaluate
+from main import evaluate
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -49,33 +49,43 @@ def main_running():
     # env_name = "Ant-v4"
     env_name = "Walker2d-v4"
     # env_name = "Humanoid-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", experiment_number=1)
 
     video_record = False
-    experiment = False
-    algorithm_mpo = "mpo"
-    algorithm_a2c = "a2c"
-    algorithm_sac = "sac"
+    experiment = True
+    cpg_flag = True
+    algorithm_mpo = "MPO"
+    algorithm_a2c = "A2C"
+    algorithm_sac = "SAC"
     algorithm = algorithm_mpo
 
+    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm, experiment_number=0)
+
     if experiment:
+        num_episodes = 40
         env = gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)
     else:
         env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
-    if algorithm == "mpo":
-        # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-        agent = MPO_Algorithm.agents.MPO(hidden_size=256)
+    if algorithm == "MPO":
+        agent = tonic.torch.agents.MPO()  # For walker2d no CPG
+        # agent = MPO_Algorithm.agents.MPO(hidden_size=1024)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
         path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-        # path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-        path_walker2d_cpg = f"{env_name}/logs/{save_folder}/1/checkpoints/step_4450000.pt"
+        path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4125000"
+        # path_walker2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
         path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
-        path_humanoid_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_2350000.pt"
-        agent.load(path_walker2d_cpg)
-    elif algorithm == "sac":
-        path_tmp = f"{save_folder}/logs/{env_name}/best_model.zip"
-        path_final = f"{save_folder}/{env_name}-SAC-top"
+        path_humanoid_cpg = f"{log_dir}/checkpoints/step_10000000.pt"
+        path_temp_cpg = "Walker2d-v4-CPG/tonic_train/0/checkpoints/step_4225008"
+        if cpg_flag:
+            path_chosen = path_temp_cpg
+        else:
+            path_chosen = path_walker2d
+        agent.load(path_chosen)
+    elif algorithm == "SAC":
+        if cpg_flag:
+            path_tmp = f"{env_name}/logs/{save_folder}/best_model"
+        else:
+            path_tmp = "Walker2d-v4-SAC-1/logs/Walker2d-v4/best_model"
         agent = SAC.load(path_tmp)
         print(f"model {save_folder} loaded")
     else:
@@ -89,7 +99,7 @@ def main_running():
         print("Video Recorded")
 
     elif experiment:
-        trials.evaluate_experiment(agent, env, "mpo", episodes_num=num_episodes)
+        trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes, env_name=save_folder)
 
     else:
         """ load network weights """

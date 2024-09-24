@@ -383,12 +383,16 @@ def weight_conversion_ant(weights, device, output=None):
 
 def weight_conversion_walker(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[0], weights[3]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[0], weights[1]],
+                                   dtype=torch.float32, device=device)
         return weights_tmp
     else:
         output_tensor = weights
         output_tensor[0] = output[0]
-        output_tensor[3] = output[1]
+        output_tensor[1] = output[1]
+        # output_tensor[3] = output[1, 0]
+        # output_tensor[4] = output[1, 1]
+
         return output_tensor
 
 

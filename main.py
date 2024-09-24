@@ -12,7 +12,6 @@ from gymnasium.envs.registration import register
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common import results_plotter
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy, plot_results
 from stable_baselines3.common.noise import NormalActionNoise, VectorizedActionNoise
 from stable_baselines3.common.callbacks import BaseCallback
@@ -148,38 +147,6 @@ def matsuoka_main():
             plt.show()
 
 
-def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False):
-    """
-    :param algorithm: algorithm being used to create the required folder
-    :param name: of the environment
-    :param cpg_flag: either we are looking for the cpg env or not
-    :param experiment_number: if required, we can create a subfolder
-    :param create: If required, create new folder if it doesn't exist'
-    :return: env_name, save_folder, log_dir
-    """
-    env_name = name
-    cpg = cpg_flag
-
-    if cpg:
-        env_name = env_name + "-CPG"
-
-    print(f"Creating env {env_name}")
-
-    if algorithm is not None:
-        save_folder = f"{env_name}-{algorithm}"
-    else:
-        save_folder = f"{env_name}"
-    if experiment_number > 0:
-        log_dir = f"{env_name}/logs/{save_folder}/{experiment_number}"
-    else:
-        log_dir = f"{env_name}/logs/{save_folder}"
-    if create:
-        # Create log dir
-        os.makedirs(log_dir, exist_ok=True)
-        print(f"Folder {log_dir} created")
-    return env_name, save_folder, log_dir
-
-
 def evaluate(model, env, algorithm, num_episodes=5):
     total_rewards = []
     range_episodes = num_episodes
@@ -190,9 +157,9 @@ def evaluate(model, env, algorithm, num_episodes=5):
         cnt = 0
         while not done:
             with torch.no_grad():
-                if algorithm == "mpo":
+                if algorithm == "MPO":
                     action = model.test_step(obs)
-                elif algorithm == "sac":
+                elif algorithm == "SAC":
                     action, *_ = model.predict(obs, deterministic=True)
                 else:
                     action = env.action_space.sample()
@@ -208,61 +175,35 @@ def evaluate(model, env, algorithm, num_episodes=5):
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
 
 
-def training_stable():
-    env_name, save_folder, log_dir = get_name_environment("Walker2d-v4", cpg_flag=True, algorithm="SAC")
+def training_stable(env_name, save_folder, log_dir, time_steps, epochs, save=True, plot=True, n_envs=4):
 
-    train = True
-    time_steps = 5e6
+    vec_env = make_vec_env(env_name, n_envs=n_envs, seed=0)
+    vec_env = VecMonitor(vec_env, filename=log_dir)
 
-    if train:
-        save = True
-        plot = True
-        # env = gym.make(env_name, render_mode="rgb_array", forward_reward_weight=5.0, healthy_reward=0.0)
-        # env = Monitor(env, log_dir)
-        n_envs = 4
+    # Noise Definition
+    n_actions = vec_env.action_space.shape[-1]  # Starting noise
+    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
-        vec_env = make_vec_env(env_name, n_envs=n_envs, seed=0)
-        vec_env = VecMonitor(vec_env, filename=log_dir)
+    action_noise = VectorizedActionNoise(base_noise=action_noise, n_envs=n_envs)
 
-        # Noise Definition
-        n_actions = vec_env.action_space.shape[-1]  # Starting noise
-        action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+    model = SAC("MlpPolicy", vec_env, verbose=1, gamma=0.9995, batch_size=256, device="cuda:0",
+                train_freq=1, gradient_steps=2, learning_starts=100, tensorboard_log=log_dir,
+                action_noise=action_noise)
+    # Create the callback: check every 5000 steps
+    callback = SaveOnBestTrainingRewardCallback(check_freq=epochs, log_dir=log_dir)
 
-        action_noise = VectorizedActionNoise(base_noise=action_noise, n_envs=n_envs)
+    model.learn(total_timesteps=int(time_steps), progress_bar=True, callback=callback)
 
-        model = SAC("MlpPolicy", vec_env, verbose=1, gamma=0.9999, batch_size=128, device="cuda:0",
-                    train_freq=1, gradient_steps=2, learning_starts=0, tensorboard_log=log_dir,
-                    action_noise=action_noise)
-        # Create the callback: check every 5000 steps
-        callback = SaveOnBestTrainingRewardCallback(check_freq=5000, log_dir=log_dir)
-
-        model.learn(total_timesteps=int(time_steps), progress_bar=True, callback=callback)
-
-        if save:
-            print("saving")
-            model.save(f"{save_folder}/{env_name}-SAC-top")
-            model.policy.save(f"{save_folder}/{env_name}-SAC-policy.pkl")
-            model.save_replay_buffer("sac_replay_buffer")
-    else:
-        plot = False
+    if save:
+        print("saving")
+        model.save(f"{save_folder}/{env_name}-SAC-top")
+        model.policy.save(f"{save_folder}/{env_name}-SAC-policy.pkl")
+        model.save_replay_buffer("sac_replay_buffer")
 
     if plot:
         plot_results([log_dir], int(time_steps), results_plotter.X_TIMESTEPS, f"{env_name}-SAC")
         plt.show()
-
-    env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
-    model = SAC("MlpPolicy", env, verbose=1)
-
-    if os.path.exists(f"{save_folder}"):
-        path = f"{save_folder}/{env_name}-SAC-top"
-        # path = "walker_sac/Walker2d-v4-CPG-MPO-SAC.zip" # Testing path
-        model = SAC.load(path)
-        print("model loaded")
-
-    print("Starting")
-
-    evaluate(model, env, algorithm="sac", num_episodes=5)
-    env.close()
+    return model
 
 
 def register_new_env():
@@ -358,25 +299,34 @@ def train_mpo(
     trainer.run()
 
 
-def mpo_tonic_train_main():
-    env_name = "Humanoid-v4"
-    env_name, save_folder, log_dir = get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True, experiment_number=1)
-    max_steps = int(1e7)
-    epochs = max_steps / 500
-    save_steps = max_steps / 200
-    agent = MPO_Algorithm.agents.MPO(lr_actor=3.4e-4, lr_critic=3.5e-3, lr_dual=3e-4, hidden_size=256)
-    train_mpo(agent=agent,
-              environment=env_name,
-              sequential=4, parallel=4,
-              trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-              log_dir=log_dir)
-    env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
-
-    evaluate(agent, env, algorithm="mpo", num_episodes=4)
-    env.close()
-
-
 # Training of MPO method
 if __name__ == "__main__":
     # register_new_env()
-    mpo_tonic_train_main()
+    training_mpo = "MPO"
+    trianing_sac = "SAC"
+    training_algorithm = trianing_sac
+
+    env_name = "Walker2d-v4"
+    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True,
+                                                                 experiment_number=2)
+    max_steps = int(1e7)
+    epochs = int(max_steps / 500)
+    save_steps = int(max_steps / 200)
+
+    if training_algorithm == "MPO":
+        agent = MPO_Algorithm.agents.MPO(lr_actor=3.4e-4, lr_critic=3.5e-4, lr_dual=3.5e-4, hidden_size=256)
+        train_mpo(agent=agent,
+                  environment=env_name,
+                  sequential=8, parallel=4,
+                  trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                  log_dir=log_dir)
+    else:
+        agent = training_stable(env_name=env_name, save_folder=save_folder, log_dir=log_dir, time_steps=max_steps,
+                                epochs=epochs, n_envs=4)
+
+    env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
+
+    print("Starting Evaluation")
+
+    evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
+    env.close()

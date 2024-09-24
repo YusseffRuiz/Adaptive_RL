@@ -7,11 +7,46 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from sklearn.metrics import mean_squared_error
+import os
+from scipy.signal import savgol_filter
+import seaborn as sns
 
 
-def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500):
-    import numpy as np
+def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False):
+    """
+    :param algorithm: algorithm being used to create the required folder
+    :param name: of the environment
+    :param cpg_flag: either we are looking for the cpg env or not
+    :param experiment_number: if required, we can create a subfolder
+    :param create: If required, create new folder if it doesn't exist
+    :return: env_name, save_folder, log_dir
+    """
+    env_name = name
+    cpg = cpg_flag
 
+    if cpg:
+        env_name = env_name + "-CPG"
+
+    print(f"Creating env {env_name}")
+
+    if algorithm is not None:
+        save_folder = f"{env_name}-{algorithm}"
+    else:
+        save_folder = f"{env_name}"
+    if experiment_number > 0:
+        log_dir = f"{env_name}/logs/{save_folder}/{experiment_number}"
+    else:
+        log_dir = f"{env_name}/logs/{save_folder}"
+    if create:
+        # Create log dir
+        os.makedirs(log_dir, exist_ok=True)
+        print(f"Folder {log_dir} created")
+    return env_name, save_folder, log_dir
+
+
+def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500, env_name=None):
+
+    save_folder = f"Experiments/{env_name}/images"
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -22,17 +57,22 @@ def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500):
     dt = 5  # how many steps per dt
     obs, *_ = env.reset()
     previous_vel = 0
-    traveled_distance = 0
+    total_distance = []
     for episode in range(episodes_num):
         obs, *_ = env.reset()
         reward = 0
         ep_energy = []
+        ep_velocity = []
+        ep_acceleration = []
+        ep_torques = []
+        ep_joints = []
+        ep_joint_velocities = []
         position = 0
         for step in range(duration):
             with torch.no_grad():
-                if alg == "mpo":
+                if alg == "MPO":
                     action = agent.test_step(obs)
-                elif alg == "sac":
+                elif alg == "SAC":
                     action, *_ = agent.predict(obs, deterministic=True)
                 else:
                     action = env.action_space.sample()
@@ -40,21 +80,39 @@ def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500):
             position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info)
             if step % dt == 0:
                 acceleration = get_acceleration(previous_vel, velocity, dt)
-                total_accelerations.append(acceleration)
+                ep_acceleration.append(acceleration)
                 previous_vel = velocity
-            total_joint_angles.append(joint_angles)
-            total_velocity_angles.append(joint_velocity)
-            total_velocity.append(velocity)
-            total_torques.append(torques)
+            ep_joints.append(joint_angles)
+            ep_joint_velocities.append(joint_velocity)
+            ep_velocity.append(velocity)
+            ep_torques.append(torques)
             reward += rw
             ep_energy.append(step_energy)
-        print(f"Episode {episode}: Average speed of: {np.mean(total_velocity)} m/s, with reward: {reward}")
-        traveled_distance = position
+        # print(f"Episode {episode}: Average speed of: {np.mean(ep_velocity):.2f} m/s, with reward: {reward:.2f}")
+        if reward < 0:
+            print("Episode failed")
+        total_distance.append(position)
         total_rewards.append(reward)
-        total_energy.append(np.trapz(np.sum(ep_energy, axis=1), dx=1))
+        total_energy.append(np.sum(ep_energy, axis=1))
+        total_velocity_angles.append(np.array(ep_joint_velocities))
+        total_torques.append(np.array(ep_torques))
+        total_joint_angles.append(np.array(ep_joints))
+        total_velocity.append(np.array(ep_velocity))
+        total_accelerations.append(np.array(ep_acceleration))
+
+    # Convert all arrays to numpy for analysis
+    total_distance = np.array(total_distance)
+    total_rewards = np.array(total_rewards)
+    total_velocity_angles = np.array(total_velocity_angles)
+    total_torques = np.array(total_torques)
+    total_joint_angles = np.array(total_joint_angles)
+    total_energy = np.array(total_energy)
+    total_velocity = np.array(total_velocity)
+    total_accelerations = np.array(total_accelerations)
+
     average_reward = np.sum(total_rewards)/episodes_num
     velocity_total = np.mean(total_velocity)
-    average_energy = (np.sum(total_energy)/episodes_num) / traveled_distance
+    average_energy = (np.sum(np.trapz(total_energy, dx=1)/total_distance)/episodes_num)
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
     print(f"Average Speed over {episodes_num} episodes: {velocity_total:.2f} m/s with "
           f"total energy: {average_energy:.2f} Joules per meter")
@@ -64,18 +122,19 @@ def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500):
         separate_joints(total_velocity_angles))
     right_hip_torque, right_knee_torque, right_ankle_torque, left_hip_torque, left_knee_torque, left_ankle_torque = (
         separate_joints(total_torques))
-    #plot_data(right_hip_joints, y_axis_name="Angle (°/s)", title="Right Hip Joint movement")
-    #plot_data(right_hip_vels, y_axis_name="Velocity (m/s)", title="Right Hip Velocity")
-    #plot_data(right_hip_torque, y_axis_name="Torque (N/m)", title="Right Hip Torque")
-    plot_data(total_velocity, y_axis_name="Velocity(m/s", title="Velocity (m/s)")
-    cross_fourier_transform(np.array(right_hip_joints), np.array(left_hip_joints))
-    perform_autocorrelation(np.array(right_hip_joints), np.array(left_hip_joints))
+
+    os.makedirs(save_folder, exist_ok=True)
+    plot_data(data=right_hip_joints, data2=left_hip_joints, data1_name="right hip", data2_name="left hip", y_axis_name="Angle (°/s)", title="Hip Joint movement")
+    statistical_analysis(total_velocity, y_axis_name="Velocity(m/s", title=f"Velocity (m/s) {velocity_total:.2f} m/s", save_folder=save_folder, figure_name="Total_Velocity")
+    cross_fourier_transform(right_hip_joints, left_hip_joints, joint="Hip", save_folder=save_folder)
+    perform_autocorrelation(right_hip_joints, left_hip_joints, joint="Hip", save_folder=save_folder)
     jerk = get_jerk(total_accelerations, dt)
-    plot_data(total_accelerations, data2=jerk, y_min_max=[-1, 1], x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="jerk and acceleration (m/s^2)")
-    plot_data(np.sum(ep_energy, axis=1), x_axis_name="Time", y_axis_name="Energy (Joules)", title="Energy Consumption over time")
+    statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="jerk and acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
+    statistical_analysis(jerk, x_axis_name="Time", y_axis_name="Jerk (m/s^3)", title="jerk (m/s^3)", save_folder=save_folder, figure_name="Jerk")
+    get_energy_per_meter(total_energy, total_distance, average_energy, save_folder=save_folder)
 
 
-def cross_fourier_transform(data1, data2, sampling_rate=1):
+def cross_fourier_transform(data1, data2, sampling_rate=1, joint="joint", save_folder=None):
     # Perform FFT analysis for right and left hip angles
     freqs_right, magnitudes_right = perform_fourier_transform(data1, sampling_rate)
     freqs_left, magnitudes_left = perform_fourier_transform(data2, sampling_rate)
@@ -94,16 +153,20 @@ def cross_fourier_transform(data1, data2, sampling_rate=1):
     correlation_coefficient = np.corrcoef(filtered_magnitude_spectrum1, filtered_magnitude_spectrum2)[0, 1]
 
     plt.figure(figsize=(10, 6))
-    plt.plot(freqs, filtered_magnitude_spectrum1, label='Right Hip')
-    plt.plot(freqs, filtered_magnitude_spectrum2, label='Left Hip')
+    plt.plot(freqs, filtered_magnitude_spectrum1, label=f'Right {joint}')
+    plt.plot(freqs, filtered_magnitude_spectrum2, label=f'Left {joint}')
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Magnitude')
     plt.title(f'Fourier Transform of Hip Angles with Pearson coeff: {correlation_coefficient:.2f}')
     plt.legend()
+    if save_folder is not None:
+        # Define the path where the image will be saved
+        image_path = os.path.join(save_folder, "Fourier.png")
+        plt.savefig(image_path)
     plt.show()
 
 
-def perform_fourier_transform(data, sampling_rate=1, plot=False):
+def perform_fourier_transform(data, sampling_rate=1, plot=False, save_folder=None):
     """
     Perform a Fast Fourier Transform (FFT) on the given data to analyze the frequency content.
 
@@ -115,6 +178,7 @@ def perform_fourier_transform(data, sampling_rate=1, plot=False):
     - freqs: Frequencies corresponding to the FFT results.
     - magnitudes: Magnitudes of the FFT results.
     """
+    data = np.mean(data, axis=0)
     n = len(data)
     fft_result = np.fft.fft(data)
     magnitudes = np.abs(fft_result[:n // 2])  # Only take the positive frequencies
@@ -126,11 +190,15 @@ def perform_fourier_transform(data, sampling_rate=1, plot=False):
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('Magnitude')
         plt.title('Fourier Transform of Joint Angles')
+        if save_folder is not None:
+            # Define the path where the image will be saved
+            image_path = os.path.join(save_folder, "Fourier.png")
+            plt.savefig(image_path)
         plt.show()
     return freqs, magnitudes
 
 
-def perform_autocorrelation(data1, data2):
+def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
     """
     Perform cross-correlation between two joint data sequences to analyze synchronization.
 
@@ -142,6 +210,8 @@ def perform_autocorrelation(data1, data2):
     - lags: Time lags used in the cross-correlation.
     - cross_corr: Cross-correlation values.
     """
+    data1 = np.mean(data1, axis=0)
+    data2 = np.mean(data2, axis=0)
     cross_corr = np.correlate(data1 - np.mean(data1), data2 - np.mean(data2), mode='full')
     cross_corr /= np.max(cross_corr)  # Normalize
     lags = np.arange(-len(data1) + 1, len(data1))
@@ -160,7 +230,11 @@ def perform_autocorrelation(data1, data2):
     plt.plot(lags, cross_corr)
     plt.xlabel('Lag')
     plt.ylabel('Cross-Correlation')
-    plt.title(f'Cross-Correlation between Right and Left Hip Angles, RMSE: {rmse}')
+    plt.title(f'Cross-Correlation between Right and Left {joint} Angles, RMSE: {rmse:.2f}, Lag of Peak: {lag_of_peak}')
+    if save_folder is not None:
+        # Define the path where the image will be saved
+        image_path = os.path.join(save_folder, "CrossCorrelation.png")
+        plt.savefig(image_path)
     plt.show()
 
 
@@ -205,17 +279,19 @@ def get_data(info):
 
 
 def separate_joints(joint_list):
-    right_hip = [joint[0] for joint in joint_list]
-    right_knee = [joint[1] for joint in joint_list]
-    right_ankle = [joint[2] for joint in joint_list]
-    left_hip = [joint[3] for joint in joint_list]
-    left_knee = [joint[4] for joint in joint_list]
-    left_ankle = [joint[5] for joint in joint_list]
+    # Split the joints for each step across all episodes
+    right_hip = joint_list[:, :, 0]  # Extract right hip
+    right_knee = joint_list[:, :, 1]  # Extract right knee
+    right_ankle = joint_list[:, :, 2]  # Extract right ankle
+    left_hip = joint_list[:, :, 3]  # Extract left hip
+    left_knee = joint_list[:, :, 4]  # Extract left knee
+    left_ankle = joint_list[:, :, 5]  # Extract left ankle
 
-    return right_hip, right_knee, right_ankle, left_hip, left_knee, left_ankle
+    return np.array(right_hip), np.array(right_knee), np.array(right_ankle), np.array(left_hip), np.array(left_knee), np.array(left_ankle)
 
 
-def plot_data(data, data2=None, y_min_max=None,  x_data=None, y_axis_name="data", x_axis_name="time", title="data plot over time"):
+def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None,  x_data=None, y_axis_name="data", x_axis_name="time", title="data plot over time", save_folder=None, figure_name="figure"):
+    data = np.mean(data, axis=0)
     plt.figure()
     plt.title(title)
     plt.xlabel(x_axis_name)
@@ -223,17 +299,61 @@ def plot_data(data, data2=None, y_min_max=None,  x_data=None, y_axis_name="data"
     if y_min_max is not None:
         plt.ylim(y_min_max[0], y_min_max[1])
     if data2 is not None:
+        data2 = np.mean(data2, axis=0)
         if x_data is not None:
-            plt.plot(x_data, data)
-            plt.plot(x_data, data2)
+            plt.plot(x_data, data, label=data1_name)
+            plt.plot(x_data, data2, label=data2_name)
         else:
-            plt.plot(data)
-            plt.plot(data2)
+            plt.plot(data, label=data1_name)
+            plt.plot(data2, label=data2_name)
     else:
         if x_data is not None:
-            plt.plot(x_data, data)
+            plt.plot(x_data, data, label=data1_name)
         else:
-            plt.plot(data)
+            plt.plot(data, label=data1_name)
+    plt.legend()
+    if save_folder is not None:
+        # Define the path where the image will be saved
+        image_path = os.path.join(save_folder, f"{figure_name}.png")
+        plt.savefig(image_path)
+    plt.show()
+
+
+def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="Data", mean_calc=True, save_folder=None, figure_name="figure"):
+
+    # Calculate moving mean with window size and standard deviation
+    if mean_calc:
+        mean_data = np.mean(data, axis=0)
+        mean_data = savitzky_golay_smoothing(mean_data)
+        x = np.arange(data.shape[1])  # Time steps
+    else:
+        mean_data = data
+        x = np.arange(len(data))  # Time steps
+    std_dev = np.std(data, axis=0)
+    var = np.var(data, axis=0)
+
+    max_std = np.max(std_dev)
+    max_var = np.max(var)
+
+    fig, ax = plt.subplots()
+    ax.plot(x, mean_data, label=f"Mean {y_axis_name}", color='blue')
+    # Plot shaded region for standard deviation (mean ± std_dev)
+    # Shade the area for standard deviation (mean ± std_dev)
+    ax.fill_between(x, mean_data - std_dev, mean_data + std_dev, color='gray', alpha=0.3, label=f"{max_std:.2f} Std Dev")
+
+    # Plot shaded region for variance (mean ± 2 * std_dev for demonstration purposes)
+    ax.fill_between(x, mean_data - var, mean_data + var, color='gray', alpha=0.1, label=f"±{max_var:.2f} Variance")
+
+    # Add labels and legend
+    ax.set_xlabel(x_axis_name)
+    ax.set_ylabel(y_axis_name)
+    ax.set_title(title + ' Mean with Standard Deviation and Variance')
+    ax.legend()
+    if save_folder is not None:
+        # Define the path where the image will be saved
+        image_path = os.path.join(save_folder, f"{figure_name}.png")
+        plt.savefig(image_path)
+    # Show the plot
     plt.show()
 
 
@@ -243,6 +363,31 @@ def get_acceleration(previous_velocity, velocity, dt):
 
 def get_jerk(acceleration, dt):
     return np.diff(acceleration)/dt
+
+
+def get_energy_per_meter(total_energy, total_distance, average, save_folder=None):
+    energy_per_episode = np.sum(total_energy, axis=1)  # Sum energy across steps for each episode
+
+    # Calculate energy per meter for each episode
+    energy_per_meter = energy_per_episode / total_distance  # This gives the energy per meter for each episode
+
+    # Now we can plot Joules (y-axis) vs Meters (x-axis)
+    plt.figure()
+    sns.kdeplot(x=total_distance, y=energy_per_meter, cmap="Reds", fill=True, thresh=0, levels=100)
+
+    # Label the axes and add a title
+    plt.xlabel('Distance (Meters)')
+    plt.ylabel('Energy (Joules)')
+    plt.title(f'Energy Consumption per Meter, Average: {average:.2f} J/m')
+    plt.grid(True)
+    plt.legend()
+    if save_folder is not None:
+        # Define the path where the image will be saved
+        image_path = os.path.join(save_folder, "EnergyPerMeter.png")
+        plt.savefig(image_path)
+    # Show the plot
+    plt.show()
+    return energy_per_meter
 
 
 def compare_velocity(velocity1, velocity2, dt):
@@ -272,3 +417,7 @@ def compare_energy_consumption(energy_1, energy_2, time):
     plt.ylabel('Total Energy Consumption (Joules)')
     plt.title('Total Energy Consumption Comparison')
     plt.show()
+
+
+def savitzky_golay_smoothing(data, window_length=11, polyorder=3):
+    return savgol_filter(data, window_length, polyorder)
