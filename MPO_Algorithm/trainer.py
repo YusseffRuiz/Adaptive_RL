@@ -47,7 +47,7 @@ class Trainer:
 
         while not stop_training:
             # Select actions.
-            actions = self.agent.step(observations, self.steps)
+            actions = self.agent.step(observations)
             assert not np.isnan(actions.sum())
             logger.store('train/action', actions, stats=True)
 

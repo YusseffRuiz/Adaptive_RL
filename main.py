@@ -304,9 +304,10 @@ if __name__ == "__main__":
     # register_new_env()
     training_mpo = "MPO"
     trianing_sac = "SAC"
-    training_algorithm = trianing_sac
+    training_algorithm = training_mpo
 
-    env_name = "Walker2d-v4"
+    # env_name = "Walker2d-v4"
+    env_name = "Humanoid-v4"
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True,
                                                                  experiment_number=2)
     max_steps = int(1e7)
@@ -314,10 +315,10 @@ if __name__ == "__main__":
     save_steps = int(max_steps / 200)
 
     if training_algorithm == "MPO":
-        agent = MPO_Algorithm.agents.MPO(lr_actor=3.4e-4, lr_critic=3.5e-4, lr_dual=3.5e-4, hidden_size=256)
+        agent = MPO_Algorithm.agents.MPO(lr_actor=3e-4, lr_critic=1e-4, lr_dual=2e-3, hidden_size=1024)
         train_mpo(agent=agent,
                   environment=env_name,
-                  sequential=8, parallel=4,
+                  sequential=8, parallel=8,
                   trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                   log_dir=log_dir)
     else:

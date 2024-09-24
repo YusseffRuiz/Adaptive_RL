@@ -398,18 +398,18 @@ def weight_conversion_walker(weights, device, output=None):
 
 def weight_conversion_humanoid(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[3], weights[7], weights[4], weights[8], weights[5], weights[9],
-                                    weights[11], weights[13]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[5], weights[6], weights[9], weights[10], weights[12], weights[13],
+                                    weights[15], weights[16]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
         output_tensor = weights
-        output_tensor[3] = output[0, 0]
-        output_tensor[7] = output[0, 1]
-        output_tensor[4] = output[1, 0]
-        output_tensor[8] = output[1, 1]
-        output_tensor[5] = output[2, 0]
-        output_tensor[9] = output[2, 1]
-        output_tensor[11] = output[3, 0]
-        output_tensor[13] = output[3, 1]
+        output_tensor[5] = output[0, 0]
+        output_tensor[6] = output[0, 1]
+        output_tensor[9] = output[1, 0]
+        output_tensor[10] = output[1, 1]
+        output_tensor[12] = output[2, 0]
+        output_tensor[13] = output[2, 1]
+        output_tensor[15] = output[3, 0]
+        output_tensor[16] = output[3, 1]
         return output_tensor
 

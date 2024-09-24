@@ -28,7 +28,7 @@ class MPO(base_agent.BaseAgent):
         self.actor_updater.initialize(self.model, action_space)
         self.critic_updater.initialize(self.model)
 
-    def step(self, observations, steps):
+    def step(self, observations):
         actions = self._step(observations)
         actions = actions.cpu().numpy()
 
@@ -122,11 +122,11 @@ def dual_optimizer(params, lr_dual=3e-4):
 
 class MaximumAPosterioriPolicyOptimization:
     def __init__(
-        self, num_samples=20, epsilon=1e-1, epsilon_penalty=1e-3,
+        self, num_samples=50, epsilon=5e-2, epsilon_penalty=1e-3,
         epsilon_mean=1e-3, epsilon_std=1e-6, initial_log_temperature=1.,
         initial_log_alpha_mean=1., initial_log_alpha_std=10.,
         min_log_dual=-18., per_dim_constraining=True, action_penalization=True,
-        gradient_clip=0, lr_actor=3e-4, lr_dual=3e-4,
+        gradient_clip=0.1, lr_actor=3e-4, lr_dual=3e-4,
     ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.log_alpha_std = None
