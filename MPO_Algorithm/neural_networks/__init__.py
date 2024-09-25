@@ -1,3 +1,3 @@
-from .actors import ActorCriticWithTargets, DeterministicPolicyGradient, TwinCriticSoftDeterministicPolicyGradient, MaximumAPosterioriPolicyOptimization
-from .base_network import BaseModel
+from .actors import ActorCriticWithTargets, ActorTwinCriticWithTargets, DeterministicPolicyGradient, TwinCriticSoftDeterministicPolicyGradient, MaximumAPosterioriPolicyOptimization
+from .base_network import BaseModel, ActorTwinCriticsModelNetwork
 from .critics import ExpectedSARSA, DeterministicQLearning, TwinCriticSoftQLearning

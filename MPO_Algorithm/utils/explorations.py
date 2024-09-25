@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class NoActionNoise:
+class NoNoiseExploration:
     def __init__(self, start_steps=20000):
         self.start_steps = start_steps
 
@@ -23,7 +23,7 @@ class NoActionNoise:
         pass
 
 
-class NormalActionNoise:
+class NormalNoiseExploration:
     def __init__(self, scale=0.1, start_steps=20000):
         self.scale = scale
         self.start_steps = start_steps
@@ -48,7 +48,7 @@ class NormalActionNoise:
         pass
 
 
-class OrnsteinUhlenbeckActionNoise:
+class OrnsteinUhlenbeckNoiseExploration:
     def __init__(
         self, scale=0.1, clip=2, theta=.15, dt=1e-2, start_steps=20000
     ):

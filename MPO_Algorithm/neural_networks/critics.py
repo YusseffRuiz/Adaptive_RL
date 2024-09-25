@@ -1,7 +1,6 @@
 import torch
 import copy
-from MPO_Algorithm.agents.base_agent import trainable_variables
-import utils
+from MPO_Algorithm.neural_networks.utils import local_optimizer, trainable_variables
 
 class Critic(torch.nn.Module):
     def __init__(self, encoder, torso, head):
@@ -55,7 +54,7 @@ class DeterministicQLearning:
     def initialize(self, model):
         self.model = model
         self.variables = trainable_variables(self.model.critic)
-        self.optimizer = utils.local_optimizer(params=self.variables, lr=self.lr_critic)
+        self.optimizer = local_optimizer(params=self.variables, lr=self.lr_critic)
 
     def __call__(
         self, observations, actions, next_observations, rewards, discounts
@@ -91,7 +90,7 @@ class TwinCriticSoftQLearning:
         variables_1 = trainable_variables(self.model.critic_1)
         variables_2 = trainable_variables(self.model.critic_2)
         self.variables = variables_1 + variables_2
-        self.optimizer = utils.local_optimizer(params=self.variables, lr=self.lr_critic)
+        self.optimizer = local_optimizer(params=self.variables, lr=self.lr_critic)
 
     def __call__(
         self, observations, actions, next_observations, rewards, discounts
@@ -144,7 +143,7 @@ class ExpectedSARSA:
     def initialize(self, model):
         self.model = model
         self.variables = trainable_variables(self.model.critic)
-        self.optimizer = utils.local_optimizer(self.variables, self.lr_critic)
+        self.optimizer = local_optimizer(self.variables, self.lr_critic)
 
     def __call__(
         self, observations, actions, next_observations, rewards, discounts

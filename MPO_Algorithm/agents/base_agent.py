@@ -39,7 +39,3 @@ class BaseAgent(abc.ABC):
     def load(self, path):
         """Reloads the agent weights from a checkpoint."""
         pass
-
-
-def trainable_variables(model):
-    return [p for p in model.parameters() if p.requires_grad]

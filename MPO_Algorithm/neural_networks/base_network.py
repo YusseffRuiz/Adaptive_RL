@@ -1,5 +1,5 @@
 import torch
-from .actors import ActorCriticWithTargets, Actor
+from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets
 from .critics import Critic, ValueHead
 from MPO_Algorithm import normalizers
 
@@ -92,6 +92,36 @@ class GaussianPolicyHead(torch.nn.Module):
         return self.distribution(loc, scale)
 
 
+class SquashedMultivariateNormalDiag:
+    def __init__(self, loc, scale):
+        self._distribution = torch.distributions.normal.Normal(loc, scale)
+
+    def rsample_with_log_prob(self, shape=()):
+        samples = self._distribution.rsample(shape)
+        squashed_samples = torch.tanh(samples)
+        log_probs = self._distribution.log_prob(samples)
+        log_probs -= torch.log(1 - squashed_samples ** 2 + 1e-6)
+        return squashed_samples, log_probs
+
+    def rsample(self, shape=()):
+        samples = self._distribution.rsample(shape)
+        return torch.tanh(samples)
+
+    def sample(self, shape=()):
+        samples = self._distribution.sample(shape)
+        return torch.tanh(samples)
+
+    def log_prob(self, samples):
+        '''Required unsquashed samples cannot be accurately recovered.'''
+        raise NotImplementedError(
+            'Not implemented to avoid approximation errors. '
+            'Use sample_with_log_prob directly.')
+
+    @property
+    def loc(self):
+        return torch.tanh(self._distribution.mean)
+
+
 class BaseModel(torch.nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
@@ -109,3 +139,22 @@ class BaseModel(torch.nn.Module):
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )
+
+class ActorTwinCriticsModelNetwork(torch.nn.Module):
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.hidden_size = hidden_size
+
+    def get_model(self):
+        return ActorTwinCriticWithTargets(
+            actor=Actor(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.hidden_size, torch.nn.ReLU),
+                head=GaussianPolicyHead(
+                    loc_activation=torch.nn.Identity,
+                    distribution=SquashedMultivariateNormalDiag)),
+            critic=Critic(
+                encoder=ObservationActionEncoder(),
+                torso=MLP(self.hidden_size, torch.nn.ReLU),
+                head=ValueHead()),
+            observation_normalizer=normalizers.MeanStd())

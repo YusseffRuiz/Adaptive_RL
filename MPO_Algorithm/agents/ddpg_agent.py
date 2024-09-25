@@ -3,7 +3,7 @@ import os
 from MPO_Algorithm import logger, ReplayBuffer, neural_networks
 from MPO_Algorithm.agents import base_agent
 from MPO_Algorithm.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
-from MPO_Algorithm.utils import noise
+from MPO_Algorithm.utils import explorations
 
 class DDPG(base_agent.BaseAgent):
     """
@@ -14,7 +14,7 @@ class DDPG(base_agent.BaseAgent):
                  critic_updater=None):
         self.model = model or neural_networks.BaseModel(hidden_size=hidden_size).get_model()
         self.replay_buffer = replay_buffer or ReplayBuffer()
-        self.exploration = exploration or noise.NormalActionNoise()
+        self.exploration = exploration or explorations.NormalNoiseExploration()
         self.actor_updater = actor_updater or DeterministicPolicyGradient()
         self.critic_updater = critic_updater or DeterministicQLearning()
 

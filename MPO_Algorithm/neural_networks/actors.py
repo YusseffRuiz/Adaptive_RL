@@ -1,8 +1,6 @@
 import torch
 import copy
-import utils
-from MPO_Algorithm.agents.base_agent import trainable_variables
-
+from MPO_Algorithm.neural_networks.utils import local_optimizer, trainable_variables
 
 class ActorCriticWithTargets(torch.nn.Module):
     def __init__(
@@ -64,6 +62,64 @@ class Actor(torch.nn.Module):
         return self.head(out)
 
 
+class ActorTwinCriticWithTargets(torch.nn.Module):
+    def __init__(
+        self, actor, critic, observation_normalizer=None,
+        return_normalizer=None, target_coeff=0.005
+    ):
+        super().__init__()
+        self.actor = actor
+        self.critic_1 = critic
+        self.critic_2 = copy.deepcopy(critic)
+        self.target_actor = copy.deepcopy(actor)
+        self.target_critic_1 = copy.deepcopy(critic)
+        self.target_critic_2 = copy.deepcopy(critic)
+        self.observation_normalizer = observation_normalizer
+        self.return_normalizer = return_normalizer
+        self.target_coeff = target_coeff
+
+    def initialize(self, observation_space, action_space):
+        if self.observation_normalizer:
+            self.observation_normalizer.initialize(observation_space.shape)
+        self.actor.initialize(
+            observation_space, action_space, self.observation_normalizer)
+        self.critic_1.initialize(
+            observation_space, action_space, self.observation_normalizer,
+            self.return_normalizer)
+        self.critic_2.initialize(
+            observation_space, action_space, self.observation_normalizer,
+            self.return_normalizer)
+        self.target_actor.initialize(
+            observation_space, action_space, self.observation_normalizer)
+        self.target_critic_1.initialize(
+            observation_space, action_space, self.observation_normalizer,
+            self.return_normalizer)
+        self.target_critic_2.initialize(
+            observation_space, action_space, self.observation_normalizer,
+            self.return_normalizer)
+        self.online_variables = trainable_variables(self.actor)
+        self.online_variables += trainable_variables(self.critic_1)
+        self.online_variables += trainable_variables(self.critic_2)
+        self.target_variables = trainable_variables(self.target_actor)
+        self.target_variables += trainable_variables(
+            self.target_critic_1)
+        self.target_variables += trainable_variables(
+            self.target_critic_2)
+        for target in self.target_variables:
+            target.requires_grad = False
+        self.assign_targets()
+
+    def assign_targets(self):
+        for o, t in zip(self.online_variables, self.target_variables):
+            t.data.copy_(o.data)
+
+    def update_targets(self):
+        with torch.no_grad():
+            for o, t in zip(self.online_variables, self.target_variables):
+                t.data.mul_(1 - self.target_coeff)
+                t.data.add_(self.target_coeff * o.data)
+
+
 class DeterministicPolicyGradient:
     def __init__(self, lr_actor=3e-4, gradient_clip=0):
         self.gradient_clip = gradient_clip
@@ -72,7 +128,7 @@ class DeterministicPolicyGradient:
     def initialize(self, model):
         self.model = model
         self.variables = trainable_variables(model)
-        self.optimizer = utils.local_optimizer(params=self.variables, lr=self.lr_actor)
+        self.optimizer = local_optimizer(params=self.variables, lr=self.lr_actor)
 
     def __call__(self, observation):
         critic_variables = trainable_variables(self.model.critic)
@@ -105,7 +161,7 @@ class TwinCriticSoftDeterministicPolicyGradient:
     def initialize(self, model):
         self.model = model
         self.variables = trainable_variables(self.model.actor)
-        self.optimizer = utils.local_optimizer(params=self.variables, lr=self.lr_actor)
+        self.optimizer = local_optimizer(params=self.variables, lr=self.lr_actor)
 
     def __call__(self, observations):
         critic_1_variables = trainable_variables(self.model.critic_1)
@@ -183,7 +239,7 @@ class MaximumAPosterioriPolicyOptimization:
     def initialize(self, model, action_space):
         self.model = model
         self.actor_variables = trainable_variables(self.model.actor)
-        self.actor_optimizer = utils.local_optimizer(params=self.actor_variables, lr=self.lr_actor)
+        self.actor_optimizer = local_optimizer(params=self.actor_variables, lr=self.lr_actor)
 
         # Dual variables.
         shape = [action_space.shape[0]] if self.per_dim_constraining else [1]
@@ -193,7 +249,7 @@ class MaximumAPosterioriPolicyOptimization:
         self.log_alpha_std = torch.nn.Parameter(torch.full(
             shape, self.initial_log_alpha_std, dtype=torch.float32))
         self.dual_variables.append(self.log_alpha_std)
-        self.dual_optimizer = utils.local_optimizer(params=self.dual_variables, lr=self.lr_dual)
+        self.dual_optimizer = local_optimizer(params=self.dual_variables, lr=self.lr_dual)
 
     def __call__(self, observations):
         def parametric_kl_and_dual_losses(kl, alpha, epsilon):
