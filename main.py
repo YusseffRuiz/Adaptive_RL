@@ -1,71 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from stable_baselines3.common.vec_env import VecMonitor
-
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
-
 import gymnasium as gym
 import os
-
 from gymnasium.envs.registration import register
-from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common import results_plotter
-from stable_baselines3.common.results_plotter import load_results, ts2xy, plot_results
-from stable_baselines3.common.noise import NormalActionNoise, VectorizedActionNoise
-from stable_baselines3.common.callbacks import BaseCallback
-
 import MPO_Algorithm
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
 
-
-class SaveOnBestTrainingRewardCallback(BaseCallback):
-    """
-    Callback for saving a model (the check is done every ``check_freq`` steps)
-    based on the training reward (in practice, we recommend using ``EvalCallback``).
-
-    :param check_freq:
-    :param log_dir: Path to the folder where the model will be saved.
-      It must contains the file created by the ``Monitor`` wrapper.
-    :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
-    """
-
-    def __init__(self, check_freq: int, log_dir: str, verbose: int = 1):
-        super().__init__(verbose)
-        self.check_freq = check_freq
-        self.log_dir = log_dir
-        self.save_path = os.path.join(log_dir, f"best_model")
-        self.best_mean_reward = -np.inf
-
-    def _init_callback(self) -> None:
-        # Create folder if needed
-        if self.log_dir is not None:
-            os.makedirs(self.log_dir, exist_ok=True)
-
-    def _on_step(self) -> bool:
-        if self.n_calls % self.check_freq == 0:
-
-            # Retrieve training reward
-            x, y = ts2xy(load_results(self.log_dir), "timesteps")
-            if len(x) > 0:
-                # Mean training reward over the last 100 episodes
-                mean_reward = np.mean(y[-100:])
-                if self.verbose >= 1:
-                    print(f"Num timesteps: {self.num_timesteps}")
-                    print(
-                        f"Best mean reward: {self.best_mean_reward:.2f} - Last mean reward per episode: {mean_reward:.2f}")
-
-                # New best model, you could save the agent here
-                if mean_reward > self.best_mean_reward:
-                    self.best_mean_reward = mean_reward
-                    if self.verbose >= 1:
-                        print(f"Saving new best model to {self.save_path}")
-                    self.model.save(self.save_path)
-
-        return True
 
 
 # Basic Matsuoka Oscillator Implementation
@@ -157,12 +101,10 @@ def evaluate(model, env, algorithm, num_episodes=5):
         cnt = 0
         while not done:
             with torch.no_grad():
-                if algorithm == "MPO":
+                if algorithm == "MPO" or algorithm == "SAC":
                     action = model.test_step(obs)
-                elif algorithm == "SAC":
-                    action, *_ = model.predict(obs, deterministic=True)
                 else:
-                    action = env.action_space.sample()
+                    action, *_ = model.predict(obs, deterministic=True)
             obs, reward, done, *_ = env.step(action)
             episode_reward += reward
             cnt += 1
@@ -173,37 +115,6 @@ def evaluate(model, env, algorithm, num_episodes=5):
         print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
-
-
-def training_stable(env_name, save_folder, log_dir, time_steps, epochs, save=True, plot=True, n_envs=4):
-
-    vec_env = make_vec_env(env_name, n_envs=n_envs, seed=0)
-    vec_env = VecMonitor(vec_env, filename=log_dir)
-
-    # Noise Definition
-    n_actions = vec_env.action_space.shape[-1]  # Starting noise
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
-
-    action_noise = VectorizedActionNoise(base_noise=action_noise, n_envs=n_envs)
-
-    model = SAC("MlpPolicy", vec_env, verbose=1, gamma=0.9995, batch_size=256, device="cuda:0",
-                train_freq=1, gradient_steps=2, learning_starts=100, tensorboard_log=log_dir,
-                action_noise=action_noise)
-    # Create the callback: check every 5000 steps
-    callback = SaveOnBestTrainingRewardCallback(check_freq=epochs, log_dir=log_dir)
-
-    model.learn(total_timesteps=int(time_steps), progress_bar=True, callback=callback)
-
-    if save:
-        print("saving")
-        model.save(f"{save_folder}/{env_name}-SAC-top")
-        model.policy.save(f"{save_folder}/{env_name}-SAC-policy.pkl")
-        model.save_replay_buffer("sac_replay_buffer")
-
-    if plot:
-        plot_results([log_dir], int(time_steps), results_plotter.X_TIMESTEPS, f"{env_name}-SAC")
-        plt.show()
-    return model
 
 
 def register_new_env():
@@ -308,31 +219,42 @@ if __name__ == "__main__":
 
     # env_name = "Walker2d-v4"
     env_name = "Humanoid-v4"
+
+    sequential = 1
+    parallel = 1
+    lr_actor = 3e-4
+    lr_critic = 1e-4
+    lr_dual = 2e-3
+    neuron_number = 256
+
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True,
-                                                                 experiment_number=2)
-    max_steps = int(1e6)
+                                                                 experiment_number=0)
+    max_steps = int(1e7)
     epochs = int(max_steps / 500)
     save_steps = int(max_steps / 200)
 
     if training_algorithm == "MPO":
-        agent = MPO_Algorithm.agents.MPO(lr_actor=3e-4, lr_critic=1e-4, lr_dual=2e-3, hidden_size=1024)
+        agent = MPO_Algorithm.agents.MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number)
         train_mpo(agent=agent,
                   environment=env_name,
-                  sequential=8, parallel=8,
+                  sequential=sequential, parallel=parallel,
                   trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                   log_dir=log_dir)
     elif training_algorithm == "SAC":
-        agent = MPO_Algorithm.agents.SAC()
-        train_mpo(agent=agent, environment=env_name, sequential=2, parallel=2,
+        agent = MPO_Algorithm.agents.SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number)
+        train_mpo(agent=agent, environment=env_name, sequential=sequential, parallel=parallel,
                   trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                   log_dir=log_dir)
     else:
-        agent = training_stable(env_name=env_name, save_folder=save_folder, log_dir=log_dir, time_steps=max_steps,
-                                epochs=epochs, n_envs=4)
+        agent = None
 
-    env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
-    print("Starting Evaluation")
+    if agent is not None:
+        env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
-    evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
-    env.close()
+        print("Starting Evaluation")
+        evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
+        env.close()
+    else:
+        print("No agent specified, finishing program")
+        exit()

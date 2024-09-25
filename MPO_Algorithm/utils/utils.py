@@ -2,6 +2,22 @@ import os
 from MPO_Algorithm import logger
 from gymnasium.envs.registration import register
 
+def get_last_checkpoint(path):
+    # List all the checkpoints.
+    checkpoint_ids = []
+    for file in os.listdir(path):
+        if file[:5] == 'step_':
+            checkpoint_id = file.split('.')[0]
+            checkpoint_ids.append(int(checkpoint_id[5:]))
+
+    if checkpoint_ids:
+        checkpoint_id = max(checkpoint_ids)
+        checkpoint_path = os.path.join(path, f'step_{checkpoint_id}')
+    else:
+        checkpoint_path = None
+        print('No checkpoint found')
+    return checkpoint_path
+
 
 def load_checkpoint(checkpoint, path):
     logger.log(f'Trying to load experiment from {path}')

@@ -3,10 +3,31 @@ import copy
 from MPO_Algorithm.neural_networks.utils import local_optimizer, trainable_variables
 
 class ActorCriticWithTargets(torch.nn.Module):
-    def __init__(
-            self, actor, critic, observation_normalizer=None,
-            return_normalizer=None, target_coeff=0.005
-    ):
+    """
+    Actor-Critic Model with Target Networks
+
+    This class implements an actor-critic architecture with target networks for both the actor and critic.
+    Target networks are used to stabilize training by providing a slowly updated reference for the critic.
+
+    Attributes:
+    ----------
+    actor : torch.nn.Module
+        The actor network, responsible for determining actions based on observations.
+    critic : torch.nn.Module
+        The critic network, responsible for evaluating the value of state-action pairs.
+    target_actor : torch.nn.Module
+        A copy of the actor network used as the target.
+    target_critic : torch.nn.Module
+        A copy of the critic network used as the target.
+    observation_normalizer : object, optional
+        An optional normalizer for observations.
+    return_normalizer : object, optional
+        An optional normalizer for returns.
+    target_coeff : float
+        The coefficient used for soft updates to the target networks.
+    """
+
+    def __init__(self, actor, critic, observation_normalizer=None, return_normalizer=None, target_coeff=0.005):
         super().__init__()
         self.actor = actor
         self.critic = critic
@@ -17,26 +38,38 @@ class ActorCriticWithTargets(torch.nn.Module):
         self.target_coeff = target_coeff
 
     def initialize(self, observation_space, action_space):
+        """
+        Initializes the actor, critic, and target networks using the observation and action spaces.
+        Also sets up the trainable and target variables.
+
+        Parameters:
+        ----------
+        observation_space : object
+            Space of the observations.
+        action_space : object
+            Space of the actions.
+        """
         if self.observation_normalizer:
             self.observation_normalizer.initialize(observation_space.shape)
         self.actor.initialize(observation_space, action_space, self.observation_normalizer)
         self.critic.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
         self.target_actor.initialize(observation_space, action_space, self.observation_normalizer)
-        self.target_critic.initialize(observation_space, action_space, self.observation_normalizer,
-                                      self.return_normalizer)
-        self.online_variables = trainable_variables(self.actor)
-        self.online_variables += trainable_variables(self.critic)
-        self.target_variables = trainable_variables(self.target_actor)
-        self.target_variables += trainable_variables(self.target_critic)
+        self.target_critic.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
+        self.online_variables = trainable_variables(self.actor) + trainable_variables(self.critic)
+        self.target_variables = trainable_variables(self.target_actor) + trainable_variables(self.target_critic)
         for target in self.target_variables:
             target.requires_grad = False
         self.assign_targets()
 
     def assign_targets(self):
+        """Assigns the online network's weights to the target networks."""
         for o, t in zip(self.online_variables, self.target_variables):
             t.data.copy_(o.data)
 
     def update_targets(self):
+        """
+        Performs a soft update of the target networks, blending the current target values with the online values.
+        """
         with torch.no_grad():
             for o, t in zip(self.online_variables, self.target_variables):
                 t.data.mul_(1 - self.target_coeff)
@@ -44,6 +77,21 @@ class ActorCriticWithTargets(torch.nn.Module):
 
 
 class Actor(torch.nn.Module):
+    """
+    Actor Network
+
+    The actor network predicts actions based on the input observations.
+
+    Attributes:
+    ----------
+    encoder : torch.nn.Module
+        Network module responsible for encoding the input observations.
+    torso : torch.nn.Module
+        Network module responsible for processing the encoded observations.
+    head : torch.nn.Module
+        The final network module responsible for outputting actions.
+    """
+
     def __init__(self, encoder, torso, head):
         super().__init__()
         self.encoder = encoder
@@ -51,22 +99,60 @@ class Actor(torch.nn.Module):
         self.head = head
 
     def initialize(self, observation_space, action_space, observation_normalizer=None):
+        """
+        Initializes the actor network based on the observation and action spaces.
+
+        Parameters:
+        ----------
+        observation_space : object
+            Space of the observations.
+        action_space : object
+            Space of the actions.
+        observation_normalizer : object, optional
+            Optional normalizer for observations.
+        """
         size = self.encoder.initialize(observation_space, observation_normalizer)
         size = self.torso.initialize(size)
         action_size = action_space.shape[0]
         self.head.initialize(size, action_size)
 
     def forward(self, *inputs):
+        """Performs a forward pass through the actor network."""
         out = self.encoder(*inputs)
         out = self.torso(out)
         return self.head(out)
 
 
 class ActorTwinCriticWithTargets(torch.nn.Module):
-    def __init__(
-        self, actor, critic, observation_normalizer=None,
-        return_normalizer=None, target_coeff=0.005
-    ):
+    """
+    Actor-Critic Architecture with Twin Critics and Target Networks
+
+    This class implements an actor-critic architecture with two critic networks (for double Q-learning)
+    and target networks for both the actor and critic networks.
+
+    Attributes:
+    ----------
+    actor : torch.nn.Module
+        The actor network.
+    critic_1 : torch.nn.Module
+        First critic network.
+    critic_2 : torch.nn.Module
+        Second critic network (twin critic).
+    target_actor : torch.nn.Module
+        Target network for the actor.
+    target_critic_1 : torch.nn.Module
+        Target network for the first critic.
+    target_critic_2 : torch.nn.Module
+        Target network for the second critic.
+    observation_normalizer : object, optional
+        Optional normalizer for observations.
+    return_normalizer : object, optional
+        Optional normalizer for returns.
+    target_coeff : float
+        Coefficient used for soft updates to the target networks.
+    """
+
+    def __init__(self, actor, critic, observation_normalizer=None, return_normalizer=None, target_coeff=0.005):
         super().__init__()
         self.actor = actor
         self.critic_1 = critic
@@ -79,41 +165,32 @@ class ActorTwinCriticWithTargets(torch.nn.Module):
         self.target_coeff = target_coeff
 
     def initialize(self, observation_space, action_space):
+        """
+        Initializes the actor, critics, and their target networks using the observation and action spaces.
+        """
         if self.observation_normalizer:
             self.observation_normalizer.initialize(observation_space.shape)
-        self.actor.initialize(
-            observation_space, action_space, self.observation_normalizer)
-        self.critic_1.initialize(
-            observation_space, action_space, self.observation_normalizer,
-            self.return_normalizer)
-        self.critic_2.initialize(
-            observation_space, action_space, self.observation_normalizer,
-            self.return_normalizer)
-        self.target_actor.initialize(
-            observation_space, action_space, self.observation_normalizer)
-        self.target_critic_1.initialize(
-            observation_space, action_space, self.observation_normalizer,
-            self.return_normalizer)
-        self.target_critic_2.initialize(
-            observation_space, action_space, self.observation_normalizer,
-            self.return_normalizer)
-        self.online_variables = trainable_variables(self.actor)
-        self.online_variables += trainable_variables(self.critic_1)
-        self.online_variables += trainable_variables(self.critic_2)
-        self.target_variables = trainable_variables(self.target_actor)
-        self.target_variables += trainable_variables(
-            self.target_critic_1)
-        self.target_variables += trainable_variables(
-            self.target_critic_2)
+        self.actor.initialize(observation_space, action_space, self.observation_normalizer)
+        self.critic_1.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
+        self.critic_2.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
+        self.target_actor.initialize(observation_space, action_space, self.observation_normalizer)
+        self.target_critic_1.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
+        self.target_critic_2.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
+        self.online_variables = trainable_variables(self.actor) + trainable_variables(self.critic_1) + trainable_variables(self.critic_2)
+        self.target_variables = trainable_variables(self.target_actor) + trainable_variables(self.target_critic_1) + trainable_variables(self.target_critic_2)
         for target in self.target_variables:
             target.requires_grad = False
         self.assign_targets()
 
     def assign_targets(self):
+        """Copies the weights from the online networks to the target networks."""
         for o, t in zip(self.online_variables, self.target_variables):
             t.data.copy_(o.data)
 
     def update_targets(self):
+        """
+        Performs a soft update of the target networks by blending the target weights with the online weights.
+        """
         with torch.no_grad():
             for o, t in zip(self.online_variables, self.target_variables):
                 t.data.mul_(1 - self.target_coeff)
@@ -121,16 +198,36 @@ class ActorTwinCriticWithTargets(torch.nn.Module):
 
 
 class DeterministicPolicyGradient:
+    """
+    Implements Deterministic Policy Gradient (DPG) for training an actor-critic model.
+
+    Attributes:
+    ----------
+    lr_actor : float
+        Learning rate for the actor optimizer.
+    gradient_clip : float
+        Maximum value for gradient clipping to avoid exploding gradients (default: 0, meaning no clipping).
+
+    Methods:
+    -------
+    initialize(model):
+        Initializes the optimizer and collects the trainable variables for the actor.
+    __call__(observation):
+        Updates the actor based on the deterministic policy gradient.
+    """
+
     def __init__(self, lr_actor=3e-4, gradient_clip=0):
         self.gradient_clip = gradient_clip
         self.lr_actor = lr_actor
 
     def initialize(self, model):
+        """Initializes the optimizer for the actor."""
         self.model = model
         self.variables = trainable_variables(model)
         self.optimizer = local_optimizer(params=self.variables, lr=self.lr_actor)
 
     def __call__(self, observation):
+        """Calculates the loss and performs an actor update step."""
         critic_variables = trainable_variables(self.model.critic)
 
         for var in critic_variables:
@@ -139,7 +236,7 @@ class DeterministicPolicyGradient:
         self.optimizer.zero_grad()
         actions = self.model.actor(observation)
         values = self.model.critic(observation, actions)
-        loss = -values.mean()
+        loss = -values.mean()  # Maximize critic value for the selected actions
 
         loss.backward()
 
@@ -152,18 +249,41 @@ class DeterministicPolicyGradient:
 
         return dict(loss=loss.detach())
 
+
 class TwinCriticSoftDeterministicPolicyGradient:
+    """
+    Implements Twin-Critic Soft Deterministic Policy Gradient (SAC) for actor-critic training.
+
+    Attributes:
+    ----------
+    lr_actor : float
+        Learning rate for the actor optimizer.
+    entropy_coeff : float
+        Coefficient for the entropy term to encourage exploration.
+    gradient_clip : float
+        Maximum value for gradient clipping (default: 0, no clipping).
+
+    Methods:
+    -------
+    initialize(model):
+        Initializes the optimizer and collects trainable variables.
+    __call__(observations):
+        Updates the actor using soft deterministic policy gradient with entropy regularization.
+    """
+
     def __init__(self, lr_actor=1e-3, entropy_coeff=0.2, gradient_clip=0):
         self.entropy_coeff = entropy_coeff
         self.gradient_clip = gradient_clip
         self.lr_actor = lr_actor
 
     def initialize(self, model):
+        """Initializes the optimizer for the actor and retrieves trainable variables."""
         self.model = model
         self.variables = trainable_variables(self.model.actor)
         self.optimizer = local_optimizer(params=self.variables, lr=self.lr_actor)
 
     def __call__(self, observations):
+        """Updates the actor with respect to the entropy-regularized loss."""
         critic_1_variables = trainable_variables(self.model.critic_1)
         critic_2_variables = trainable_variables(self.model.critic_2)
         critic_variables = critic_1_variables + critic_2_variables
@@ -173,18 +293,23 @@ class TwinCriticSoftDeterministicPolicyGradient:
 
         self.optimizer.zero_grad()
         distributions = self.model.actor(observations)
+
         if hasattr(distributions, 'rsample_with_log_prob'):
             actions, log_probs = distributions.rsample_with_log_prob()
         else:
             actions = distributions.rsample()
             log_probs = distributions.log_prob(actions)
+
         log_probs = log_probs.sum(dim=-1)
         values_1 = self.model.critic_1(observations, actions)
         values_2 = self.model.critic_2(observations, actions)
         values = torch.min(values_1, values_2)
+
+        # Entropy-regularized loss
         loss = (self.entropy_coeff * log_probs - values).mean()
 
         loss.backward()
+
         if self.gradient_clip > 0:
             torch.nn.utils.clip_grad_norm_(self.variables, self.gradient_clip)
         self.optimizer.step()
@@ -195,10 +320,32 @@ class TwinCriticSoftDeterministicPolicyGradient:
         return dict(loss=loss.detach())
 
 
-FLOAT_EPSILON = 1e-8
+FLOAT_EPSILON = 1e-8  # Small constant to prevent divide by zero errors
 
 
 class MaximumAPosterioriPolicyOptimization:
+    """
+    Maximum A Posteriori Policy Optimization (MPO) Algorithm
+
+    MPO balances policy optimization with constraints on KL divergence to ensure stable learning.
+    This class implements the MPO algorithm with dual variables for adjusting the constraints dynamically.
+
+    Attributes:
+        num_samples (int): Number of action samples for estimating the expected return.
+        epsilon (float): KL divergence constraint to limit policy changes.
+        epsilon_penalty (float): KL constraint for action penalization.
+        epsilon_mean (float): Mean constraint for KL divergence regularization.
+        epsilon_std (float): Standard deviation constraint for KL divergence regularization.
+        initial_log_temperature (float): Initial temperature parameter controlling entropy regularization.
+        initial_log_alpha_mean (float): Initial value for alpha mean dual variable (for KL).
+        initial_log_alpha_std (float): Initial value for alpha std dual variable (for KL).
+        min_log_dual (float): Minimum value for dual variables to prevent values from going too low.
+        per_dim_constraining (bool): Whether to constrain KL divergence per dimension of action space.
+        action_penalization (bool): Whether to penalize actions beyond a defined range.
+        gradient_clip (float): Clipping threshold for gradient updates to avoid exploding gradients.
+        lr_actor (float): Learning rate for actor policy updates.
+        lr_dual (float): Learning rate for dual variable updates.
+    """
     def __init__(
         self, num_samples=50, epsilon=5e-2, epsilon_penalty=1e-3,
         epsilon_mean=1e-3, epsilon_std=1e-6, initial_log_temperature=1.,
@@ -237,11 +384,18 @@ class MaximumAPosterioriPolicyOptimization:
             self.dual_variables.append(self.log_penalty_temperature)
 
     def initialize(self, model, action_space):
+        """
+        Initialize the model and dual variables, and set up the optimizers for actor and dual updates.
+
+        Args:
+            model (torch.nn.Module): The actor-critic model used in MPO.
+            action_space: The action space of the environment (used for dimensional constraints).
+        """
         self.model = model
         self.actor_variables = trainable_variables(self.model.actor)
         self.actor_optimizer = local_optimizer(params=self.actor_variables, lr=self.lr_actor)
 
-        # Dual variables.
+        # Initialize dual variables for KL regularization
         shape = [action_space.shape[0]] if self.per_dim_constraining else [1]
         self.log_alpha_mean = torch.nn.Parameter(torch.full(
             shape, self.initial_log_alpha_mean, dtype=torch.float32))
@@ -252,13 +406,24 @@ class MaximumAPosterioriPolicyOptimization:
         self.dual_optimizer = local_optimizer(params=self.dual_variables, lr=self.lr_dual)
 
     def __call__(self, observations):
+        """
+        Perform a forward pass to optimize the policy based on KL constraints and value function estimates.
+
+        Args:
+            observations: The observations from the environment.
+
+        Returns:
+            dict: A dictionary of loss values for logging and diagnostics.
+        """
         def parametric_kl_and_dual_losses(kl, alpha, epsilon):
+            # Compute the KL loss and alpha update based on the constraints
             kl_mean = kl.mean(dim=0)
             kl_loss = (alpha.detach() * kl_mean).sum()
             alpha_loss = (alpha * (epsilon - kl_mean.detach())).sum()
             return kl_loss, alpha_loss
 
         def weights_and_temperature_loss(q_values, epsilon, temperature):
+            # Compute the weights for updating the policy and the temperature loss for regularization
             tempered_q_values = q_values.detach() / temperature
             weights = torch.nn.functional.softmax(tempered_q_values, dim=0)
             weights = weights.detach()
@@ -280,6 +445,7 @@ class MaximumAPosterioriPolicyOptimization:
                 torch.distributions.normal.Normal(
                     distribution_1.mean, distribution_2.stddev), -1)
 
+        # Begin forward pass and temperature updates
         with torch.no_grad():
             self.log_temperature.data.copy_(
                 torch.maximum(self.min_log_dual, self.log_temperature))
@@ -291,6 +457,7 @@ class MaximumAPosterioriPolicyOptimization:
                 self.log_penalty_temperature.data.copy_(torch.maximum(
                     self.min_log_dual, self.log_penalty_temperature))
 
+            # Sample actions from target actor
             target_distributions = self.model.target_actor(observations)
             actions = target_distributions.sample((self.num_samples,))
 
@@ -307,18 +474,18 @@ class MaximumAPosterioriPolicyOptimization:
                 target_distributions, torch.distributions.normal.Normal)
             target_distributions = independent_normals(target_distributions)
 
+        # Begin gradient update steps
         self.actor_optimizer.zero_grad()
         self.dual_optimizer.zero_grad()
 
         distributions = self.model.actor(observations)
         distributions = independent_normals(distributions)
 
-        temperature = (torch.nn.functional.softplus(
-            self.log_temperature) + FLOAT_EPSILON).to(self.device)
-        alpha_mean = (torch.nn.functional.softplus(
-            self.log_alpha_mean) + FLOAT_EPSILON).to(self.device)
-        alpha_std = (torch.nn.functional.softplus(
-            self.log_alpha_std) + FLOAT_EPSILON).to(self.device)
+        temperature = (torch.nn.functional.softplus(self.log_temperature) + FLOAT_EPSILON).to(self.device)
+        alpha_mean = (torch.nn.functional.softplus(self.log_alpha_mean) + FLOAT_EPSILON).to(self.device)
+        alpha_std = (torch.nn.functional.softplus(self.log_alpha_std) + FLOAT_EPSILON).to(self.device)
+
+        # Compute weights and temperature loss
         weights, temperature_loss = weights_and_temperature_loss(
             values, self.epsilon, temperature)
 
