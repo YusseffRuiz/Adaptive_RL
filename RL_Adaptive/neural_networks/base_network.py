@@ -262,11 +262,11 @@ class BaseModel(torch.nn.Module):
         return ActorCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.ReLU),
+                torso=MLP(self.hidden_size, torch.nn.SiLU),
                 head=GaussianPolicyHead()),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.ReLU),
+                torso=MLP(self.hidden_size, torch.nn.SiLU),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )
@@ -295,13 +295,13 @@ class ActorTwinCriticsModelNetwork(torch.nn.Module):
         return ActorTwinCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.ReLU),
+                torso=MLP(self.hidden_size, torch.nn.SiLU),
                 head=GaussianPolicyHead(
                     loc_activation=torch.nn.Identity,
                     distribution=SquashedMultivariateNormalDiag)),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.ReLU),
+                torso=MLP(self.hidden_size, torch.nn.SiLU),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd())
 
