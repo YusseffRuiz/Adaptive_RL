@@ -47,9 +47,8 @@ class SAC(DDPG):
                                                       , size=replay_buffer_size)
         actor_updater = actor_updater or TwinCriticSoftDeterministicPolicyGradient(lr_actor=lr_actor)
         critic_updater = critic_updater or TwinCriticSoftQLearning(lr_critic=lr_critic)
-        super().__init__(model, hidden_size, discount_factor, replay_buffer_size, exploration,
-                         actor_updater, critic_updater, batch_size, return_step, steps_between_batches,
-                         replay_buffer_size)
+        super().__init__(model, hidden_size, discount_factor, replay_buffer, exploration, actor_updater,
+                         critic_updater, batch_size, return_step, steps_between_batches, replay_buffer_size)
 
     def _stochastic_actions(self, observations):
         """

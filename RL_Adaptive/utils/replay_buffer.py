@@ -27,7 +27,7 @@ class ReplayBuffer:
         """
         self.max_size = None
         self.num_workers = None
-        self.full_max_size = size
+        self.full_max_size = int(size)
         self.return_steps = return_steps
         self.batch_iterations = batch_iterations
         self.batch_size = batch_size
