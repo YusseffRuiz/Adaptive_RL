@@ -47,7 +47,7 @@ def main_running():
 
     video_record = False
     experiment = False
-    cpg_flag = True
+    cpg_flag = False
     algorithm_mpo = "MPO"
     algorithm_a2c = "A2C"
     algorithm_sac = "SAC"
@@ -79,22 +79,21 @@ def main_running():
         agent.load(path_chosen)
     elif algorithm == "SAC":
         if cpg_flag:
-            path_tmp = f"{env_name}/logs/{save_folder}/best_model"
+            path_tmp = f"Humanoid-v4-CPG/logs/Humanoid-v4-CPG-SAC/checkpoints/step_10000000.pt"
         else:
-            path_tmp = "Walker2d-v4-SAC-1/logs/Walker2d-v4/best_model"
-        agent = SAC(hidden_size=256)
+            path_tmp = "Humanoid-v4/logs/Humanoid-v4-SAC/checkpoints/step_13000008.pt"
+        agent = SAC(hidden_size=1024)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
         agent.load(path_tmp)
         print(f"model {save_folder} loaded")
-    if algorithm == "PPO":
-        lr_actor = 3e-4
-        lr_critic = 1e-4
-        gamma = 0.99
-        neuron_number = 1024
-        path_humanoid_cpg = "Humanoid-v4-CPG/logs/Humanoid-v4-CPG-PPO/checkpoints/step_10000.pt"
-        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
+    elif algorithm == "PPO":
+        if cpg_flag:
+            path_tmp = "Humanoid-v4-CPG/logs/Humanoid-v4-CPG-PPO/checkpoints/step_10000.pt"
+        else:
+            path_tmp = "Humanoid-v4/logs/Humanoid-v4-PPO/checkpoints/step_10000000.pt"
+        agent = PPO(hidden_size=256)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-        agent.load(path_humanoid_cpg)
+        agent.load(path_tmp)
     else:
         agent = None
 

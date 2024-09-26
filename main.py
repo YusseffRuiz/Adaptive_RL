@@ -189,7 +189,7 @@ if __name__ == "__main__":
     training_mpo = "MPO"
     trianing_sac = "SAC"
     training_ppo = "PPO"
-    training_algorithm = training_ppo
+    training_algorithm = training_mpo
 
     # env_name = "Walker2d-v4"
     env_name = "Humanoid-v4"
@@ -201,12 +201,12 @@ if __name__ == "__main__":
     lr_critic = 1e-4
     lr_dual = 1e-4
     gamma = 0.99
-    neuron_number = 1024
+    neuron_number = 512
     batch_size = 512,
     replay_buffer_size = 10e5
     epsilon = 0.1
-    experiment_number = 0
-    max_steps = int(1e4)
+    experiment_number = 1
+    max_steps = int(1e7)
     epochs = int(max_steps / 500)
     save_steps = int(max_steps / 200)
 
