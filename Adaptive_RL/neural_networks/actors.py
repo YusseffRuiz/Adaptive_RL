@@ -135,11 +135,8 @@ class ActorCritic(torch.nn.Module):
     def initialize(self, observation_space, action_space):
         if self.observation_normalizer:
             self.observation_normalizer.initialize(observation_space.shape)
-        self.actor.initialize(
-            observation_space, action_space, self.observation_normalizer)
-        self.critic.initialize(
-            observation_space, action_space, self.observation_normalizer,
-            self.return_normalizer)
+        self.actor.initialize(observation_space, action_space, self.observation_normalizer)
+        self.critic.initialize(observation_space, action_space, self.observation_normalizer, self.return_normalizer)
 
 
 class ActorTwinCriticWithTargets(torch.nn.Module):

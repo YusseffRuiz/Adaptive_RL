@@ -100,7 +100,7 @@ def evaluate(model, env, algorithm, num_episodes=5):
         cnt = 0
         while not done:
             with torch.no_grad():
-                if algorithm == "MPO" or algorithm == "SAC":
+                if algorithm != "random":
                     action = model.test_step(obs)
                 else:
                     action, *_ = model.predict(obs, deterministic=True)

@@ -1,10 +1,7 @@
 import gymnasium as gym
-from Adaptive_RL import SAC, MPO, DDPG
+from Adaptive_RL import SAC, MPO, DDPG, PPO
 import Experiments.experiments_utils as trials
-import tonic
 import warnings
-
-
 import logging
 from gymnasium.envs.registration import register
 from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
@@ -45,16 +42,17 @@ def main_running():
     num_episodes = 5
 
     # env_name = "Ant-v4"
-    env_name = "Walker2d-v4"
-    # env_name = "Humanoid-v4"
+    # env_name = "Walker2d-v4"
+    env_name = "Humanoid-v4"
 
     video_record = False
-    experiment = True
+    experiment = False
     cpg_flag = True
     algorithm_mpo = "MPO"
     algorithm_a2c = "A2C"
     algorithm_sac = "SAC"
-    algorithm = algorithm_mpo
+    algorithm_ppo = "PPO"
+    algorithm = algorithm_ppo
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm, experiment_number=0)
 
@@ -65,8 +63,8 @@ def main_running():
         env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
     if algorithm == "MPO":
-        agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-        # agent = MPO_Algorithm.agents.MPO(hidden_size=1024)
+        # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
+        agent = MPO(hidden_size=1024)
         agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
         path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
         path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4125000"
@@ -84,8 +82,19 @@ def main_running():
             path_tmp = f"{env_name}/logs/{save_folder}/best_model"
         else:
             path_tmp = "Walker2d-v4-SAC-1/logs/Walker2d-v4/best_model"
-        agent = SAC.load(path_tmp)
+        agent = SAC(hidden_size=256)
+        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+        agent.load(path_tmp)
         print(f"model {save_folder} loaded")
+    if algorithm == "PPO":
+        lr_actor = 3e-4
+        lr_critic = 1e-4
+        gamma = 0.99
+        neuron_number = 1024
+        path_humanoid_cpg = "Humanoid-v4-CPG/logs/Humanoid-v4-CPG-PPO/checkpoints/step_10000.pt"
+        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
+        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+        agent.load(path_humanoid_cpg)
     else:
         agent = None
 

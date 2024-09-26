@@ -11,9 +11,8 @@ class PPO(base_agent.BaseAgent):
     """
 
     def __init__(self, model=None, hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, discount_factor=0.99,
-                 replay_buffer=None,
-                 actor_updater=None, critic_updater=None, batch_size=None, trace_decay=0.97, batch_iterations=80,
-                 replay_buffer_size=4096):
+                 replay_buffer=None, actor_updater=None, critic_updater=None, batch_size=None, trace_decay=0.97,
+                 batch_iterations=80, replay_buffer_size=4096):
         self.model = model or neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size).get_model()
         self.replay_buffer = replay_buffer or Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
                                                       batch_size=batch_size, discount_factor=discount_factor,
@@ -88,7 +87,7 @@ class PPO(base_agent.BaseAgent):
     def _test_step(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            return self.model.actor(observations).sample()
+            return self.model.actor(observations).sample().mean(dim=0)
 
     def _evaluate(self, observations, next_observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
