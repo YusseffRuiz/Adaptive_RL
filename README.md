@@ -4,8 +4,8 @@ Adaptive_RL is an open-source framework for implementing state-of-the-art Reinfo
 designed to be modular and easily adaptable for different research and real-world applications. This repository has 
 emphasis in Continuous space problems
 
-Currently, the repository supports DDPG (Deep Deterministic Policy Gradient), SAC (Soft Actor-Critic)  and MPO (Maximum 
-a Posteriori Optimization) with a flexible architecture that allows for the integration of new algorithms.
+Currently, the repository supports DDPG (Deep Deterministic Policy Gradient), SAC (Soft Actor-Critic), PPO (Proximal Policy Optimization),
+and MPO (Maximum a Posteriori Optimization) with a flexible architecture that allows for the integration of new algorithms.
 
 **Features:**
 
@@ -24,7 +24,9 @@ control or simulated physical systems.
 - SAC: Best used in tasks requiring robust exploration, where a stochastic policy can adapt better to uncertain 
 environments.
 - MPO: Ideal for complex environments requiring a careful balance between policy stability and adaptability.
-
+- PPO: Strikes a balance between performance and simplicity. It prevents large policy updates, stabilizing the 
+learning process by clipping updates to the policy to keep changes within a fixed range, 
+ensuring more stable and reliable training performance.
 
 **CPG**
 
@@ -85,7 +87,6 @@ python main.py
 | `gamma`          | Discount factor for future rewards                | 0.99              |
 | `buffer_size`    | Size of the replay buffer                         | 1e6               |
 | `batch_size`     | Batch size for updates                            | 256               |
-| `tau`            | Soft update coefficient for target networks       | 0.005             |
 | `entropy_coeff`  | Coefficient for entropy regularization (SAC only) | 0.2               |
 
 

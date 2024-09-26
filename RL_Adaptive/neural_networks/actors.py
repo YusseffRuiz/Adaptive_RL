@@ -123,6 +123,25 @@ class Actor(torch.nn.Module):
         return self.head(out)
 
 
+class ActorCritic(torch.nn.Module):
+    def __init__(
+        self, actor, critic, observation_normalizer=None, return_normalizer=None):
+        super().__init__()
+        self.actor = actor
+        self.critic = critic
+        self.observation_normalizer = observation_normalizer
+        self.return_normalizer = return_normalizer
+
+    def initialize(self, observation_space, action_space):
+        if self.observation_normalizer:
+            self.observation_normalizer.initialize(observation_space.shape)
+        self.actor.initialize(
+            observation_space, action_space, self.observation_normalizer)
+        self.critic.initialize(
+            observation_space, action_space, self.observation_normalizer,
+            self.return_normalizer)
+
+
 class ActorTwinCriticWithTargets(torch.nn.Module):
     """
     Actor-Critic Architecture with Twin Critics and Target Networks
@@ -195,6 +214,67 @@ class ActorTwinCriticWithTargets(torch.nn.Module):
             for o, t in zip(self.online_variables, self.target_variables):
                 t.data.mul_(1 - self.target_coeff)
                 t.data.add_(self.target_coeff * o.data)
+
+
+class ClippedRatio:
+    def __init__(
+        self, ratio_clip=0.2, kl_threshold=0.015,
+        entropy_coeff=0, gradient_clip=0, lr_actor=3e-4
+    ):
+        self.ratio_clip = ratio_clip
+        self.kl_threshold = kl_threshold
+        self.entropy_coeff = entropy_coeff
+        self.gradient_clip = gradient_clip
+        self.lr_actor = lr_actor
+
+    def initialize(self, model):
+        self.model = model
+        self.variables = trainable_variables(self.model.actor)
+        self.optimizer = local_optimizer(self.variables, lr=self.lr_actor)
+
+    def __call__(self, observations, actions, advantages, log_probs):
+        if (advantages == 0.).all():
+            loss = torch.as_tensor(0., dtype=torch.float32)
+            kl = torch.as_tensor(0., dtype=torch.float32)
+            clip_fraction = torch.as_tensor(0., dtype=torch.float32)
+            with torch.no_grad():
+                distributions = self.model.actor(observations)
+                entropy = distributions.entropy().mean()
+                std = distributions.stddev.mean()
+
+        else:
+            self.optimizer.zero_grad()
+            distributions = self.model.actor(observations)
+            new_log_probs = distributions.log_prob(actions).sum(dim=-1)
+            ratios_1 = torch.exp(new_log_probs - log_probs)
+            surrogates_1 = advantages * ratios_1
+            ratio_low = 1 - self.ratio_clip
+            ratio_high = 1 + self.ratio_clip
+            ratios_2 = torch.clamp(ratios_1, ratio_low, ratio_high)
+            surrogates_2 = advantages * ratios_2
+            loss = -(torch.min(surrogates_1, surrogates_2)).mean()
+            entropy = distributions.entropy().mean()
+            if self.entropy_coeff != 0:
+                loss -= self.entropy_coeff * entropy
+
+            loss.backward()
+            if self.gradient_clip > 0:
+                torch.nn.utils.clip_grad_norm_(
+                    self.variables, self.gradient_clip)
+            self.optimizer.step()
+
+            loss = loss.detach()
+            with torch.no_grad():
+                kl = (log_probs - new_log_probs).mean()
+            entropy = entropy.detach()
+            clipped = ratios_1.gt(ratio_high) | ratios_1.lt(ratio_low)
+            clip_fraction = torch.as_tensor(
+                clipped, dtype=torch.float32).mean()
+            std = distributions.stddev.mean().detach()
+
+        return dict(
+            loss=loss, kl=kl, entropy=entropy, clip_fraction=clip_fraction,
+            std=std, stop=kl > self.kl_threshold)
 
 
 class DeterministicPolicyGradient:

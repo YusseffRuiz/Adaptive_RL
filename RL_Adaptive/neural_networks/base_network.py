@@ -1,5 +1,5 @@
 import torch
-from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets
+from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
 from .critics import Critic, ValueHead
 from RL_Adaptive import normalizers
 
@@ -154,6 +154,41 @@ class GaussianPolicyHead(torch.nn.Module):
         return self.distribution(loc, scale)
 
 
+FLOAT_EPSILON = 1e-8  # Small constant to prevent divide by zero errors
+
+
+class DetachedScaleGaussianPolicyHead(torch.nn.Module):
+    def __init__(
+        self, loc_activation=torch.nn.Tanh, loc_fn=None, log_scale_init=0.,
+        scale_min=1e-4, scale_max=1.,
+        distribution=torch.distributions.normal.Normal
+    ):
+        super().__init__()
+        self.loc_activation = loc_activation
+        self.loc_fn = loc_fn
+        self.log_scale_init = log_scale_init
+        self.scale_min = scale_min
+        self.scale_max = scale_max
+        self.distribution = distribution
+
+    def initialize(self, input_size, action_size):
+        self.loc_layer = torch.nn.Sequential(
+            torch.nn.Linear(input_size, action_size), self.loc_activation())
+        if self.loc_fn:
+            self.loc_layer.apply(self.loc_fn)
+        log_scale = [[self.log_scale_init] * action_size]
+        self.log_scale = torch.nn.Parameter(
+            torch.as_tensor(log_scale, dtype=torch.float32))
+
+    def forward(self, inputs):
+        loc = self.loc_layer(inputs)
+        batch_size = inputs.shape[0]
+        scale = torch.nn.functional.softplus(self.log_scale) + FLOAT_EPSILON
+        scale = torch.clamp(scale, self.scale_min, self.scale_max)
+        scale = scale.repeat(batch_size, 1)
+        return self.distribution(loc, scale)
+
+
 class SquashedMultivariateNormalDiag:
     """
     Implements a squashed multivariate normal distribution for continuous action spaces.
@@ -269,3 +304,22 @@ class ActorTwinCriticsModelNetwork(torch.nn.Module):
                 torso=MLP(self.hidden_size, torch.nn.ReLU),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd())
+
+
+class ActorCriticModelNetwork(torch.nn.Module):
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.hidden_size = hidden_size
+
+    def get_model(self):
+        return ActorCritic(
+            actor=Actor(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.hidden_size, torch.nn.Tanh),
+                head=DetachedScaleGaussianPolicyHead()),
+            critic=Critic(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.hidden_size, torch.nn.Tanh),
+                head=ValueHead()),
+            observation_normalizer=normalizers.MeanStd()
+        )

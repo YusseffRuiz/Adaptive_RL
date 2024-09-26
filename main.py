@@ -5,7 +5,7 @@ from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetw
 import gymnasium as gym
 import os
 import RL_Adaptive
-from RL_Adaptive import SAC, DDPG, MPO
+from RL_Adaptive import SAC, DDPG, MPO, PPO
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
@@ -188,7 +188,8 @@ if __name__ == "__main__":
     # register_new_env()
     training_mpo = "MPO"
     trianing_sac = "SAC"
-    training_algorithm = training_mpo
+    training_ppo = "PPO"
+    training_algorithm = training_ppo
 
     # env_name = "Walker2d-v4"
     env_name = "Humanoid-v4"
@@ -197,7 +198,7 @@ if __name__ == "__main__":
     sequential = 4
     parallel = 4
     lr_actor = 3e-4
-    lr_critic = 3e-4
+    lr_critic = 1e-4
     lr_dual = 1e-4
     gamma = 0.99
     neuron_number = 256
@@ -216,20 +217,20 @@ if __name__ == "__main__":
     if training_algorithm == "MPO":
         agent = MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma)
+    elif training_algorithm == "SAC":
+        agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
+    elif training_algorithm == "PPO":
+        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
+    else:
+        agent = None
+
+    if agent is not None:
         train_agent(agent=agent,
                     environment=env_name,
                     sequential=sequential, parallel=parallel,
                     trainer=RL_Adaptive.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
-    elif training_algorithm == "SAC":
-        agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
-        train_agent(agent=agent, environment=env_name, sequential=sequential, parallel=parallel,
-                    trainer=RL_Adaptive.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                    log_dir=log_dir)
-    else:
-        agent = None
 
-    if agent is not None:
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
         print("Starting Evaluation")

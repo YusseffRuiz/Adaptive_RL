@@ -79,6 +79,30 @@ class ValueHead(torch.nn.Module):
         return out
 
 
+class VRegression:
+    def __init__(self, loss=None, lr_critic=1e-3, gradient_clip=0):
+        self.loss = loss or torch.nn.MSELoss()
+        self.gradient_clip = gradient_clip
+        self.lr_critic = lr_critic
+
+    def initialize(self, model):
+        self.model = model
+        self.variables = trainable_variables(self.model.critic)
+        self.optimizer = local_optimizer(self.variables, self.lr_critic)
+
+    def __call__(self, observations, returns):
+        self.optimizer.zero_grad()
+        values = self.model.critic(observations)
+        loss = self.loss(values, returns)
+
+        loss.backward()
+        if self.gradient_clip > 0:
+            torch.nn.utils.clip_grad_norm_(self.variables, self.gradient_clip)
+        self.optimizer.step()
+
+        return dict(loss=loss.detach(), v=values.detach())
+
+
 class DeterministicQLearning:
     """
     Implements Deterministic Q-learning for updating the critic.
