@@ -1,4 +1,4 @@
-**Adaptive_RL**
+# Adaptive_RL
 
 Adaptive_RL is an open-source framework for implementing state-of-the-art Reinforcement Learning (RL) algorithms, 
 designed to be modular and easily adaptable for different research and real-world applications. 
