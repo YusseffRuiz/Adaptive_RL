@@ -19,11 +19,11 @@ class ReplayBuffer:
         Parameters:
             - size (int): Maximum number of experiences to store in the buffer. Default is 1e6.
             - return_steps (int): Number of steps to consider for n-step return calculations. Default is 1.
-            - batch_iterations (int): Number of times to sample batches during training. Default is 50.
+            - batch_iterations (int): Number of times to sample batches during training. Default is 20.
             - batch_size (int): Number of experiences to sample in each batch. Default is 100.
             - discount_factor (float): Discount factor (gamma) for calculating n-step returns. Default is 0.99.
             - steps_before_batches (int): Minimum number of steps before starting to sample batches. Default is 1e4.
-            - steps_between_batches (int): Minimum number of steps between consecutive batch sampling operations. Default is 50.
+            - steps_between_batches (int): Minimum number of steps between consecutive batch sampling operations.
         """
         self.max_size = None
         self.num_workers = None

@@ -1,5 +1,5 @@
 import gymnasium as gym
-from MPO_Algorithm.builders import wrappers
+from RL_Adaptive.builders import wrappers
 import numpy as np
 
 

@@ -1,5 +1,5 @@
 import os
-from MPO_Algorithm import logger
+from RL_Adaptive import logger
 from gymnasium.envs.registration import register
 
 def get_last_checkpoint(path):
@@ -74,7 +74,7 @@ def register_new_env():
         # Max number of steps per episode, using a `TimeLimitWrapper`
         max_episode_steps=1000,
     )
-    print("Registered new env Walker2d-v4-CPG-MPO")
+    print("Registered new env Walker2d-v4-CPG")
 
     register(
         # unique identifier for the env `name-version`
@@ -96,4 +96,4 @@ def register_new_env():
         # Max number of steps per episode, using a `TimeLimitWrapper`
         max_episode_steps=1000,
     )
-    print("Registered new env Humanoid-v4-CPG-MPO")
+    print("Registered new env Humanoid-v4-CPG")

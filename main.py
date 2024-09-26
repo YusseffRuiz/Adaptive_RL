@@ -4,11 +4,11 @@ import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
 import gymnasium as gym
 import os
-import MPO_Algorithm
+import RL_Adaptive
+from RL_Adaptive import SAC, DDPG, MPO
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
-
 
 
 # Basic Matsuoka Oscillator Implementation
@@ -116,9 +116,8 @@ def evaluate(model, env, algorithm, num_episodes=5):
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
 
 
-
 def train_agent(
-        agent, environment, trainer=MPO_Algorithm.Trainer(), parallel=1, sequential=1, seed=0,
+        agent, environment, trainer=RL_Adaptive.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, log_dir=None):
     """
     :param agent: Agent and algorithm to be trained.
@@ -138,7 +137,7 @@ def train_agent(
     config = None
     # Process the checkpoint path same way as in tonic.play
     if path:
-        checkpoint_path = MPO_Algorithm.load_checkpoint(checkpoint, path)
+        checkpoint_path = RL_Adaptive.load_checkpoint(checkpoint, path)
         if checkpoint_path is not None:
             # Load the experiment configuration.
             arguments_path = os.path.join(path, 'config.yaml')
@@ -153,13 +152,13 @@ def train_agent(
 
     # Build the training environment.
 
-    _environment = MPO_Algorithm.environments.Gym(environment)
-    environment = MPO_Algorithm.parallelize.distribute(
+    _environment = RL_Adaptive.environments.Gym(environment)
+    environment = RL_Adaptive.parallelize.distribute(
         lambda: _environment, parallel, sequential)
     environment.initialize() if parallel > 1 else 0
 
     # Build the testing environment.
-    test_environment = MPO_Algorithm.parallelize.distribute(
+    test_environment = RL_Adaptive.parallelize.distribute(
         lambda: _environment)
 
     # Build the agent.
@@ -172,10 +171,9 @@ def train_agent(
     # Load the weights of the agent form a checkpoint.
     if checkpoint_path:
         agent.load(checkpoint_path)
-        print(f"Checkpoint found in {checkpoint_path}")
 
     # Initialize the logger to save data to the path
-    MPO_Algorithm.logger.initialize(path=log_dir, config=args)
+    RL_Adaptive.logger.initialize(path=log_dir, config=args)
 
     # Build the trainer.
     trainer.initialize(
@@ -190,41 +188,46 @@ if __name__ == "__main__":
     # register_new_env()
     training_mpo = "MPO"
     trianing_sac = "SAC"
-    training_algorithm = trianing_sac
+    training_algorithm = training_mpo
 
-    env_name = "Walker2d-v4"
-    # env_name = "Humanoid-v4"
+    # env_name = "Walker2d-v4"
+    env_name = "Humanoid-v4"
     cpg_flag = False
 
-    sequential = 1
-    parallel = 1
+    sequential = 4
+    parallel = 4
     lr_actor = 3e-4
-    lr_critic = 1e-4
-    lr_dual = 2e-3
+    lr_critic = 3e-4
+    lr_dual = 1e-4
+    gamma = 0.99
     neuron_number = 256
-    experiment_number = 1
-    max_steps = int(1e4)
+    batch_size = 512,
+    replay_buffer_size = 10e6
+    epsilon = 0.1
+    experiment_number = 0
+    max_steps = int(1e8)
     epochs = int(max_steps / 500)
     save_steps = int(max_steps / 200)
 
-    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=training_algorithm, create=True,
+    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag,
+                                                                 algorithm=training_algorithm, create=True,
                                                                  experiment_number=experiment_number)
 
     if training_algorithm == "MPO":
-        agent = MPO_Algorithm.agents.MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number)
+        agent = MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
+                    discount_factor=gamma)
         train_agent(agent=agent,
-                  environment=env_name,
-                  sequential=sequential, parallel=parallel,
-                  trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                  log_dir=log_dir)
+                    environment=env_name,
+                    sequential=sequential, parallel=parallel,
+                    trainer=RL_Adaptive.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    log_dir=log_dir)
     elif training_algorithm == "SAC":
-        agent = MPO_Algorithm.agents.SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number)
+        agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
         train_agent(agent=agent, environment=env_name, sequential=sequential, parallel=parallel,
-                  trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                  log_dir=log_dir)
+                    trainer=RL_Adaptive.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    log_dir=log_dir)
     else:
         agent = None
-
 
     if agent is not None:
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)

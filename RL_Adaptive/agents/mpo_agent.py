@@ -1,8 +1,8 @@
 import torch
 import os
-from MPO_Algorithm import logger, ReplayBuffer, neural_networks
-from MPO_Algorithm.agents import base_agent
-from MPO_Algorithm.neural_networks import MaximumAPosterioriPolicyOptimization
+from RL_Adaptive import logger, ReplayBuffer, neural_networks
+from RL_Adaptive.agents import base_agent
+from RL_Adaptive.neural_networks import MaximumAPosterioriPolicyOptimization
 
 
 class MPO(base_agent.BaseAgent):
@@ -13,14 +13,27 @@ class MPO(base_agent.BaseAgent):
     """
 
     def __init__(
-        self, model=None, hidden_size=256, critic_updater=None,
-            return_step=5, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4):
+        self, model=None, hidden_size=256, critic_updater=None, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
+            discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
+            initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
+            action_penalization=True, gradient_clip=0.1, batch_size=512, return_step=5, steps_between_batches=20,
+            replay_buffer_size=10e6):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.last_actions = None
         self.last_observations = None
         self.model = model or neural_networks.BaseModel(hidden_size=hidden_size).get_model()
-        self.replay_buffer = ReplayBuffer(return_steps=return_step)
-        self.actor_updater = MaximumAPosterioriPolicyOptimization(lr_actor=lr_actor, lr_dual=lr_dual)
+        self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
+                                          batch_size=batch_size, steps_between_batches=steps_between_batches,
+                                          size=replay_buffer_size)
+        self.actor_updater = MaximumAPosterioriPolicyOptimization(lr_actor=lr_actor, lr_dual=lr_dual, epsilon=epsilon,
+                                                                  epsilon_mean=epsilon_mean, epsilon_std=epsilon_std,
+                                                                  initial_log_temperature=initial_log_temperature,
+                                                                  initial_log_alpha_mean=initial_log_alpha_mean,
+                                                                  initial_log_alpha_std=initial_log_alpha_std,
+                                                                  min_log_dual=min_log_dual,
+                                                                  per_dim_constraining=per_dim_constraining,
+                                                                  action_penalization=action_penalization,
+                                                                  gradient_clip=gradient_clip)
         self.critic_updater = critic_updater or neural_networks.ExpectedSARSA(lr_critic=lr_critic)
 
     def initialize(self, observation_space, action_space, seed=None):

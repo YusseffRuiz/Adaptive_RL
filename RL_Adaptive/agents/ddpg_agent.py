@@ -1,19 +1,25 @@
 import torch
 import os
-from MPO_Algorithm import logger, ReplayBuffer, neural_networks
-from MPO_Algorithm.agents import base_agent
-from MPO_Algorithm.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
-from MPO_Algorithm.utils import explorations
+from RL_Adaptive import logger, ReplayBuffer, neural_networks
+from RL_Adaptive.agents import base_agent
+from RL_Adaptive.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
+from RL_Adaptive.utils import explorations
+
 
 class DDPG(base_agent.BaseAgent):
     """
     Deep Deterministic Policy Gradient.
     DDPG: https://arxiv.org/pdf/1509.02971.pdf
     """
-    def __init__(self, model=None, hidden_size=256, replay_buffer=None, exploration=None, actor_updater=None,
-                 critic_updater=None):
+
+    def __init__(self, model=None, hidden_size=256, discount_factor=0.99, replay_buffer=None,
+                 exploration=None, actor_updater=None, critic_updater=None, batch_size=512, return_step=5,
+                 steps_between_batches=20, replay_buffer_size=10e6):
         self.model = model or neural_networks.BaseModel(hidden_size=hidden_size).get_model()
-        self.replay_buffer = replay_buffer or ReplayBuffer()
+        self.replay_buffer = replay_buffer or ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
+                                                           batch_size=batch_size,
+                                                           steps_between_batches=steps_between_batches,
+                                                           size=replay_buffer_size)
         self.exploration = exploration or explorations.NormalNoiseExploration()
         self.actor_updater = actor_updater or DeterministicPolicyGradient()
         self.critic_updater = critic_updater or DeterministicQLearning()
@@ -24,7 +30,6 @@ class DDPG(base_agent.BaseAgent):
         self.exploration.initialize(self._policy, action_space, seed)
         self.actor_updater.initialize(self.model)
         self.critic_updater.initialize(self.model)
-
 
     def step(self, observations, steps):
         # Get actions from the actor and exploration method.
@@ -39,8 +44,8 @@ class DDPG(base_agent.BaseAgent):
     def update(self, observations, rewards, resets, terminations, steps):
         # Store last transition in the replay buffer
         self.replay_buffer.push(observations=self.last_observations, actions=self.last_actions,
-            next_observations=observations, rewards=rewards, resets=resets,
-            terminations=terminations)
+                                next_observations=observations, rewards=rewards, resets=resets,
+                                terminations=terminations)
 
         # Update the normalizers
         if self.model.observation_normalizer:
@@ -50,13 +55,9 @@ class DDPG(base_agent.BaseAgent):
 
         self.exploration.update(resets)
 
-
-    def test_update(self, observations, rewards, resets, terminations, steps):
-        pass
-
     def test_step(self, observations):
         # Greedy actions for testing.
-        return self._greedy_actions(observations).numpy()
+        return self._greedy_actions(observations).cpu().numpy()
 
     def save(self, path):
         path = path + '.pt'
