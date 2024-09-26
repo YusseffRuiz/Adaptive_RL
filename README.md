@@ -54,17 +54,39 @@ Create the agent, specifying learning rates, however, they can be left for the d
 To Run the SAC agent on the Mujoco Walker2d-v4 environment
 
 ```
-from agents import SAC
-from environments import GymEnvironment
+import torch
+import gymnasium as gym
+import os
+from Adaptive_RL import SAC
 
-env = GymEnvironment('Walker2d-v4')
-agent = SAC()
-agent.train(env, episodes=1000)
+
+env_name = "Walker2d-v4"
+env_name, save_folder, log_dir = trials.get_name_environment(env_name, algorithm="SAC", create=True,
+                                                                 experiment_number=experiment_number)
+agent = MPO_Algorithm.agents.SAC()
+train_agent(agent=agent, environment=env_name)
 ```
+or from the command line to run basic training with SAC:
+```
+python main.py
+```
+
 
 **Sequential:** Run environments in a for loop.
 
 **Parallel:** Run different processes over either CPU or GPU, using multiprocess class.
+
+**Hyperparameters**
+
+| **Parameter**    | **Description**                                   | **Default Value** |
+|------------------|---------------------------------------------------|-------------------|
+| `lr_actor`       | Learning rate for the actor network               | 3e-4              |
+| `lr_critic`      | Learning rate for the critic network              | 3e-4              |
+| `gamma`          | Discount factor for future rewards                | 0.99              |
+| `buffer_size`    | Size of the replay buffer                         | 1e6               |
+| `batch_size`     | Batch size for updates                            | 256               |
+| `tau`            | Soft update coefficient for target networks       | 0.005             |
+| `entropy_coeff`  | Coefficient for entropy regularization (SAC only) | 0.2               |
 
 
 **To Do:**
@@ -79,6 +101,9 @@ Implementation must be directly into the RL class.
 
 Development and Implementation of Hodgkin-Huxley neurons CPG. 
 
+**Upcoming Features**
+- Integration of Proximal Policy Optimization (PPO) and Trust Region Policy Optimization (TRPO).
+- Enhanced support for discrete action spaces.
 
 **Credit**
 

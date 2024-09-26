@@ -4,7 +4,6 @@ import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
 import gymnasium as gym
 import os
-from gymnasium.envs.registration import register
 import MPO_Algorithm
 import yaml
 import argparse
