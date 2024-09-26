@@ -1,5 +1,5 @@
 import os
-from RL_Adaptive import logger
+from Adaptive_RL import logger
 from gymnasium.envs.registration import register
 
 def get_last_checkpoint(path):

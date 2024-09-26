@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 
-from RL_Adaptive import logger
+from Adaptive_RL import logger
 
 
 class Trainer:

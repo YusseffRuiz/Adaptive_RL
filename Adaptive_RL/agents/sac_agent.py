@@ -1,9 +1,9 @@
 import torch
 import os
-from RL_Adaptive import ReplayBuffer, neural_networks
-from RL_Adaptive.agents import DDPG
-from RL_Adaptive.neural_networks import TwinCriticSoftDeterministicPolicyGradient, TwinCriticSoftQLearning
-from RL_Adaptive.utils import explorations
+from Adaptive_RL import ReplayBuffer, neural_networks
+from Adaptive_RL.agents import DDPG
+from Adaptive_RL.neural_networks import TwinCriticSoftDeterministicPolicyGradient, TwinCriticSoftQLearning
+from Adaptive_RL.utils import explorations
 
 
 class SAC(DDPG):

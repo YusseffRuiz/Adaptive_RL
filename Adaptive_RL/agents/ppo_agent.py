@@ -1,7 +1,7 @@
 import torch
 import os
-from RL_Adaptive import logger, Segment, neural_networks
-from RL_Adaptive.agents import base_agent
+from Adaptive_RL import logger, Segment, neural_networks
+from Adaptive_RL.agents import base_agent
 
 
 class PPO(base_agent.BaseAgent):

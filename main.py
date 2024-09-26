@@ -4,8 +4,8 @@ import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
 import gymnasium as gym
 import os
-import RL_Adaptive
-from RL_Adaptive import SAC, DDPG, MPO, PPO
+import Adaptive_RL
+from Adaptive_RL import SAC, DDPG, MPO, PPO
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
@@ -117,7 +117,7 @@ def evaluate(model, env, algorithm, num_episodes=5):
 
 
 def train_agent(
-        agent, environment, trainer=RL_Adaptive.Trainer(), parallel=1, sequential=1, seed=0,
+        agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, log_dir=None):
     """
     :param agent: Agent and algorithm to be trained.
@@ -137,7 +137,7 @@ def train_agent(
     config = None
     # Process the checkpoint path same way as in tonic.play
     if path:
-        checkpoint_path = RL_Adaptive.load_checkpoint(checkpoint, path)
+        checkpoint_path = Adaptive_RL.load_checkpoint(checkpoint, path)
         if checkpoint_path is not None:
             # Load the experiment configuration.
             arguments_path = os.path.join(path, 'config.yaml')
@@ -152,13 +152,13 @@ def train_agent(
 
     # Build the training environment.
 
-    _environment = RL_Adaptive.environments.Gym(environment)
-    environment = RL_Adaptive.parallelize.distribute(
+    _environment = Adaptive_RL.environments.Gym(environment)
+    environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment, parallel, sequential)
     environment.initialize() if parallel > 1 else 0
 
     # Build the testing environment.
-    test_environment = RL_Adaptive.parallelize.distribute(
+    test_environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment)
 
     # Build the agent.
@@ -173,7 +173,7 @@ def train_agent(
         agent.load(checkpoint_path)
 
     # Initialize the logger to save data to the path
-    RL_Adaptive.logger.initialize(path=log_dir, config=args)
+    Adaptive_RL.logger.initialize(path=log_dir, config=args)
 
     # Build the trainer.
     trainer.initialize(
@@ -189,11 +189,11 @@ if __name__ == "__main__":
     training_mpo = "MPO"
     trianing_sac = "SAC"
     training_ppo = "PPO"
-    training_algorithm = training_mpo
+    training_algorithm = training_ppo
 
     # env_name = "Walker2d-v4"
     env_name = "Humanoid-v4"
-    cpg_flag = False
+    cpg_flag = True
 
     sequential = 4
     parallel = 4
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     replay_buffer_size = 10e5
     epsilon = 0.1
     experiment_number = 0
-    max_steps = int(1e7)
+    max_steps = int(1e4)
     epochs = int(max_steps / 500)
     save_steps = int(max_steps / 200)
 
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         train_agent(agent=agent,
                     environment=env_name,
                     sequential=sequential, parallel=parallel,
-                    trainer=RL_Adaptive.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
 
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)

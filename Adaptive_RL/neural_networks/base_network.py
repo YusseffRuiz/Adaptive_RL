@@ -1,7 +1,7 @@
 import torch
 from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
 from .critics import Critic, ValueHead
-from RL_Adaptive import normalizers
+from Adaptive_RL import normalizers
 
 
 class ObservationEncoder(torch.nn.Module):

@@ -1,5 +1,5 @@
 import gymnasium as gym
-from RL_Adaptive import SAC, MPO, DDPG
+from Adaptive_RL import SAC, MPO, DDPG
 import Experiments.experiments_utils as trials
 import tonic
 import warnings

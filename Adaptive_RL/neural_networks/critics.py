@@ -1,5 +1,5 @@
 import torch
-from RL_Adaptive.neural_networks.utils import local_optimizer, trainable_variables
+from Adaptive_RL.neural_networks.utils import local_optimizer, trainable_variables
 
 
 class Critic(torch.nn.Module):
