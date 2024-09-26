@@ -1,11 +1,40 @@
-**CPG + MPO Implementation Repository**
+**Adaptive_RL**
 
-Development of a DRL library for the use in Gymnasium and Myosuite.
+Adaptive_RL is an open-source framework for implementing state-of-the-art Reinforcement Learning (RL) algorithms, 
+designed to be modular and easily adaptable for different research and real-world applications. 
 
-Based on Tonic RL Library and modified to match current Gymnasium implementation and for MyoSuite development.
+Currently, the repository supports DDPG (Deep Deterministic Policy Gradient), SAC (Soft Actor-Critic)  and MPO (Maximum 
+a Posteriori Optimization) with a flexible architecture that allows for the integration of new algorithms.
+
+**Features:**
+
+DDPG and SAC implementations: Both deterministic and stochastic policy gradient methods are implemented, enabling users to work on environments that require either approach.
+
+
+Replay Buffer and experience sampling to stabilize training.
+
+
+Customizable neural network architectures for the actor and critic networks.
+
+
+Modular framework allowing for easy extension to additional algorithms.
+Comprehensive logging for training metrics and performance evaluation.
+
+**CPG**
+
+Development of a DRL framework in the MatsuokaOscillator Folder.
 
 MatsuokaOscillator Directory created with multiple neurons and multiple oscillators implementation for oscillated
 pattern movements. To be controlled by manual parameters or a DRL algorithm.
+
+
+**Quickstart**
+Clone the repository and install dependencies:
+```
+git clone https://github.com/YusseffRuiz/Adaptive_RL
+cd Adaptive_RL
+pip install -r requirements.txt
+```
 
 **How to use**
 
@@ -13,19 +42,19 @@ To train a new environment, everything can be run in main.py class.
 
 Create the agent, specifying learning rates, however, they can be left for the default values:
 
-```
-agent = MPO_Algorithm.agents.MPO(lr_actor=3.53e-5, lr_critic=6.081e-5, lr_dual=0.00213)
-```  
+**Example Usage**
 
-main training function is to be used with the following command:
+To Run the SAC agent on the Mujoco Walker2d-v4 environment
 
 ```
-train_mpo(agent=agent,
-                environment=env_name,
-                sequential=2, parallel=3,
-                trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                log_dir=log_dir)
+from agents import SAC
+from environments import GymEnvironment
+
+env = GymEnvironment('Walker2d-v4')
+agent = SAC()
+agent.train(env, episodes=1000)
 ```
+
 **Sequential:** Run environments in a for loop.
 
 **Parallel:** Run different processes over either CPU or GPU, using multiprocess class.
@@ -33,7 +62,7 @@ train_mpo(agent=agent,
 
 **To Do:**
 
-ARS, DDPG, SAC implementation.
+ARS, PPO implementation.
 
 MyoSuite environment builder and algorithm adaptation for muscles and DoF.
 At the moment, it can only interact with Gymnasium environments.
@@ -44,17 +73,12 @@ Implementation must be directly into the RL class.
 Development and Implementation of Hodgkin-Huxley neurons CPG. 
 
 
-**Tested Environments**
-
-
-| Model name                                                         | Algorithm | Movement                                              |
-|--------------------------------------------------------------------|-----------|-------------------------------------------------------|
-| **Walker-2d-v4** <br> - 8 Action Space <br> - 17 Observation State | SAC       | ![](https://github.com/YusseffRuiz/MPO_CPG/blob/main/Experiments/Videos/mpo-agent-Walker2d-v4-CPG.mp4)     |
-|                                                                    | SAC + CPG | ![](Experiments/Videos/sac-agent-Walker2d-v4-CPG.mp4) |
-|                                                                    | MPO       | ![](Experiments/Videos/mpo-agent-Walker2d-v4.mp4)     |
-|                                                                    | MPO + CPG | ![](Experiments/Videos/mpo-agent-Walker2d-v4-CPG.mp4) |
-
-
 **Credit**
 
 This repository is based on [Tonic RL](https://github.com/fabiopardo/tonic).
+Based on Tonic RL Library and modified to match current Gymnasium implementation and for MyoSuite development.
+
+Changes includes:
+- Direct control over learning rates and neuron size.
+- Usage of Sigmoid Linear Unit instead of Relu
+- Simplification of classes.
