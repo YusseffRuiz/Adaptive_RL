@@ -117,31 +117,8 @@ def evaluate(model, env, algorithm, num_episodes=5):
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
 
 
-def register_new_env():
-    register(
-        # unique identifier for the env `name-version`
-        id="Hopper_CPG_v1",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:HopperCPG",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
-    print("Registered new env Hopper_CPG_v1")
 
-    register(
-        # unique identifier for the env `name-version`
-        id="Walker2d-v4-CPG-MPO",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:Walker2dCPGEnv",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
-    print("Registered new env Walker2d-v4-CPG-MPO")
-
-
-def train_mpo(
+def train_agent(
         agent, environment, trainer=MPO_Algorithm.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, log_dir=None):
     """
@@ -210,15 +187,15 @@ def train_mpo(
     trainer.run()
 
 
-# Training of MPO method
 if __name__ == "__main__":
     # register_new_env()
     training_mpo = "MPO"
     trianing_sac = "SAC"
     training_algorithm = trianing_sac
 
-    # env_name = "Walker2d-v4"
-    env_name = "Humanoid-v4"
+    env_name = "Walker2d-v4"
+    # env_name = "Humanoid-v4"
+    cpg_flag = False
 
     sequential = 1
     parallel = 1
@@ -226,23 +203,24 @@ if __name__ == "__main__":
     lr_critic = 1e-4
     lr_dual = 2e-3
     neuron_number = 256
-
-    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=True, algorithm="MPO", create=True,
-                                                                 experiment_number=0)
-    max_steps = int(1e7)
+    experiment_number = 1
+    max_steps = int(1e4)
     epochs = int(max_steps / 500)
     save_steps = int(max_steps / 200)
 
+    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=training_algorithm, create=True,
+                                                                 experiment_number=experiment_number)
+
     if training_algorithm == "MPO":
         agent = MPO_Algorithm.agents.MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number)
-        train_mpo(agent=agent,
+        train_agent(agent=agent,
                   environment=env_name,
                   sequential=sequential, parallel=parallel,
                   trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                   log_dir=log_dir)
     elif training_algorithm == "SAC":
         agent = MPO_Algorithm.agents.SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number)
-        train_mpo(agent=agent, environment=env_name, sequential=sequential, parallel=parallel,
+        train_agent(agent=agent, environment=env_name, sequential=sequential, parallel=parallel,
                   trainer=MPO_Algorithm.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                   log_dir=log_dir)
     else:

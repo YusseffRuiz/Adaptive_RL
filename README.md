@@ -1,15 +1,13 @@
 # Adaptive_RL
 
 Adaptive_RL is an open-source framework for implementing state-of-the-art Reinforcement Learning (RL) algorithms, 
-designed to be modular and easily adaptable for different research and real-world applications. 
+designed to be modular and easily adaptable for different research and real-world applications. This repository has 
+emphasis in Continuous space problems
 
 Currently, the repository supports DDPG (Deep Deterministic Policy Gradient), SAC (Soft Actor-Critic)  and MPO (Maximum 
 a Posteriori Optimization) with a flexible architecture that allows for the integration of new algorithms.
 
 **Features:**
-
-DDPG and SAC implementations: Both deterministic and stochastic policy gradient methods are implemented, enabling users to work on environments that require either approach.
-
 
 Replay Buffer and experience sampling to stabilize training.
 
@@ -20,6 +18,14 @@ Customizable neural network architectures for the actor and critic networks.
 Modular framework allowing for easy extension to additional algorithms.
 Comprehensive logging for training metrics and performance evaluation.
 
+**Implemented Algorithms**
+- DDPG: Suitable for environments requiring deterministic, high-precision control. Works well in tasks such as robotic
+control or simulated physical systems.
+- SAC: Best used in tasks requiring robust exploration, where a stochastic policy can adapt better to uncertain 
+environments.
+- MPO: Ideal for complex environments requiring a careful balance between policy stability and adaptability.
+
+
 **CPG**
 
 Development of a DRL framework in the MatsuokaOscillator Folder.
@@ -29,6 +35,7 @@ pattern movements. To be controlled by manual parameters or a DRL algorithm.
 
 
 **Quickstart**
+
 Clone the repository and install dependencies:
 ```
 git clone https://github.com/YusseffRuiz/Adaptive_RL
