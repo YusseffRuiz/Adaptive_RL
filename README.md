@@ -1,7 +1,7 @@
 # Adaptive_RL
-
-<img src="utilities_repository/Adaptive_RL_CPG_Logo.jpg" alt="Adaptive_RL" width="512" height="512">
-
+<div align="center">
+<img src="utilities_repository/Adaptive_RL_CPG_Logo.jpg" alt="Adaptive_RL" width=40% height=40%>
+</div>
 Adaptive_RL is an open-source framework for implementing state-of-the-art Reinforcement Learning (RL) algorithms, 
 designed to be modular and easily adaptable for different research and real-world applications. This repository has 
 emphasis in Continuous space problems
