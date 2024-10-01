@@ -61,6 +61,20 @@ class ObservationActionEncoder(torch.nn.Module):
         return torch.cat([observations, actions], dim=-1)
 
 
+class NoisyLinear(torch.nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        # Initializing weights
+        self.weight_mu = torch.nn.Parameter(torch.Tensor(out_features, in_features).uniform_(-1, 1))
+        self.weight_sigma = torch.nn.Parameter(torch.Tensor(out_features, in_features).fill_(0.017))
+
+    def forward(self, x):
+        weight = self.weight_mu + self.weight_sigma * torch.randn_like(self.weight_sigma)
+        return torch.nn.functional.linear(x, weight)
+
+
 class MLP(torch.nn.Module):
     """
     A multi-layer perceptron (MLP) used as a torso for neural networks in the policy or value function.
@@ -82,18 +96,22 @@ class MLP(torch.nn.Module):
         Passes the inputs through the network.
     """
 
-    def __init__(self, size, activation, fn=None):
+    def __init__(self, sizes, activation, fn=None, noise=False):
         super().__init__()
         self.model = None
-        self.sizes = [size, size]
+        self.sizes = sizes
         self.activation = activation
         self.fn = fn
+        self.noise = noise
 
     def initialize(self, input_size):
         sizes = [input_size] + list(self.sizes)
         layers = []
         for i in range(len(sizes) - 1):
-            layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), self.activation()]
+            if self.noise:
+                layers += [NoisyLinear(sizes[i], sizes[i + 1]), self.activation(), torch.nn.LayerNorm(sizes[i + 1])]
+            else:
+                layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), self.activation(), torch.nn.LayerNorm(sizes[i + 1])]
         self.model = torch.nn.Sequential(*layers)
         if self.fn is not None:
             self.model.apply(self.fn)
@@ -254,19 +272,19 @@ class BaseModel(torch.nn.Module):
         Returns the full Actor-Critic model with target networks.
     """
 
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, hidden_layers=2):
         super().__init__()
-        self.hidden_size = hidden_size
+        self.neuron_shape = [hidden_size] * hidden_layers
 
     def get_model(self):
         return ActorCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, torch.nn.SiLU),
                 head=GaussianPolicyHead()),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, torch.nn.SiLU),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )
