@@ -90,32 +90,6 @@ def matsuoka_main():
             plt.show()
 
 
-def evaluate(model, env, algorithm, num_episodes=5):
-    total_rewards = []
-    range_episodes = num_episodes
-    for i in range(range_episodes):
-        obs, *_ = env.reset()
-        done = False
-        episode_reward = 0
-        cnt = 0
-        while not done:
-            with torch.no_grad():
-                if algorithm != "random":
-                    action = model.test_step(obs)
-                else:
-                    action, *_ = model.predict(obs, deterministic=True)
-            obs, reward, done, *_ = env.step(action)
-            episode_reward += reward
-            cnt += 1
-            if cnt >= 2000:
-                done = True
-
-        total_rewards.append(episode_reward)
-        print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
-    average_reward = np.mean(total_rewards)
-    print(f"Average Reward over {range_episodes} episodes: {average_reward}")
-
-
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, log_dir=None):
@@ -237,7 +211,7 @@ if __name__ == "__main__":
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
         print("Starting Evaluation")
-        evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
+        trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
 
         plot(
             paths=save_folder, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training"

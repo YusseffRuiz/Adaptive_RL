@@ -10,7 +10,7 @@ from matplotlib import lines
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from utils import logger
+from Adaptive_RL import logger
 
 
 def smooth(vals, window):
