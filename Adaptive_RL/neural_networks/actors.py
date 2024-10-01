@@ -274,6 +274,50 @@ class ClippedRatio:
             std=std, stop=kl > self.kl_threshold)
 
 
+
+class StochasticPolicyGradient:
+    def __init__(self, lr_actor=3e-4, entropy_coeff=0, gradient_clip=0):
+        self.entropy_coeff = entropy_coeff
+        self.gradient_clip = gradient_clip
+        self.lr_actor = lr_actor
+
+    def initialize(self, model):
+        self.model = model
+        self.variables = trainable_variables(self.model.actor)
+        self.optimizer = local_optimizer(self.variables, lr=self.lr_actor)
+
+    def __call__(self, observations, actions, advantages, log_probs):
+        if (advantages == 0.).all():
+            loss = torch.as_tensor(0., dtype=torch.float32)
+            kl = torch.as_tensor(0., dtype=torch.float32)
+            with torch.no_grad():
+                distributions = self.model.actor(observations)
+                entropy = distributions.entropy().mean()
+                std = distributions.stddev.mean()
+
+        else:
+            self.optimizer.zero_grad()
+            distributions = self.model.actor(observations)
+            new_log_probs = distributions.log_prob(actions).sum(dim=-1)
+            loss = -(advantages * new_log_probs).mean()
+            entropy = distributions.entropy().mean()
+            if self.entropy_coeff != 0:
+                loss -= self.entropy_coeff * entropy
+
+            loss.backward()
+            if self.gradient_clip > 0:
+                torch.nn.utils.clip_grad_norm_(
+                    self.variables, self.gradient_clip)
+            self.optimizer.step()
+
+            loss = loss.detach()
+            kl = (log_probs - new_log_probs).mean().detach()
+            entropy = entropy.detach()
+            std = distributions.stddev.mean().detach()
+
+        return dict(loss=loss, kl=kl, entropy=entropy, std=std)
+
+
 class DeterministicPolicyGradient:
     """
     Implements Deterministic Policy Gradient (DPG) for training an actor-critic model.
