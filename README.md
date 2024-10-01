@@ -75,6 +75,7 @@ or from the command line to run basic training with SAC:
 python main.py
 ```
 
+**Parallelization training via Multiprocess class.**
 
 **Sequential:** Run environments in a for loop.
 
@@ -94,7 +95,7 @@ python main.py
 
 **To Do:**
 
-ARS, PPO implementation.
+ARS implementation, analysing other state-of-the-art algorithms.
 
 MyoSuite environment builder and algorithm adaptation for muscles and DoF.
 At the moment, it can only interact with Gymnasium environments.
