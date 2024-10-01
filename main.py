@@ -5,7 +5,7 @@ from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetw
 import gymnasium as gym
 import os
 import Adaptive_RL
-from Adaptive_RL import SAC, DDPG, MPO, PPO
+from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
@@ -189,23 +189,25 @@ if __name__ == "__main__":
     training_mpo = "MPO"
     trianing_sac = "SAC"
     training_ppo = "PPO"
-    training_algorithm = training_mpo
+    training_algorithm = training_ppo
 
     # env_name = "Walker2d-v4"
     env_name = "Humanoid-v4"
     cpg_flag = True
 
-    sequential = 4
-    parallel = 4
-    lr_actor = 3e-4
-    lr_critic = 1e-4
+    sequential = 1
+    parallel = 1
+    lr_actor = 3.56987e-05
+    ent_coeff = 0.00238306
+    clip_range = 0.3
+    lr_critic = 3.56987e-05
     lr_dual = 1e-4
-    gamma = 0.99
-    neuron_number = 512
-    batch_size = 512,
+    gamma = 0.95
+    neuron_number = 256
+    batch_size = 256
     replay_buffer_size = 10e5
     epsilon = 0.1
-    experiment_number = 1
+    experiment_number = 0
     max_steps = int(1e7)
     epochs = int(max_steps / 500)
     save_steps = int(max_steps / 200)
@@ -220,7 +222,8 @@ if __name__ == "__main__":
     elif training_algorithm == "SAC":
         agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
     elif training_algorithm == "PPO":
-        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
+        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma,
+                    batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     else:
         agent = None
 
@@ -235,6 +238,11 @@ if __name__ == "__main__":
 
         print("Starting Evaluation")
         evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
+
+        plot(
+            paths=save_folder, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training"
+        )
+
         env.close()
     else:
         print("No agent specified, finishing program")
