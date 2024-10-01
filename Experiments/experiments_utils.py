@@ -44,6 +44,38 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
     return env_name, save_folder, log_dir
 
 
+def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=False, max_episode_steps=1000):
+    total_rewards = []
+    range_episodes = num_episodes
+    mujoco_env = hasattr(env, "sim")
+    for i in range(range_episodes):
+        obs, *_ = env.reset()
+        done = False
+        episode_reward = 0
+        cnt = 0
+        while not done:
+            cnt += 1
+            with torch.no_grad():
+                if algorithm != "random":
+                    action = model.test_step(obs)
+                else:
+                    action = env.action_space.sample()
+            obs, reward, done, *_ = env.step(action)
+            if mujoco_env:
+                #Try rendering for MyoSuite
+                env.sim.renderer.render_to_window()
+            episode_reward += reward
+            if no_done:
+                done = False
+            if cnt >= max_episode_steps:
+                done = True
+
+        total_rewards.append(episode_reward)
+        print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
+    average_reward = np.mean(total_rewards)
+    print(f"Average Reward over {range_episodes} episodes: {average_reward}")
+
+
 def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500, env_name=None):
 
     save_folder = f"Experiments/{env_name}/images"

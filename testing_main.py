@@ -1,4 +1,4 @@
-import gymnasium as gym
+from myosuite.utils import gym
 from Adaptive_RL import SAC, MPO, DDPG, PPO
 import Experiments.experiments_utils as trials
 import warnings
@@ -6,7 +6,6 @@ import logging
 from gymnasium.envs.registration import register
 from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
 
-from main import evaluate
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -43,11 +42,14 @@ def main_running():
 
     # env_name = "Ant-v4"
     # env_name = "Walker2d-v4"
-    env_name = "Humanoid-v4"
+    env_mujoco = "Humanoid-v4"
+    env_myo = "myoLegWalk-v0"
+    env_name = env_myo
 
     video_record = False
     experiment = False
     cpg_flag = False
+    random = True
     algorithm_mpo = "MPO"
     algorithm_a2c = "A2C"
     algorithm_sac = "SAC"
@@ -62,54 +64,58 @@ def main_running():
     else:
         env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
 
-    if algorithm == "MPO":
-        # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-        agent = MPO(hidden_size=1024)
-        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-        path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-        path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4125000"
-        # path_walker2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
-        path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
-        path_humanoid_cpg = f"{log_dir}/checkpoints/step_10000000.pt"
-        path_temp_cpg = "Walker2d-v4-CPG/tonic_train/0/checkpoints/step_4225008"
-        if cpg_flag:
-            path_chosen = path_temp_cpg
+    if not random:
+        if algorithm == "MPO":
+            # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
+            agent = MPO(hidden_size=1024)
+            agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+            path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
+            path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4125000"
+            # path_walker2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
+            path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
+            path_humanoid_cpg = f"{log_dir}/checkpoints/step_10000000.pt"
+            path_temp_cpg = "Walker2d-v4-CPG/tonic_train/0/checkpoints/step_4225008"
+            if cpg_flag:
+                path_chosen = path_temp_cpg
+            else:
+                path_chosen = path_walker2d
+            agent.load(path_chosen)
+        elif algorithm == "SAC":
+            if cpg_flag:
+                path_tmp = f"Humanoid-v4-CPG/logs/Humanoid-v4-CPG-SAC/checkpoints/step_10000000.pt"
+            else:
+                path_tmp = "Humanoid-v4/logs/Humanoid-v4-SAC/checkpoints/step_13000008.pt"
+            agent = SAC(hidden_size=1024)
+            agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+            agent.load(path_tmp)
+            print(f"model {save_folder} loaded")
+        elif algorithm == "PPO":
+            if cpg_flag:
+                path_tmp = "Humanoid-v4-CPG/logs/Humanoid-v4-CPG-PPO/checkpoints/step_10000.pt"
+            else:
+                path_tmp = "Humanoid-v4/logs/Humanoid-v4-PPO/checkpoints/step_10000000.pt"
+            agent = PPO(hidden_size=256)
+            agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+            agent.load(path_tmp)
         else:
-            path_chosen = path_walker2d
-        agent.load(path_chosen)
-    elif algorithm == "SAC":
-        if cpg_flag:
-            path_tmp = f"Humanoid-v4-CPG/logs/Humanoid-v4-CPG-SAC/checkpoints/step_10000000.pt"
+            agent = None
+
+        print("Loaded weights from {} algorithm".format(algorithm))
+
+        if video_record:
+            video_folder = "videos/" + env_name
+            record_video(env_name, video_folder, algorithm, agent)
+            print("Video Recorded")
+
+        elif experiment:
+            trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes, env_name=save_folder)
+
         else:
-            path_tmp = "Humanoid-v4/logs/Humanoid-v4-SAC/checkpoints/step_13000008.pt"
-        agent = SAC(hidden_size=1024)
-        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-        agent.load(path_tmp)
-        print(f"model {save_folder} loaded")
-    elif algorithm == "PPO":
-        if cpg_flag:
-            path_tmp = "Humanoid-v4-CPG/logs/Humanoid-v4-CPG-PPO/checkpoints/step_10000.pt"
-        else:
-            path_tmp = "Humanoid-v4/logs/Humanoid-v4-PPO/checkpoints/step_10000000.pt"
-        agent = PPO(hidden_size=256)
-        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-        agent.load(path_tmp)
+            """ load network weights """
+            trials.evaluate(agent, env, algorithm, num_episodes)
     else:
-        agent = None
-
-    print("Loaded weights from {} algorithm".format(algorithm))
-
-    if video_record:
-        video_folder = "videos/" + env_name
-        record_video(env_name, video_folder, algorithm, agent)
-        print("Video Recorded")
-
-    elif experiment:
-        trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes, env_name=save_folder)
-
-    else:
-        """ load network weights """
-        evaluate(agent, env, algorithm, num_episodes)
+        algorithm = "random"
+        trials.evaluate(env=env, algorithm=algorithm, num_episodes=3, no_done=True, max_episode_steps=500)
     env.close()
 
 

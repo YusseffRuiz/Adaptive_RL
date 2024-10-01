@@ -15,10 +15,9 @@ def gym_environment(*args, **kwargs):
 def myosuite_environment(*args, **kwargs):
     """
     Returns a wrapped Myosuite environment.
-    In development
     """
     def _builder(*args, **kwargs):
-        pass
+        return gym.make(*args, **kwargs)
 
     return build_environment(_builder, *args, **kwargs)
 
