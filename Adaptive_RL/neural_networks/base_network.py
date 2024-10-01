@@ -305,39 +305,39 @@ class ActorTwinCriticsModelNetwork(torch.nn.Module):
         Returns the actor-twin-critic model with target networks.
     """
 
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, hidden_layers=2):
         super().__init__()
-        self.hidden_size = hidden_size
+        self.neuron_shape = [hidden_size] * hidden_layers
 
     def get_model(self):
         return ActorTwinCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, torch.nn.SiLU),
                 head=GaussianPolicyHead(
                     loc_activation=torch.nn.Identity,
                     distribution=SquashedMultivariateNormalDiag)),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, torch.nn.SiLU),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd())
 
 
 class ActorCriticModelNetwork(torch.nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, hidden_layers=2):
         super().__init__()
-        self.hidden_size = hidden_size
+        self.neuron_shape = [hidden_size] * hidden_layers
 
     def get_model(self):
         return ActorCritic(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.Tanh),
+                torso=MLP(self.neuron_shape, torch.nn.Tanh),
                 head=DetachedScaleGaussianPolicyHead()),
             critic=Critic(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.hidden_size, torch.nn.Tanh),
+                torso=MLP(self.neuron_shape, torch.nn.Tanh),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )
