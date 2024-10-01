@@ -4,7 +4,9 @@
 </div>
 Adaptive_RL is an open-source framework for implementing state-of-the-art Reinforcement Learning (RL) algorithms, 
 designed to be modular and easily adaptable for different research and real-world applications. This repository has 
-emphasis in Continuous space problems
+emphasis in Continuous space problems.
+
+Current implementation for Gymnasium and MyoSuite deployment.
 
 Currently, the repository supports DDPG (Deep Deterministic Policy Gradient), SAC (Soft Actor-Critic), PPO (Proximal Policy Optimization),
 and MPO (Maximum a Posteriori Optimization) with a flexible architecture that allows for the integration of new algorithms.
@@ -95,18 +97,22 @@ python main.py
 
 **To Do:**
 
-ARS implementation, analysing other state-of-the-art algorithms.
+ARS, TRPO implementation, analysing other state-of-the-art algorithms.
 
-MyoSuite environment builder and algorithm adaptation for muscles and DoF.
-At the moment, it can only interact with Gymnasium environments.
+Environment class modified for MyoLeg.
 
 Automatic CPG adding into the environment. At the moment, CPG must be added into the env class.
+Environments deployed:
+- Ant-v4
+- Humanoid-v4
+- Walker2d-v4
+
 Implementation must be directly into the RL class.
 
 Development and Implementation of Hodgkin-Huxley neurons CPG. 
 
 **Upcoming Features**
-- Integration of Proximal Policy Optimization (PPO) and Trust Region Policy Optimization (TRPO).
+- Integration of Trust Region Policy Optimization (TRPO).
 - Enhanced support for discrete action spaces.
 
 **Credit**

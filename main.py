@@ -2,13 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
-import gymnasium as gym
 import os
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
+from myosuite.utils import gym
 
 
 # Basic Matsuoka Oscillator Implementation
