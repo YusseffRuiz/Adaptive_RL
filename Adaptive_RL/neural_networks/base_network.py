@@ -112,7 +112,7 @@ class MLP(torch.nn.Module):
             if self.noise:
                 layers += [NoisyLinear(sizes[i], sizes[i + 1]), self.activation(), torch.nn.LayerNorm(sizes[i + 1])]
             else:
-                layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), self.activation()]
+                layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), self.activation(), torch.nn.LayerNorm(sizes[i+1])]
         self.model = torch.nn.Sequential(*layers)
         if self.fn is not None:
             self.model.apply(self.fn)

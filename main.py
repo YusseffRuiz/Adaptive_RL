@@ -105,6 +105,11 @@ def train_agent(
     :param log_dir:: Path to add the logs of the experiment
     """
     torch.set_default_device('cuda' if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.cuda.get_device_name(torch.cuda.current_device())
+        print(f"Runing with {device}")
+    else:
+        print("Running with CPU")
     path = log_dir
     args = dict(locals())
     checkpoint_path = None
@@ -185,6 +190,7 @@ if __name__ == "__main__":
     lr_dual = 1e-4
     gamma = 0.95
     neuron_number = 256
+    layers_number = 3
     batch_size = 256
     replay_buffer_size = 10e5
     epsilon = 0.1
@@ -195,11 +201,11 @@ if __name__ == "__main__":
 
     if training_algorithm == "MPO":
         agent = MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
-                    discount_factor=gamma, replay_buffer_size=replay_buffer_size,)
+                    discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
     elif training_algorithm == "SAC":
-        agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma)
+        agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma, hidden_layers=layers_number,)
     elif training_algorithm == "PPO":
-        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma,
+        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, hidden_layers=layers_number, discount_factor=gamma,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     else:
         agent = None

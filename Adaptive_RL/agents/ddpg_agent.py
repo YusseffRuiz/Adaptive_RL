@@ -12,10 +12,10 @@ class DDPG(base_agent.BaseAgent):
     DDPG: https://arxiv.org/pdf/1509.02971.pdf
     """
 
-    def __init__(self, model=None, hidden_size=256, discount_factor=0.99, replay_buffer=None,
+    def __init__(self, model=None, hidden_size=256, hidden_layers=2, discount_factor=0.99, replay_buffer=None,
                  exploration=None, actor_updater=None, critic_updater=None, batch_size=512, return_step=5,
                  steps_between_batches=20, replay_buffer_size=10e6):
-        self.model = model or neural_networks.BaseModel(hidden_size=hidden_size).get_model()
+        self.model = model or neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = replay_buffer or ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                                            batch_size=batch_size,
                                                            steps_between_batches=steps_between_batches,
