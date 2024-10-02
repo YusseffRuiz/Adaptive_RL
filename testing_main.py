@@ -14,30 +14,6 @@ logger: logging.Logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def record_video(env_name, video_folder, alg, agent):
-    video_length = 1000
-    vec_env = DummyVecEnv([lambda: gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)])
-
-    obs = vec_env.reset()
-    # Record the video starting at the first step
-    vec_env = VecVideoRecorder(vec_env, video_folder,
-                               record_video_trigger=lambda x: x == 0, video_length=video_length,
-                               name_prefix=f"{alg}-agent-{env_name}")
-    vec_env.reset()
-    for _ in range(video_length + 1):
-        if alg == "mpo":
-            action = agent.test_step(obs)
-        elif alg == "sac":
-            action, *_ = [agent.predict(obs, deterministic=True)]
-            action = action[0]
-        else:
-            action, *_ = [agent.select_action((obs[None, :]))]
-            action = action.cpu().numpy()[0]
-        obs, _, _, _ = vec_env.step(action)
-    # Save the video
-    vec_env.close()
-
-
 def main_running():
     """ play a couple of showcase episodes """
     num_episodes = 5
@@ -115,31 +91,30 @@ def main_running():
         trials.evaluate(env=env, algorithm=algorithm, num_episodes=3, no_done=True, max_episode_steps=500)
     env.close()
 
+def record_video(env_name, video_folder, alg, agent):
+    video_length = 1000
+    vec_env = DummyVecEnv([lambda: gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)])
 
-def register_new_env():
-    register(
-        # unique identifier for the env `name-version`
-        id="Hopper-CPG",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:HopperCPG",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
-
-    register(
-        # unique identifier for the env `name-version`
-        id="Walker2d-v4-CPG-MPO",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:Walker2dCPGEnv",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
+    obs = vec_env.reset()
+    # Record the video starting at the first step
+    vec_env = VecVideoRecorder(vec_env, video_folder,
+                               record_video_trigger=lambda x: x == 0, video_length=video_length,
+                               name_prefix=f"{alg}-agent-{env_name}")
+    vec_env.reset()
+    for _ in range(video_length + 1):
+        if alg == "mpo":
+            action = agent.test_step(obs)
+        elif alg == "sac":
+            action, *_ = [agent.predict(obs, deterministic=True)]
+            action = action[0]
+        else:
+            action, *_ = [agent.select_action((obs[None, :]))]
+            action = action.cpu().numpy()[0]
+        obs, _, _, _ = vec_env.step(action)
+    # Save the video
+    vec_env.close()
 
 
 if __name__ == '__main__':
-    register_new_env()
     main_running()
-    # test_get_values()
 

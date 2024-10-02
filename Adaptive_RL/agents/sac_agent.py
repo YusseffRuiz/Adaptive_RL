@@ -36,11 +36,11 @@ class SAC(DDPG):
     critic_updater : TwinCriticSoftQLearning
         Update method for the critic network, using the Soft Q-Learning technique. Defaults to `TwinCriticSoftQLearning`.
     """
-    def __init__(self, model=None, hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, discount_factor=0.99,
+    def __init__(self, model=None, hidden_size=256, hidden_layers=2, lr_actor=3e-4, lr_critic=3e-4, discount_factor=0.99,
                  replay_buffer=None, exploration=None, actor_updater=None, critic_updater=None,
                  batch_size=512, return_step=5, steps_between_batches=20, replay_buffer_size=10e6
                  ):
-        model = model or neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size).get_model()
+        model = model or neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         exploration = exploration or explorations.NormalNoiseExploration()
         replay_buffer = replay_buffer or ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                                       batch_size=batch_size, steps_between_batches=steps_between_batches

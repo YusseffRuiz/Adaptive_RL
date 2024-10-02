@@ -13,7 +13,7 @@ class MPO(base_agent.BaseAgent):
     """
 
     def __init__(
-        self, model=None, hidden_size=256, critic_updater=None, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
+        self, model=None, hidden_size=256, hidden_layers=2, critic_updater=None, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
             action_penalization=True, gradient_clip=0.1, batch_size=512, return_step=5, steps_between_batches=20,
@@ -21,7 +21,7 @@ class MPO(base_agent.BaseAgent):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.last_actions = None
         self.last_observations = None
-        self.model = model or neural_networks.BaseModel(hidden_size=hidden_size).get_model()
+        self.model = model or neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
                                           size=replay_buffer_size)
