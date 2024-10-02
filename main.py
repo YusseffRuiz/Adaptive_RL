@@ -8,8 +8,8 @@ from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
-from myosuite.utils import gym
-
+# from myosuite.utils import gym
+import gymnasium as gym
 
 # Basic Matsuoka Oscillator Implementation
 def matsuoka_main():
@@ -126,7 +126,7 @@ def train_agent(
 
     # Build the training environment.
 
-    _environment = Adaptive_RL.environments.Gym(environment)
+    _environment = Adaptive_RL.Gym(environment)
     environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment, parallel, sequential)
     environment.initialize() if parallel > 1 else 0
@@ -167,10 +167,17 @@ if __name__ == "__main__":
 
     # env_name = "Walker2d-v4"
     env_name = "Humanoid-v4"
-    cpg_flag = True
+    cpg_flag = False
+    experiment_number = 0
 
-    sequential = 1
-    parallel = 1
+    # Steps to train
+    max_steps = int(1e7)
+    epochs = int(max_steps / 500)
+    save_steps = int(max_steps / 200)
+
+    # Hyperparameters
+    sequential = 8
+    parallel = 4
     lr_actor = 3.56987e-05
     ent_coeff = 0.00238306
     clip_range = 0.3
@@ -181,10 +188,6 @@ if __name__ == "__main__":
     batch_size = 256
     replay_buffer_size = 10e5
     epsilon = 0.1
-    experiment_number = 0
-    max_steps = int(1e7)
-    epochs = int(max_steps / 500)
-    save_steps = int(max_steps / 200)
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag,
                                                                  algorithm=training_algorithm, create=True,
@@ -213,9 +216,7 @@ if __name__ == "__main__":
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
 
-        plot(
-            paths=save_folder, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training"
-        )
+        plot.plot(paths=save_folder, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training")
 
         env.close()
     else:
