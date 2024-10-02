@@ -30,9 +30,15 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
     print(f"Creating env {env_name}")
 
     if algorithm is not None:
-        save_folder = f"{env_name}-{algorithm}"
+        if experiment_number > 0:
+            save_folder = f"{env_name}-{algorithm}/{experiment_number}"
+        else:
+            save_folder = f"{env_name}-{algorithm}"
     else:
-        save_folder = f"{env_name}"
+        if experiment_number > 0:
+            save_folder = f"{env_name}/{experiment_number}"
+        else:
+            save_folder = f"{env_name}"
     if experiment_number > 0:
         log_dir = f"{env_name}/logs/{save_folder}/{experiment_number}"
     else:
