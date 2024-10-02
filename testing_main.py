@@ -72,26 +72,26 @@ def main_running():
     if not random:
         if algorithm == "MPO":
             # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-            agent = MPO(hidden_size=1024)
+            agent = MPO(hidden_size=256)
             agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-            path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
+            # path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
             path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4125000"
             # path_walker2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
             path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
             path_humanoid_cpg = f"{log_dir}/checkpoints/step_10000000.pt"
-            path_temp_cpg = "Walker2d-v4-CPG/tonic_train/0/checkpoints/step_4225008"
-            if cpg_flag:
-                path_chosen = path_temp_cpg
-            else:
-                path_chosen = path_walker2d
-            agent.load(path_chosen)
+            # path_temp_cpg = "Walker2d-v4-CPG/tonic_train/0/checkpoints/step_4225008"
+            # if cpg_flag:
+            #     path_chosen = path_temp_cpg
+            # else:
+            #     path_chosen = path_walker2d
+            agent.load(path)
         elif algorithm == "SAC":
             agent = SAC(hidden_size=1024)
             agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
             agent.load(path)
             print(f"model {save_folder} loaded")
         elif algorithm == "PPO":
-            agent = PPO(hidden_size=256, hidden_layers=2)
+            agent = PPO(hidden_size=1024, hidden_layers=2)
             agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
             agent.load(path)
         else:
