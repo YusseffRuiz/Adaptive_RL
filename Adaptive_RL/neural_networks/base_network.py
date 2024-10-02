@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
 from .critics import Critic, ValueHead
@@ -111,7 +112,7 @@ class MLP(torch.nn.Module):
             if self.noise:
                 layers += [NoisyLinear(sizes[i], sizes[i + 1]), self.activation(), torch.nn.LayerNorm(sizes[i + 1])]
             else:
-                layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), self.activation(), torch.nn.LayerNorm(sizes[i + 1])]
+                layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), self.activation()]
         self.model = torch.nn.Sequential(*layers)
         if self.fn is not None:
             self.model.apply(self.fn)
@@ -274,7 +275,7 @@ class BaseModel(torch.nn.Module):
 
     def __init__(self, hidden_size, hidden_layers=2):
         super().__init__()
-        self.neuron_shape = [hidden_size] * hidden_layers
+        self.neuron_shape = np.full(hidden_layers, hidden_size)
 
     def get_model(self):
         return ActorCriticWithTargets(
@@ -307,7 +308,7 @@ class ActorTwinCriticsModelNetwork(torch.nn.Module):
 
     def __init__(self, hidden_size, hidden_layers=2):
         super().__init__()
-        self.neuron_shape = [hidden_size] * hidden_layers
+        self.neuron_shape = np.full(hidden_layers, hidden_size)
 
     def get_model(self):
         return ActorTwinCriticWithTargets(
@@ -327,7 +328,7 @@ class ActorTwinCriticsModelNetwork(torch.nn.Module):
 class ActorCriticModelNetwork(torch.nn.Module):
     def __init__(self, hidden_size, hidden_layers=2):
         super().__init__()
-        self.neuron_shape = [hidden_size] * hidden_layers
+        self.neuron_shape = np.full(hidden_layers, hidden_size)
 
     def get_model(self):
         return ActorCritic(

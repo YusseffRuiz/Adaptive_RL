@@ -3,6 +3,7 @@ from Adaptive_RL import logger
 from gymnasium.envs.registration import register
 
 def get_last_checkpoint(path):
+    path = os.path.join(path, 'checkpoints')
     # List all the checkpoints.
     checkpoint_ids = []
     for file in os.listdir(path):

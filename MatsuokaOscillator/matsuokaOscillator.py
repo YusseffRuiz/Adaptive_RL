@@ -413,3 +413,10 @@ def weight_conversion_humanoid(weights, device, output=None):
         output_tensor[16] = output[3, 1]
         return output_tensor
 
+def weight_conversion_myoleg(weights, device, output=None):
+    if output is None:
+        weights_tmp = torch.tensor(weights, dtype=torch.float32, device=device)
+        return weights_tmp
+    else:
+        output_tensor = weights
+        return output_tensor
