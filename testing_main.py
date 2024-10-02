@@ -1,4 +1,6 @@
 from myosuite.utils import gym
+
+import Adaptive_RL
 from Adaptive_RL import SAC, MPO, DDPG, PPO
 import Experiments.experiments_utils as trials
 import warnings
@@ -44,12 +46,12 @@ def main_running():
     # env_name = "Walker2d-v4"
     env_mujoco = "Humanoid-v4"
     env_myo = "myoLegWalk-v0"
-    env_name = env_myo
+    env_name = env_mujoco
 
     video_record = False
     experiment = False
-    cpg_flag = False
-    random = True
+    cpg_flag = True
+    random = False
     algorithm_mpo = "MPO"
     algorithm_a2c = "A2C"
     algorithm_sac = "SAC"
@@ -63,6 +65,9 @@ def main_running():
         env = gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)
     else:
         env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
+
+    path = f"{env_name}/logs/{save_folder}/"
+    path = Adaptive_RL.get_last_checkpoint(path=path)
 
     if not random:
         if algorithm == "MPO":
@@ -81,22 +86,14 @@ def main_running():
                 path_chosen = path_walker2d
             agent.load(path_chosen)
         elif algorithm == "SAC":
-            if cpg_flag:
-                path_tmp = f"Humanoid-v4-CPG/logs/Humanoid-v4-CPG-SAC/checkpoints/step_10000000.pt"
-            else:
-                path_tmp = "Humanoid-v4/logs/Humanoid-v4-SAC/checkpoints/step_13000008.pt"
             agent = SAC(hidden_size=1024)
             agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-            agent.load(path_tmp)
+            agent.load(path)
             print(f"model {save_folder} loaded")
         elif algorithm == "PPO":
-            if cpg_flag:
-                path_tmp = "Humanoid-v4-CPG/logs/Humanoid-v4-CPG-PPO/checkpoints/step_10000.pt"
-            else:
-                path_tmp = "Humanoid-v4/logs/Humanoid-v4-PPO/checkpoints/step_10000000.pt"
-            agent = PPO(hidden_size=256)
+            agent = PPO(hidden_size=256, hidden_layers=2)
             agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-            agent.load(path_tmp)
+            agent.load(path)
         else:
             agent = None
 
