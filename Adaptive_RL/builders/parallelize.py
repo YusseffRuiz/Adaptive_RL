@@ -116,6 +116,7 @@ class Parallel:
         """
         Initializes the parallel environments by creating processes for each group of workers.
         """
+        mp.set_start_method('spawn')
         def proc(action_pipe, index):
             """Process holding a sequential group of environments.
             Parameters:

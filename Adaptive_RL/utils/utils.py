@@ -1,23 +1,39 @@
 import os
 from Adaptive_RL import logger
 from gymnasium.envs.registration import register
+import yaml
+import argparse
+
 
 def get_last_checkpoint(path):
+    arguments_path = os.path.join(path, 'config.yaml')
     path = os.path.join(path, 'checkpoints')
     # List all the checkpoints.
     checkpoint_ids = []
-    for file in os.listdir(path):
-        if file[:5] == 'step_':
-            checkpoint_id = file.split('.')[0]
-            checkpoint_ids.append(int(checkpoint_id[5:]))
+    if os.path.exists(path):
+        for file in os.listdir(path):
+            if file[:5] == 'step_':
+                checkpoint_id = file.split('.')[0]
+                checkpoint_ids.append(int(checkpoint_id[5:]))
 
-    if checkpoint_ids:
-        checkpoint_id = max(checkpoint_ids)
-        checkpoint_path = os.path.join(path, f'step_{checkpoint_id}')
+        if checkpoint_ids:
+            checkpoint_id = max(checkpoint_ids)
+            checkpoint_path = os.path.join(path, f'step_{checkpoint_id}')
+        else:
+            checkpoint_path = None
+            print('No checkpoint found')
     else:
         checkpoint_path = None
-        print('No checkpoint found')
-    return checkpoint_path
+        print("No checkpoint Found")
+
+    # Load the experiment configuration.
+    if os.path.exists(arguments_path):
+        with open(arguments_path, 'r') as config_file:
+            config = yaml.load(config_file, Loader=yaml.FullLoader)
+        config = argparse.Namespace(**config)
+    else:
+        config = None
+    return checkpoint_path, config
 
 
 def load_checkpoint(checkpoint, path):

@@ -1,38 +1,37 @@
 from myosuite.utils import gym
 
 import Adaptive_RL
-from Adaptive_RL import SAC, MPO, DDPG, PPO
+from Adaptive_RL import SAC, MPO, DDPG, PPO, plot
 import Experiments.experiments_utils as trials
 import warnings
 import logging
-from gymnasium.envs.registration import register
 from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
+from rl_zoo3 import ALGOS
 
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-
 def main_running():
     """ play a couple of showcase episodes """
     num_episodes = 5
 
     # env_name = "Ant-v4"
-    # env_name = "Walker2d-v4"
+    env_walker = "Walker2d-v4"
     env_mujoco = "Humanoid-v4"
     env_myo = "myoLegWalk-v0"
-    env_name = env_mujoco
+    env_name = env_walker
 
     video_record = False
     experiment = False
-    cpg_flag = True
+    cpg_flag = False
     random = False
     algorithm_mpo = "MPO"
-    algorithm_a2c = "A2C"
     algorithm_sac = "SAC"
     algorithm_ppo = "PPO"
-    algorithm = algorithm_ppo
+    algorithm_ddpg = "DDPG"
+    algorithm = algorithm_ddpg
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm, experiment_number=0)
 
@@ -40,40 +39,16 @@ def main_running():
         num_episodes = 40
         env = gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)
     else:
-        env = gym.make(env_name, render_mode="human", max_episode_steps=1000)
+        env = Adaptive_RL.Gym(env_name, render_mode="human")
 
     path = f"{env_name}/logs/{save_folder}/"
-    path = Adaptive_RL.get_last_checkpoint(path=path)
+    path, config = Adaptive_RL.get_last_checkpoint(path=path)
 
     if not random:
-        if algorithm == "MPO":
-            # agent = tonic.torch.agents.MPO()  # For walker2d no CPG
-            agent = MPO(hidden_size=256)
-            agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-            # path_walker2d = f"{env_name}/tonic_train/0/checkpoints/step_4675008"
-            path_walker2d_cpg = f"{env_name}/tonic_train/0/checkpoints/step_4125000"
-            # path_walker2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
-            path_ant2d_cpg = f"{env_name}/logs/{save_folder}/checkpoints/step_5000000.pt"
-            path_humanoid_cpg = f"{log_dir}/checkpoints/step_10000000.pt"
-            # path_temp_cpg = "Walker2d-v4-CPG/tonic_train/0/checkpoints/step_4225008"
-            # if cpg_flag:
-            #     path_chosen = path_temp_cpg
-            # else:
-            #     path_chosen = path_walker2d
-            agent.load(path)
-        elif algorithm == "SAC":
-            agent = SAC(hidden_size=1024)
-            agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-            agent.load(path)
-            print(f"model {save_folder} loaded")
-        elif algorithm == "PPO":
-            agent = PPO(hidden_size=1024, hidden_layers=2)
-            agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
-            agent.load(path)
-        else:
-            agent = None
+        agent = load_agent(config, path)
+        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
 
-        print("Loaded weights from {} algorithm".format(algorithm))
+        print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
 
         if video_record:
             video_folder = "videos/" + env_name
@@ -85,6 +60,8 @@ def main_running():
 
         else:
             """ load network weights """
+            # agent.model.eval()
+            print(agent.get_config())
             trials.evaluate(agent, env, algorithm, num_episodes)
     else:
         algorithm = "random"
@@ -114,7 +91,30 @@ def record_video(env_name, video_folder, alg, agent):
     # Save the video
     vec_env.close()
 
+def load_agent(config, path):
+    if config.agent["agent"] == "DDPG":
+        agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
+                     learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                     hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"])
+    elif config.agent["agent"] == "MPO":
+        agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], lr_dual=config.agent["lr_dual"],
+                    hidden_size=config.agent["neuron_number"], discount_factor=config.agent["gamma"],
+                    replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["layers_number"])
+    elif config.agent["agent"] == "SAC":
+        agent = SAC(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], hidden_size=config.agent["neuron_number"],
+                    discount_factor=config.agent["gamma"], hidden_layers=config.agent["layers_number"],)
+    elif config.agent["agent"] == "PPO":
+        agent = PPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], hidden_size=config.agent["neuron_number"],
+                    hidden_layers=config.agent["layers_number"], discount_factor=config.agent["gamma"],
+                    batch_size=config.agent["batch_size"], entropy_coeff=config.agent["ent_coeff"], clip_range=config.agent["clip_range"])
+    else:
+        agent = None
+
+    agent.load(path)
+    return agent
+
 
 if __name__ == '__main__':
+    # plot.plot(paths="Walker2d-v4/logs/Walker2d-v4-DDPG", x_axis="train/seconds", x_label="Seconds", title=f"_training")
     main_running()
 

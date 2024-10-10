@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import torch
 
@@ -54,12 +56,15 @@ class MatsuokaNetwork:
 
 
 class MatsuokaOscillator:
-    def __init__(self, action_space, num_oscillators, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
+    def __init__(self, action_space, num_oscillators, amplitude=2.5, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
                  beta=2.5, dt=0.01):
         """
                 Initialize the Matsuoka Oscillator.
 
                 Parameters:
+                - amplitude:
+                - frequency:
+                - initial_phase:
                 - action_space (array): Action space of all oscillators. - to be removed
                 - neuron_number (int): Number of neurons in the oscillator network.
                 - num_oscillators (int): Number of oscillators to connect.
@@ -72,7 +77,9 @@ class MatsuokaOscillator:
                 - dt (float): Time step for integration.
                 """
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        #self.action_space = action_space
+        self.amplitude = amplitude
+        self.frequency = frequency
+        self.phase = initial_phase
         self.action_dim = action_space
         self.neuron_number = neuron_number
         self.param_dim = neuron_number * num_oscillators
@@ -134,102 +141,47 @@ class MatsuokaOscillator:
             weights = self.weights
 
         # Reshape params if necessary
-        if weights.dim() >= 2:
-            output = weights[:, self.neuron_number:]  # Used for only controlling certain part of the action space
-            weights = weights[:, :self.neuron_number]  # Uncomment only for separate OSC from the rest of the AS
+        # weights_tmp = env_selection(self.action_dim, weights, self.device)
+        weights_tmp = weights
 
-            # Shape comes in shape [N, K, paramsDim]
-            # assert weights.size(2) == self.param_dim, \
-            #    "Weights must be a matrix with size equal to the number of neurons."
-            batch_size = weights.size(0) * weights.size(1)
-            oscillator_number = num_oscillators
-            params_input = weights.reshape(batch_size, oscillator_number, self.neuron_number)
-            # Update membrane potentials
-            # Store previous output
-            # Modify original oscillator values to match batch_size
-            local_x = self.x.unsqueeze(0).repeat(batch_size, 1, 1)
-            local_y = self.y.unsqueeze(0).repeat(batch_size, 1, 1)
-            local_z = self.z.unsqueeze(0).repeat(batch_size, 1, 1)
-
-            y_prev = torch.roll(local_y, shifts=1, dims=1)
-            y_prev[:, 0, :] = local_y[:, 0, :]
-
-            dx = ((-local_x - params_input * y_prev + self.u.unsqueeze(0).repeat(batch_size, 1, 1) -
-                   self.beta * local_z) *
-                  self.dt / self.tau_r)
-
-            local_x += dx
-
-            # Update membrane potentials and output
-            #local_y = torch.clamp(torch.relu(local_x), min=self.action_space.low[0],
-            #                      max=self.action_space.high[0])
-
-            # Update adaptation variables
-            dz = (local_y - local_z) * self.dt / self.tau_a
-            local_z += dz
-
-            # Each oscillator control each joint. 1st - thigh, 2nd - knee, 3rd - ankle
-            # Generalized mapping using PyTorch's advanced indexing and reshaping
-            osc_indices = torch.arange(num_oscillators).repeat_interleave(self.neuron_number)  # [0, 0, 1, 1, 2, 2, ...]
-            neuron_indices = torch.arange(self.neuron_number).repeat(num_oscillators)  # [0, 1, 0, 1, 0, 1, ...]
-
-            # Use advanced indexing to fill the output tensor
-            output_tensor = torch.cat((local_y[:, osc_indices, neuron_indices], output), dim=-1)
-            # output_tensor = local_y[:, osc_indices, neuron_indices]
-
-            right_output = output_tensor[:, :self.action_dim // 2]
-            left_output = output_tensor[:, self.action_dim // 2:]
-            self.x = local_x[0, :, :]
-            self.y = local_y[0, :, :]
-            self.z = local_z[0, :, :]
-
-            # right_output = local_y[:, :, :self.param_dim // 2].reshape(batch_size, -1) # output for NN, not used
-            # left_output = local_y[:, :, self.param_dim // 2:].reshape(batch_size, -1) # output for NN, not used
+        assert len(weights_tmp) == self.param_dim, \
+            f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
+        if num_oscillators > 1:
+            weights_tmp = weights_tmp.reshape(num_oscillators, self.neuron_number)
+            y_prev = torch.roll(self.y, shifts=1, dims=1)
         else:
-            weights_tmp = env_selection(self.action_dim, weights, self.device)
+            y_prev = torch.roll(self.y, shifts=1)
 
-            assert len(weights_tmp) == self.param_dim, \
-                f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
-            if num_oscillators > 1:
-                weights_tmp = weights_tmp.reshape(num_oscillators, self.neuron_number)
-                y_prev = torch.roll(self.y, shifts=1, dims=1)
-            else:
-                y_prev = torch.roll(self.y, shifts=1)
+        dx = (-self.x - weights_tmp * y_prev + self.amplitude*self.u - self.beta * self.z) * self.dt / self.tau_r
 
-            dx = (-self.x - weights_tmp * y_prev + self.u - self.beta * self.z) * self.dt / self.tau_r
+        self.x += dx
 
-            self.x += dx
+        # Update adaptation variables
+        dz = (self.y - self.z) * self.dt / self.tau_a
+        self.z += dz
 
-            # Update membrane potentials and output
-            # Clamp if we have the action space
-            # self.y = torch.clamp(self.x, min=self.action_space.low[0],
-            #                     max=self.action_space.high[0])
+        # Update phase and frequency
+        self.phase += self.frequency * self.dt
 
-            # Update adaptation variables
-            dz = (self.y - self.z) * self.dt / self.tau_a
-            self.z += dz
+        # Generalized mapping using PyTorch's advanced indexing and reshaping
+        # osc_indices = torch.arange(num_oscillators).repeat_interleave(self.neuron_number)  # [0, 0, 1, 1, 2, 2, ...]
+        # neuron_indices = torch.arange(self.neuron_number).repeat(num_oscillators)  # [0, 1, 0, 1, 0, 1, ...]
 
-            # Generalized mapping using PyTorch's advanced indexing and reshaping
-            osc_indices = torch.arange(num_oscillators).repeat_interleave(self.neuron_number)  # [0, 0, 1, 1, 2, 2, ...]
-            neuron_indices = torch.arange(self.neuron_number).repeat(num_oscillators)  # [0, 1, 0, 1, 0, 1, ...]
+        # Use advanced indexing to fill the output tensor
+        # output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
+        # output_tensor = self.y[osc_indices, neuron_indices]
+        # output_tensor = env_selection(self.action_dim, weights, self.device, output=self.y)
 
-            # Use advanced indexing to fill the output tensor
-            # output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
-            # output_tensor = self.y[osc_indices, neuron_indices]
-            output_tensor = env_selection(self.action_dim, weights, self.device, output=self.y)
-
-            right_output = output_tensor[:self.action_dim // 2]
-            left_output = output_tensor[self.action_dim // 2:]
-            # right_output = self.y[:, :self.param_dim // 2].reshape(-1) # Output for NN, not used
-            # left_output = self.y[:, self.param_dim // 2:].reshape(-1)  # Output for NN, not used
-        return right_output, left_output
+        # right_output = output_tensor[:self.action_dim // 2]
+        # left_output = output_tensor[self.action_dim // 2:]
+        return self.y
 
     def run(self, steps=1000, weights_seq=None):
         """
-        Method implemented to be used by itself.
-        :param steps:
-        :param weights_seq:
-        :return:
+        Method implemented to be used by itself. Showing the behaviour of the oscillators
+        :param steps: Steps to run the environment
+        :param weights_seq: Weights applied into the oscillators.
+        :return: output of the oscillators funcion, with the number of neurons
         """
         y_output = torch.zeros(steps, self.neuron_number, dtype=torch.float32, device=self.device)
         for i in range(steps):
@@ -237,6 +189,10 @@ class MatsuokaOscillator:
             self.step(weights_in=weights)
             y_output[i, :] = self.y
         return y_output
+
+    def apply_control_signal(self, control_signal):
+        self.y += control_signal
+        return self.y
 
 
 class MatsuokaNetworkWithNN:
@@ -287,9 +243,20 @@ class MatsuokaNetworkWithNN:
         self.action_dim = env[1]  #env.action_space.shape[0]
         self.n_envs = n_envs
         self.parameters_dimension = self.num_oscillators * self.neuron_number
-        self.oscillators = MatsuokaOscillator(action_space=self.action_dim, num_oscillators=num_oscillators,
-                                              neuron_number=neuron_number, tau_r=tau_r,
-                                              tau_a=tau_a, dt=dt)
+        error_margin = math.pi*0.05
+        self.desired_phase_difference = 0.0
+        self.phase_error = 0.0
+        self.pid_controller = PIDController(Kp=1.0, Ki=0.05, Kd=0.01, dt=0.01, margin=error_margin)
+        """ You can create similar characteristics oscillators or different"""
+        # self.oscillators = MatsuokaOscillator(action_space=self.action_dim, num_oscillators=num_oscillators,
+        #                                       initial_phase=0.0, frequency=1.0, amplitude=2.5,
+        #                                       neuron_number=neuron_number, tau_r=tau_r,
+        #                                       tau_a=tau_a, dt=dt)
+        self.oscillator_right, self.oscillator_left = initialize_oscillator(action_dim=self.action_dim, frequency_right=1.0,
+                                                      frequency_left=2.0, neuron_number=neuron_number, amplitude=0.75,
+                                                      tau_r=tau_r, tau_a=tau_a, dt=dt)
+
+
         # self.nn_model = MatsuokaActor(env, neuron_number=self.neuron_number, num_oscillators=self.num_oscillators).to(
         #    self.device)
 
@@ -315,10 +282,23 @@ class MatsuokaNetworkWithNN:
 
         # Original inputs are in the shape [B, sample, num_oscillators*neuron_number
         # Rearrange inputs in the form num_oscillators*neuron_numer
-        right_output, left_output = self.oscillators.step(weights_in=params_input, num_oscillators=self.num_oscillators)
+        oscillators_input = env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
+        self.oscillator_right.step(weights_in=oscillators_input[0:self.neuron_number])
+        self.oscillator_left.step(weights_in=oscillators_input[self.neuron_number:])
 
-        # Combine the right and left outputs as needed
-        output_actions = torch.cat((right_output, left_output), dim=-1)
+        actual_phase_difference = self.oscillator_right.phase - self.oscillator_left.phase
+        error = self.desired_phase_difference - actual_phase_difference
+        self.phase_error = error
+        control_signal = self.pid_controller.step(error)
+
+        # Phase synchronization with PID
+        right_output = self.oscillator_right.apply_control_signal(-control_signal)
+        left_output = self.oscillator_left.apply_control_signal(control_signal)
+
+        oscillators_output = torch.stack([right_output, left_output], dim=0)
+        output_actions = env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
+                                       device=self.device)
+
         # output_actions = self.nn_model.output_neuron(output_y) # Possible not working
         return output_actions
 
@@ -348,6 +328,74 @@ class MatsuokaNetworkWithNN:
         return y_outputs
 
 
+class PIDController:
+    def __init__(self, Kp, Ki, Kd, dt, margin=0.1):
+        """
+        Initialize the PID controller with specified parameters.
+
+        Parameters:
+        - Kp, Ki, Kd: PID gains.
+        - dt: Time step size.
+        - margin: Acceptable phase error margin.
+        """
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.dt = dt
+        self.prev_error = 0.0
+        self.integral = 0.0
+        self.margin = margin
+
+    def step(self, error):
+        """
+        Calculate the control signal using PID control logic.
+
+        Parameters:
+        - error: The phase error (difference between actual and desired phase).
+
+        Returns:
+        - control_signal: The computed control signal to minimize phase error.
+        """
+        # Check if the error is within the margin
+        if abs(error) <= self.margin:
+            return 0.0  # No correction needed within margin
+
+        # Proportional term
+        P = self.Kp * error
+
+        # Integral term (accumulating error over time)
+        self.integral += error * self.dt
+        I = self.Ki * self.integral
+
+        # Derivative term (rate of change of the error)
+        derivative = (error - self.prev_error) / self.dt
+        D = self.Kd * derivative
+
+        # Update the previous error for the next time step
+        self.prev_error = error
+
+        # Calculate the control signal
+        control_signal = P + I + D
+
+        return control_signal
+
+
+def initialize_oscillator(action_dim, initial_phase=0.0, frequency_right=1.0, frequency_left=2.0, amplitude=2.5,
+                          neuron_number=2, tau_r=1.0, tau_a=6.0, dt=0.1):
+    """ Initialize multiple oscillators with different frequencies.
+    Must be modified and improved to match higher size Action spaces, multiple oscillators with different muscle groups.
+    """
+    right_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                       initial_phase=initial_phase, frequency=frequency_right, amplitude=amplitude,
+                       neuron_number=neuron_number, tau_r=tau_r,
+                       tau_a=tau_a, dt=dt)
+    left_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                       initial_phase=initial_phase, frequency=frequency_left, amplitude=amplitude,
+                       neuron_number=neuron_number, tau_r=tau_r,
+                       tau_a=tau_a, dt=dt)
+    return right_oscillator, left_oscillator
+
+
 def env_selection(action_dim, weights, device, output=None):
     """
     Used to determine automatically which environment we are working now
@@ -361,8 +409,13 @@ def env_selection(action_dim, weights, device, output=None):
         cpg_values = weight_conversion_walker(weights, device, output=output)
     elif action_dim == 17:
         cpg_values = weight_conversion_humanoid(weights, device, output=output)
-    else:
+    elif action_dim == 80:
+        cpg_values = weight_conversion_myoleg(weights, device, output=output)
+    elif action_dim == 7:
         cpg_values = weight_conversion_ant(weights, device, output=output)
+    else:
+        print("Not an implemented environment")
+        return None
 
     return cpg_values
 
@@ -383,23 +436,23 @@ def weight_conversion_ant(weights, device, output=None):
 
 def weight_conversion_walker(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[0], weights[1]],
-                                   dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor(weights, dtype=torch.float32, device=device)
         return weights_tmp
     else:
-        output_tensor = weights
-        output_tensor[0] = output[0]
-        output_tensor[1] = output[1]
-        # output_tensor[3] = output[1, 0]
-        # output_tensor[4] = output[1, 1]
+        output_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
+        output_tensor[0] = output[0, 0]
+        output_tensor[1] = output[0, 1]
+        output_tensor[2] = output[0, 2]
+        output_tensor[3] = output[1, 0]
+        output_tensor[4] = output[1, 1]
+        output_tensor[5] = output[1, 2]
 
         return output_tensor
 
 
 def weight_conversion_humanoid(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[5], weights[6], weights[9], weights[10], weights[12], weights[13],
-                                    weights[15], weights[16]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[5], weights[6], weights[9], weights[10]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
         output_tensor = weights
@@ -407,10 +460,6 @@ def weight_conversion_humanoid(weights, device, output=None):
         output_tensor[6] = output[0, 1]
         output_tensor[9] = output[1, 0]
         output_tensor[10] = output[1, 1]
-        output_tensor[12] = output[2, 0]
-        output_tensor[13] = output[2, 1]
-        output_tensor[15] = output[3, 0]
-        output_tensor[16] = output[3, 1]
         return output_tensor
 
 def weight_conversion_myoleg(weights, device, output=None):
@@ -420,3 +469,7 @@ def weight_conversion_myoleg(weights, device, output=None):
     else:
         output_tensor = weights
         return output_tensor
+
+
+def leg_synchronize(data_left, data_right):
+    pass
