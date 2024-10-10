@@ -13,6 +13,7 @@ class PPO(base_agent.BaseAgent):
     def __init__(self, model=None, hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, discount_factor=0.99,
                  replay_buffer=None, actor_updater=None, critic_updater=None, batch_size=None, trace_decay=0.97,
                  batch_iterations=80, replay_buffer_size=4096, clip_range=0, entropy_coeff=0.01, hidden_layers=2):
+        # Store all the inputs in a dictionary
         self.model = model or neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = replay_buffer or Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
                                                       batch_size=batch_size, discount_factor=discount_factor,
@@ -20,6 +21,18 @@ class PPO(base_agent.BaseAgent):
         self.actor_updater = actor_updater or neural_networks.ClippedRatio(lr_actor=lr_actor, ratio_clip=clip_range,
                                                                            entropy_coeff=entropy_coeff)
         self.critic_updater = critic_updater or neural_networks.VRegression(lr_critic=lr_critic)
+        self.config = {
+            "agent" : "PPO",
+            "lr_actor": lr_actor,
+            "lr_critic": lr_critic,
+            "hidden_size": hidden_size,
+            "hidden_layers": hidden_layers,
+            "discount_factor": discount_factor,
+            "batch_size": batch_size,
+            "replay_buffer_size": replay_buffer_size,
+            "clip_range": clip_range,
+            "entropy_coeff": entropy_coeff,
+        }
 
     def initialize(self, observation_space, action_space, seed=None):
         super().initialize(observation_space, action_space, seed)
@@ -143,3 +156,7 @@ class PPO(base_agent.BaseAgent):
         actor_infos = self.actor_updater(observations, actions, advantages, log_probs)
         critic_infos = self.critic_updater(observations, returns)
         return dict(actor=actor_infos, critic=critic_infos)
+
+    def get_config(self):
+        return self.config
+

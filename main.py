@@ -8,8 +8,7 @@ from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import yaml
 import argparse
 import Experiments.experiments_utils as trials
-# from myosuite.utils import gym
-import gymnasium as gym
+from myosuite.utils import gym
 
 # Basic Matsuoka Oscillator Implementation
 def matsuoka_main():
@@ -112,18 +111,18 @@ def train_agent(
         print("Running with CPU")
     path = log_dir
     args = dict(locals())
+    # Create a new dictionary excluding 'agent' and 'trainer'
+    args = {k: v for k, v in args.items() if k not in ['agent', 'trainer']}
+    args['agent'] = agent.get_config()
+
+
     checkpoint_path = None
     config = None
     # Process the checkpoint path same way as in tonic.play
     if path:
-        checkpoint_path = Adaptive_RL.load_checkpoint(checkpoint, path)
-        if checkpoint_path is not None:
+        checkpoint_path, config = Adaptive_RL.get_last_checkpoint(path)
+        if config is not None:
             # Load the experiment configuration.
-            arguments_path = os.path.join(path, 'config.yaml')
-            with open(arguments_path, 'r') as config_file:
-                config = yaml.load(config_file, Loader=yaml.Loader)
-            config = argparse.Namespace(**config)
-
             agent = agent or config.agent
             environment = environment or config.test_environment
             environment = environment or config.environment
@@ -144,8 +143,13 @@ def train_agent(
     if not agent:
         raise ValueError('No agent specified.')
 
+
     agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                      seed=seed)
+
+    config = agent.get_config()
+    for key, value in config.items():
+        print(f"{key}: {value}")
 
     # Load the weights of the agent form a checkpoint.
     if checkpoint_path:
@@ -168,10 +172,11 @@ if __name__ == "__main__":
     training_mpo = "MPO"
     trianing_sac = "SAC"
     training_ppo = "PPO"
-    training_algorithm = training_ppo
+    training_ddpg = "DDPG"
+    training_algorithm = training_ddpg
 
-    # env_name = "Walker2d-v4"
-    env_name = "Humanoid-v4"
+    env_name = "Walker2d-v4"
+    # env_name = "Humanoid-v4"
     cpg_flag = False
     experiment_number = 0
 
@@ -181,17 +186,17 @@ if __name__ == "__main__":
     save_steps = int(max_steps / 200)
 
     # Hyperparameters
-    sequential = 8
-    parallel = 4
-    lr_actor = 3.56987e-05
-    ent_coeff = 0.00238306
-    clip_range = 0.3
-    lr_critic = 3.56987e-05
-    lr_dual = 1e-4
-    gamma = 0.95
+    sequential = 5
+    parallel = 2
+    lr_actor = 2.0633e-05
+    lr_critic = 2.0633e-05
+    ent_coeff = 0.000401762
+    clip_range = 0.1
+    lr_dual = 3.56987e-04
+    gamma = 0.98
     neuron_number = 256
-    layers_number = 3
-    batch_size = 256
+    layers_number = 2
+    batch_size = 64
     replay_buffer_size = 10e5
     epsilon = 0.1
 
@@ -207,14 +212,16 @@ if __name__ == "__main__":
     elif training_algorithm == "PPO":
         agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, hidden_layers=layers_number, discount_factor=gamma,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
+    elif training_algorithm == training_ddpg:
+        agent = DDPG(learning_rate=0.001, batch_size=256, learning_starts=10000, noise_std=0.1, hidden_layers=2, hidden_size=400)
     else:
         agent = None
 
     if agent is not None:
         train_agent(agent=agent,
                     environment=env_name,
-                    sequential=sequential, parallel=parallel,
-                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    sequential=1, parallel=1,
+                    trainer=Adaptive_RL.Trainer(steps=1000000.0, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
 
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
@@ -222,7 +229,7 @@ if __name__ == "__main__":
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
 
-        plot.plot(paths=save_folder, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training")
+        plot.plot(paths=log_dir, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training")
 
         env.close()
     else:

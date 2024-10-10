@@ -14,15 +14,30 @@ class DDPG(base_agent.BaseAgent):
 
     def __init__(self, model=None, hidden_size=256, hidden_layers=2, discount_factor=0.99, replay_buffer=None,
                  exploration=None, actor_updater=None, critic_updater=None, batch_size=512, return_step=5,
-                 steps_between_batches=20, replay_buffer_size=10e6):
+                 steps_between_batches=20, replay_buffer_size=10e6, learning_rate=3e-4, noise_std=0.1,
+                 learning_starts=20000):
+        # Store all the inputs in a dictionary
+        self.config = {
+            "agent" : "DDPG",
+            "learning_rate": learning_rate,
+            "noise_std": noise_std,
+            "learning_starts": learning_starts,
+            "hidden_size": hidden_size,
+            "hidden_layers": hidden_layers,
+            "discount_factor": discount_factor,
+            "batch_size": batch_size,
+            "return_step": return_step,
+            "steps_between_batches": steps_between_batches,
+            "replay_buffer_size": replay_buffer_size,
+        }
         self.model = model or neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = replay_buffer or ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                                            batch_size=batch_size,
                                                            steps_between_batches=steps_between_batches,
                                                            size=replay_buffer_size)
-        self.exploration = exploration or explorations.NormalNoiseExploration()
-        self.actor_updater = actor_updater or DeterministicPolicyGradient()
-        self.critic_updater = critic_updater or DeterministicQLearning()
+        self.exploration = exploration or explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
+        self.actor_updater = actor_updater or DeterministicPolicyGradient(lr_actor=learning_rate)
+        self.critic_updater = critic_updater or DeterministicQLearning(lr_critic=learning_rate)
 
     def initialize(self, observation_space, action_space, seed=None):
         super().initialize(observation_space, action_space, seed)
@@ -72,12 +87,13 @@ class DDPG(base_agent.BaseAgent):
         self.model.load_state_dict(torch.load(path, weights_only=True))
 
     def _policy(self, observations):
-        return self._greedy_actions(observations).numpy()
+        return self._greedy_actions(observations).cpu().numpy()
 
     def _greedy_actions(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            return self.model.actor(observations)
+            output = self.model.actor(observations).sample()
+            return output
 
     def _update(self, steps):
         keys = ('observations', 'actions', 'next_observations', 'rewards',
@@ -106,3 +122,10 @@ class DDPG(base_agent.BaseAgent):
         actor_infos = self.actor_updater(observations)
         self.model.update_targets()
         return dict(critic=critic_infos, actor=actor_infos)
+
+    def get_config(self):
+        return self.config
+
+    def __repr__(self):
+        return f"lr_actor={self.lr_actor}, lr_critic={self.lr_critic}, hidden_size={self.hidden_size}, hidden_layers={self.hidden_layers}, discount_factor={self.discount_factor}, batch_size={self.batch_size}, entropy_coeff={self.entropy_coeff}, clip_range={self.clip_range}"
+

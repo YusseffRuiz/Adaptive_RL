@@ -281,11 +281,11 @@ class BaseModel(torch.nn.Module):
         return ActorCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, torch.nn.ReLU),
                 head=GaussianPolicyHead()),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, torch.nn.ReLU),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )

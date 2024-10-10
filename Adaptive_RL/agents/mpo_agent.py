@@ -35,6 +35,16 @@ class MPO(base_agent.BaseAgent):
                                                                   action_penalization=action_penalization,
                                                                   gradient_clip=gradient_clip)
         self.critic_updater = critic_updater or neural_networks.ExpectedSARSA(lr_critic=lr_critic)
+        self.config = {
+            "agent": "MPO",
+            "lr_actor": lr_actor,
+            "lr_critic": lr_critic,
+            "hidden_size": hidden_size,
+            "hidden_layers": hidden_layers,
+            "discount_factor": discount_factor,
+            "batch_size": batch_size,
+            "replay_buffer_size": replay_buffer_size,
+        }
 
     def initialize(self, observation_space, action_space, seed=None):
         super().initialize(observation_space, action_space, seed=seed)
@@ -121,3 +131,6 @@ class MPO(base_agent.BaseAgent):
             path = path + '.pt'
         logger.log(f'\nLoading weights from {path}')
         self.model.load_state_dict(torch.load(path, weights_only=True))
+
+    def get_config(self):
+        return self.config

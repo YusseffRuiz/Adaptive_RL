@@ -50,6 +50,17 @@ class SAC(DDPG):
         super().__init__(model, hidden_size, discount_factor, replay_buffer, exploration, actor_updater,
                          critic_updater, batch_size, return_step, steps_between_batches, replay_buffer_size)
 
+        self.config = {
+            "agent": "SAC",
+            "lr_actor": lr_actor,
+            "lr_critic": lr_critic,
+            "hidden_size": hidden_size,
+            "hidden_layers": hidden_layers,
+            "discount_factor": discount_factor,
+            "batch_size": batch_size,
+            "replay_buffer_size": replay_buffer_size,
+        }
+
     def _stochastic_actions(self, observations):
         """
         Samples stochastic actions from the actor network given the current observations.

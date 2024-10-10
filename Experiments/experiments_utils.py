@@ -51,6 +51,8 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     total_rewards = []
     range_episodes = num_episodes
     mujoco_env = hasattr(env, "sim")
+    episode_start = np.ones((1,), dtype=bool)
+    lstm_states = None
     for i in range(range_episodes):
         obs, *_ = env.reset()
         done = False
@@ -60,10 +62,14 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             cnt += 1
             with torch.no_grad():
                 if algorithm != "random":
-                    action = model.test_step(obs)
+                    if algorithm == "zoo":
+                        action, lstm_states = model.predict(obs, state=lstm_states, episode_start=episode_start, deterministic=False)
+                    else:
+                        action = model.test_step(obs)
                 else:
                     action = env.action_space.sample()
             obs, reward, done, *_ = env.step(action)
+            episode_start = done
             if mujoco_env:
                 #Try rendering for MyoSuite
                 env.sim.renderer.render_to_window()
@@ -79,9 +85,10 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
 
 
-def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500, env_name=None):
+def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, duration=1500, env_name=None, deterministic=False):
 
     save_folder = f"Experiments/{env_name}/images"
+    action_dim = len(env.action_space.sample())
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -92,9 +99,11 @@ def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500, env_name
     dt = 5  # how many steps per dt
     obs, *_ = env.reset()
     previous_vel = 0
+    episode_start = np.ones((env.num_envs,), dtype=bool)
     total_distance = []
     for episode in range(episodes_num):
-        obs, *_ = env.reset()
+        obs = env.reset()
+        lstm_states = None
         reward = 0
         ep_energy = []
         ep_velocity = []
@@ -104,15 +113,20 @@ def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500, env_name
         ep_joint_velocities = []
         position = 0
         for step in range(duration):
-            with torch.no_grad():
-                if alg == "MPO":
-                    action = agent.test_step(obs)
-                elif alg == "SAC":
-                    action, *_ = agent.predict(obs, deterministic=True)
-                else:
-                    action = env.action_space.sample()
-            obs, rw, done, truncated, info = env.step(action)
-            position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info)
+            if alg == "MPO":
+                action = agent.test_step(obs)
+            elif alg == "SAC":
+                action, *_ = agent.predict(obs, deterministic=True)
+            else:
+                action, lstm_states = agent.predict(
+                        obs,  # type: ignore[arg-type]
+                        state=lstm_states,
+                        episode_start=episode_start,
+                        deterministic=deterministic,
+                )
+            obs, rw, done, info = env.step(action)
+            episode_start = done
+            position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
             if step % dt == 0:
                 acceleration = get_acceleration(previous_vel, velocity, dt)
                 ep_acceleration.append(acceleration)
@@ -151,18 +165,15 @@ def evaluate_experiment(agent, env, alg, episodes_num=5, duration=1500, env_name
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
     print(f"Average Speed over {episodes_num} episodes: {velocity_total:.2f} m/s with "
           f"total energy: {average_energy:.2f} Joules per meter")
-    right_hip_joints, right_knee_joints, right_ankle_joints, left_hip_joints, left_knee_joints, left_ankle_joints = (
-        separate_joints(total_joint_angles))
-    right_hip_vels, right_knee_vels, right_ankle_vels, left_hip_vels, left_knee_vels, left_ankle_vels = (
-        separate_joints(total_velocity_angles))
-    right_hip_torque, right_knee_torque, right_ankle_torque, left_hip_torque, left_knee_torque, left_ankle_torque = (
-        separate_joints(total_torques))
+    joints = separate_joints(total_joint_angles, action_dim)
+    joints_vel = separate_joints(total_velocity_angles, action_dim)
+    joints_torque = separate_joints(total_torques, action_dim)
 
     os.makedirs(save_folder, exist_ok=True)
-    plot_data(data=right_hip_joints, data2=left_hip_joints, data1_name="right hip", data2_name="left hip", y_axis_name="Angle (°/s)", title="Hip Joint movement")
+    plot_data(data=joints[0], data2=joints[2], data1_name="right hip", data2_name="left hip", y_axis_name="Angle (°/s)", title="Hip Joint movement")
     statistical_analysis(total_velocity, y_axis_name="Velocity(m/s", title=f"Velocity (m/s) {velocity_total:.2f} m/s", save_folder=save_folder, figure_name="Total_Velocity")
-    cross_fourier_transform(right_hip_joints, left_hip_joints, joint="Hip", save_folder=save_folder)
-    perform_autocorrelation(right_hip_joints, left_hip_joints, joint="Hip", save_folder=save_folder)
+    cross_fourier_transform(joints[0], joints[2], joint="Hip", save_folder=save_folder)
+    perform_autocorrelation(joints[0], joints[2], joint="Hip", save_folder=save_folder)
     jerk = get_jerk(total_accelerations, dt)
     statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="jerk and acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
     statistical_analysis(jerk, x_axis_name="Time", y_axis_name="Jerk (m/s^3)", title="jerk (m/s^3)", save_folder=save_folder, figure_name="Jerk")
@@ -303,6 +314,7 @@ def get_data(info):
     "total_energy": np.sum(action) in N/m
     :return: specific values
     """
+
     position = info["x_position"]
     velocity = info["x_velocity"]
     joint_angles = info["joint_angles"] * 180/math.pi
@@ -313,16 +325,23 @@ def get_data(info):
     return position, velocity, joint_angles, joint_velocity, torques, step_energy
 
 
-def separate_joints(joint_list):
+def separate_joints(joint_list, action_dim):
     # Split the joints for each step across all episodes
-    right_hip = joint_list[:, :, 0]  # Extract right hip
-    right_knee = joint_list[:, :, 1]  # Extract right knee
-    right_ankle = joint_list[:, :, 2]  # Extract right ankle
-    left_hip = joint_list[:, :, 3]  # Extract left hip
-    left_knee = joint_list[:, :, 4]  # Extract left knee
-    left_ankle = joint_list[:, :, 5]  # Extract left ankle
+    if action_dim == 6:
+        right_hip = joint_list[:, :, 0]  # Extract right hip
+        right_knee = joint_list[:, :, 1]  # Extract right knee
+        right_ankle = joint_list[:, :, 2]  # Extract right ankle
+        left_hip = joint_list[:, :, 3]  # Extract left hip
+        left_knee = joint_list[:, :, 4]  # Extract left knee
+        left_ankle = joint_list[:, :, 5]  # Extract left ankle
 
-    return np.array(right_hip), np.array(right_knee), np.array(right_ankle), np.array(left_hip), np.array(left_knee), np.array(left_ankle)
+        return np.array(right_hip), np.array(right_knee), np.array(right_ankle), np.array(left_hip), np.array(left_knee), np.array(left_ankle)
+    else:
+        right_hip = joint_list[:, :, 0]  # Extract right hip
+        right_knee = joint_list[:, :, 1]  # Extract right knee
+        left_hip = joint_list[:, :, 2]  # Extract left hip
+        left_knee = joint_list[:, :, 3]  # Extract left knee
+        return np.array(right_hip), np.array(right_knee), np.array(left_hip), np.array(left_knee)
 
 
 def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None,  x_data=None, y_axis_name="data", x_axis_name="time", title="data plot over time", save_folder=None, figure_name="figure"):
@@ -415,7 +434,6 @@ def get_energy_per_meter(total_energy, total_distance, average, save_folder=None
     plt.ylabel('Energy (Joules)')
     plt.title(f'Energy Consumption per Meter, Average: {average:.2f} J/m')
     plt.grid(True)
-    plt.legend()
     if save_folder is not None:
         # Define the path where the image will be saved
         image_path = os.path.join(save_folder, "EnergyPerMeter.png")
