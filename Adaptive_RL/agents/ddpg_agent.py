@@ -1,8 +1,8 @@
 import torch
-from Adaptive_RL import logger, ReplayBuffer, neural_networks
+from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
-from Adaptive_RL.utils import explorations
+from Adaptive_RL.utils import explorations, ReplayBuffer
 
 
 class DDPG(base_agent.BaseAgent):

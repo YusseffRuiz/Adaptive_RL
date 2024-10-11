@@ -1,8 +1,9 @@
 from importlib.metadata import distributions
 
 import torch
-from Adaptive_RL import logger, Segment, neural_networks
+from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
+from Adaptive_RL.utils import Segment
 
 
 class PPO(base_agent.BaseAgent):

@@ -1,6 +1,6 @@
 from .builders import Gym, MyoSuite
 from .utils import logger, normalizers
-from .utils.utils import load_checkpoint, register_new_env, get_last_checkpoint
+from .utils.utils import load_checkpoint, register_new_env, get_last_checkpoint, load_agent, record_video
 from .utils.replay_buffer import ReplayBuffer, Segment
 from .agents import MPO, SAC, DDPG, PPO
 from .trainer import Trainer
