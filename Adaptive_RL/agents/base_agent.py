@@ -1,5 +1,7 @@
 import abc
-
+import torch
+import os
+from Adaptive_RL import logger
 
 class BaseAgent(abc.ABC):
     """
@@ -8,7 +10,7 @@ class BaseAgent(abc.ABC):
     """
 
     def initialize(self, observation_space, action_space, seed=None):
-        pass
+        self.model = None
 
     @abc.abstractmethod
     def step(self, observations, steps):
@@ -34,8 +36,17 @@ class BaseAgent(abc.ABC):
 
     def save(self, path):
         """Saves the agent weights during training."""
-        pass
+        path = path + '.pt'
+        logger.log(f'\nSaving weights to {path}')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save(self.model.state_dict(), path)
 
     def load(self, path):
         """Reloads the agent weights from a checkpoint."""
+        if not path[-3:] == '.pt':
+            path = path + '.pt'
+        logger.log(f'\nLoading weights from {path}')
+        self.model.load_state_dict(torch.load(path, weights_only=True))
+
+    def get_config(self):
         pass

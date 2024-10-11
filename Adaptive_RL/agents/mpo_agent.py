@@ -1,5 +1,4 @@
 import torch
-import os
 from Adaptive_RL import logger, ReplayBuffer, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import MaximumAPosterioriPolicyOptimization
@@ -13,15 +12,12 @@ class MPO(base_agent.BaseAgent):
     """
 
     def __init__(
-        self, model=None, hidden_size=256, hidden_layers=2, critic_updater=None, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
+        self, hidden_size=256, hidden_layers=2, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
             action_penalization=True, gradient_clip=0.1, batch_size=512, return_step=5, steps_between_batches=20,
             replay_buffer_size=10e6):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.last_actions = None
-        self.last_observations = None
-        self.model = model or neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
                                           size=replay_buffer_size)
@@ -34,7 +30,7 @@ class MPO(base_agent.BaseAgent):
                                                                   per_dim_constraining=per_dim_constraining,
                                                                   action_penalization=action_penalization,
                                                                   gradient_clip=gradient_clip)
-        self.critic_updater = critic_updater or neural_networks.ExpectedSARSA(lr_critic=lr_critic)
+        self.critic_updater = neural_networks.ExpectedSARSA(lr_critic=lr_critic)
         self.config = {
             "agent": "MPO",
             "lr_actor": lr_actor,
@@ -120,17 +116,6 @@ class MPO(base_agent.BaseAgent):
         self.model.update_targets()
         return dict(critic=critic_infos, actor=actor_infos)
 
-    def save(self, path):
-        path = path + '.pt'
-        logger.log(f'\nSaving weights to {path}')
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.model.state_dict(), path)
-
-    def load(self, path):
-        if not path[-3:] == '.pt':
-            path = path + '.pt'
-        logger.log(f'\nLoading weights from {path}')
-        self.model.load_state_dict(torch.load(path, weights_only=True))
 
     def get_config(self):
         return self.config

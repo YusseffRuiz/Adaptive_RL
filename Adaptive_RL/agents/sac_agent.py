@@ -1,5 +1,4 @@
 import torch
-import os
 from Adaptive_RL import ReplayBuffer, neural_networks
 from Adaptive_RL.agents import DDPG
 from Adaptive_RL.neural_networks import TwinCriticSoftDeterministicPolicyGradient, TwinCriticSoftQLearning
@@ -36,28 +35,30 @@ class SAC(DDPG):
     critic_updater : TwinCriticSoftQLearning
         Update method for the critic network, using the Soft Q-Learning technique. Defaults to `TwinCriticSoftQLearning`.
     """
-    def __init__(self, model=None, hidden_size=256, hidden_layers=2, lr_actor=3e-4, lr_critic=3e-4, discount_factor=0.99,
-                 replay_buffer=None, exploration=None, actor_updater=None, critic_updater=None,
-                 batch_size=512, return_step=5, steps_between_batches=20, replay_buffer_size=10e6
-                 ):
-        model = model or neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
-        exploration = exploration or explorations.NormalNoiseExploration()
-        replay_buffer = replay_buffer or ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
+    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, batch_size=512, return_step=5,
+                 discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e6, noise_std=0.1,
+                 learning_starts=20000):
+        model = neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        exploration = explorations.NormalNoiseExploration()
+        replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                                       batch_size=batch_size, steps_between_batches=steps_between_batches
                                                       , size=replay_buffer_size)
-        actor_updater = actor_updater or TwinCriticSoftDeterministicPolicyGradient(lr_actor=lr_actor)
-        critic_updater = critic_updater or TwinCriticSoftQLearning(lr_critic=lr_critic)
-        super().__init__(model, hidden_size, discount_factor, replay_buffer, exploration, actor_updater,
-                         critic_updater, batch_size, return_step, steps_between_batches, replay_buffer_size)
+        actor_updater = TwinCriticSoftDeterministicPolicyGradient(lr_actor=learning_rate)
+        critic_updater = TwinCriticSoftQLearning(lr_critic=learning_starts)
+        super().__init__(hidden_size, hidden_layers, learning_rate, batch_size, return_step, discount_factor,
+                         steps_between_batches, replay_buffer_size, noise_std, learning_starts)
 
         self.config = {
             "agent": "SAC",
-            "lr_actor": lr_actor,
-            "lr_critic": lr_critic,
+            "learning_rate": learning_rate,
+            "noise_std": noise_std,
+            "learning_starts": learning_starts,
             "hidden_size": hidden_size,
             "hidden_layers": hidden_layers,
             "discount_factor": discount_factor,
             "batch_size": batch_size,
+            "return_step": return_step,
+            "steps_between_batches": steps_between_batches,
             "replay_buffer_size": replay_buffer_size,
         }
 
@@ -67,7 +68,7 @@ class SAC(DDPG):
 
         Parameters:
         ----------
-        observations : np.array or torch.Tensor
+        observations : np array or torch.Tensor
         The current state/observations from the environment.
 
         Returns:
@@ -84,7 +85,7 @@ class SAC(DDPG):
         Returns the policy action by sampling stochastic actions from the actor model.
         Already as numppy array
         """
-        return self._stochastic_actions(observations).cpu().numpy()
+        return self._stochastic_actions(observations).numpy()
 
     def _greedy_actions(self, observations):
         """

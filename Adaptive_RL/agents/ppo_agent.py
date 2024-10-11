@@ -1,5 +1,6 @@
+from importlib.metadata import distributions
+
 import torch
-import os
 from Adaptive_RL import logger, Segment, neural_networks
 from Adaptive_RL.agents import base_agent
 
@@ -7,24 +8,24 @@ from Adaptive_RL.agents import base_agent
 class PPO(base_agent.BaseAgent):
     """
     Implementation of PPO (Proximal Policy Optimization) algorithm.
+    On Policy
     https://arxiv.org/pdf/1707.06347.pdf
     """
 
-    def __init__(self, model=None, hidden_size=256, lr_actor=3e-4, lr_critic=3e-4, discount_factor=0.99,
-                 replay_buffer=None, actor_updater=None, critic_updater=None, batch_size=None, trace_decay=0.97,
-                 batch_iterations=80, replay_buffer_size=4096, clip_range=0, entropy_coeff=0.01, hidden_layers=2):
+    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, discount_factor=0.99,
+                 batch_size=None, trace_decay=0.97,
+                 batch_iterations=80, replay_buffer_size=4096, clip_range=0, entropy_coeff=0.01):
         # Store all the inputs in a dictionary
-        self.model = model or neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
-        self.replay_buffer = replay_buffer or Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
+        self.model = neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        self.replay_buffer = Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
                                                       batch_size=batch_size, discount_factor=discount_factor,
                                                       trace_decay=trace_decay)
-        self.actor_updater = actor_updater or neural_networks.ClippedRatio(lr_actor=lr_actor, ratio_clip=clip_range,
+        self.actor_updater = neural_networks.ClippedRatio(learning_rate=learning_rate, ratio_clip=clip_range,
                                                                            entropy_coeff=entropy_coeff)
-        self.critic_updater = critic_updater or neural_networks.VRegression(lr_critic=lr_critic)
+        self.critic_updater = neural_networks.VRegression(lr_critic=learning_rate)
         self.config = {
             "agent" : "PPO",
-            "lr_actor": lr_actor,
-            "lr_critic": lr_critic,
+            "learning_rate": learning_rate,
             "hidden_size": hidden_size,
             "hidden_layers": hidden_layers,
             "discount_factor": discount_factor,
@@ -35,7 +36,6 @@ class PPO(base_agent.BaseAgent):
         }
 
     def initialize(self, observation_space, action_space, seed=None):
-        super().initialize(observation_space, action_space, seed)
         self.model.initialize(observation_space, action_space)
         self.replay_buffer.initialize(seed)
         self.actor_updater.initialize(self.model)
@@ -74,17 +74,6 @@ class PPO(base_agent.BaseAgent):
         # Sample actions for testing.
         return self._test_step(observations).cpu().numpy()
 
-    def save(self, path):
-        path = path + '.pt'
-        logger.log(f'\nSaving weights to {path}')
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.model.state_dict(), path)
-
-    def load(self, path):
-        if not path[-3:] == '.pt':
-            path = path + '.pt'
-        logger.log(f'\nLoading weights from {path}')
-        self.model.load_state_dict(torch.load(path, weights_only=True))
 
     def _step(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
@@ -101,7 +90,9 @@ class PPO(base_agent.BaseAgent):
     def _test_step(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            return self.model.actor(observations).sample().mean(dim=0)
+            action_distributions = self.model.actor(observations)
+            actions = action_distributions.sample()[0]
+            return actions
 
     def _evaluate(self, observations, next_observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)

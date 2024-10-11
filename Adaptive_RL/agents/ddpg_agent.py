@@ -1,5 +1,4 @@
 import torch
-import os
 from Adaptive_RL import logger, ReplayBuffer, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
@@ -12,10 +11,8 @@ class DDPG(base_agent.BaseAgent):
     DDPG: https://arxiv.org/pdf/1509.02971.pdf
     """
 
-    def __init__(self, model=None, hidden_size=256, hidden_layers=2, discount_factor=0.99, replay_buffer=None,
-                 exploration=None, actor_updater=None, critic_updater=None, batch_size=512, return_step=5,
-                 steps_between_batches=20, replay_buffer_size=10e6, learning_rate=3e-4, noise_std=0.1,
-                 learning_starts=20000):
+    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, batch_size=512, return_step=5,
+                 discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e6, noise_std=0.1, learning_starts=20000):
         # Store all the inputs in a dictionary
         self.config = {
             "agent" : "DDPG",
@@ -30,14 +27,14 @@ class DDPG(base_agent.BaseAgent):
             "steps_between_batches": steps_between_batches,
             "replay_buffer_size": replay_buffer_size,
         }
-        self.model = model or neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
-        self.replay_buffer = replay_buffer or ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
+        self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                                            batch_size=batch_size,
                                                            steps_between_batches=steps_between_batches,
                                                            size=replay_buffer_size)
-        self.exploration = exploration or explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
-        self.actor_updater = actor_updater or DeterministicPolicyGradient(lr_actor=learning_rate)
-        self.critic_updater = critic_updater or DeterministicQLearning(lr_critic=learning_rate)
+        self.exploration = explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
+        self.actor_updater = DeterministicPolicyGradient(lr_actor=learning_rate)
+        self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
 
     def initialize(self, observation_space, action_space, seed=None):
         super().initialize(observation_space, action_space, seed)
@@ -68,32 +65,24 @@ class DDPG(base_agent.BaseAgent):
         if self.model.return_normalizer:
             self.model.return_normalizer.record(rewards)
 
+        if self.replay_buffer.ready(steps):
+            self._update(steps)
+
         self.exploration.update(resets)
+
 
     def test_step(self, observations):
         # Greedy actions for testing.
-        return self._greedy_actions(observations).cpu().numpy()
+        return self._greedy_actions(observations).numpy()
 
-    def save(self, path):
-        path = path + '.pt'
-        logger.log(f'\nSaving weights to {path}')
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.model.state_dict(), path)
-
-    def load(self, path):
-        if not path[-3:] == '.pt':
-            path = path + '.pt'
-        logger.log(f'\nLoading weights from {path}')
-        self.model.load_state_dict(torch.load(path, weights_only=True))
 
     def _policy(self, observations):
-        return self._greedy_actions(observations).cpu().numpy()
+        return self._greedy_actions(observations).numpy()
 
     def _greedy_actions(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            output = self.model.actor(observations).sample()
-            return output
+            return self.model.actor(observations)
 
     def _update(self, steps):
         keys = ('observations', 'actions', 'next_observations', 'rewards',
@@ -125,7 +114,3 @@ class DDPG(base_agent.BaseAgent):
 
     def get_config(self):
         return self.config
-
-    def __repr__(self):
-        return f"lr_actor={self.lr_actor}, lr_critic={self.lr_critic}, hidden_size={self.hidden_size}, hidden_layers={self.hidden_layers}, discount_factor={self.discount_factor}, batch_size={self.batch_size}, entropy_coeff={self.entropy_coeff}, clip_range={self.clip_range}"
-
