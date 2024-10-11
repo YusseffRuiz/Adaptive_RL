@@ -2,11 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
-import os
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
-import yaml
-import argparse
 import Experiments.experiments_utils as trials
 from myosuite.utils import gym
 
@@ -145,9 +142,7 @@ def train_agent(
     agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                      seed=seed)
 
-    config = agent.get_config()
-    for key, value in config.items():
-        print(f"{key}: {value}")
+    agent.get_config(print_conf=True)
 
     # Load the weights of the agent form a checkpoint.
     if checkpoint_path:
@@ -183,9 +178,11 @@ if __name__ == "__main__":
     epochs = int(max_steps / 1000)
     save_steps = int(max_steps / 500)
 
-    # Hyperparameters
+    # Training Mode
     sequential = 4
     parallel = 2
+
+    # Hyperparameters
     learning_rate = 3.56987e-05
     lr_critic = 3e-4
     ent_coeff = 0.00238306
@@ -197,6 +194,7 @@ if __name__ == "__main__":
     batch_size = 256
     replay_buffer_size = 10e5
     epsilon = 0.1
+    learning_starts = 10000
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag,
                                                                  algorithm=training_algorithm, create=True,
@@ -206,7 +204,10 @@ if __name__ == "__main__":
         agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
     elif training_algorithm == trianing_sac:
-        agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma, hidden_layers=layers_number,)
+
+        agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
+                    hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
+                    learning_starts=learning_starts)
     elif training_algorithm == training_ppo:
         agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number, discount_factor=gamma,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
