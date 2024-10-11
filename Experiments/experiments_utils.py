@@ -51,8 +51,6 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     total_rewards = []
     range_episodes = num_episodes
     mujoco_env = hasattr(env, "sim")
-    episode_start = np.ones((1,), dtype=bool)
-    lstm_states = None
     for i in range(range_episodes):
         obs, *_ = env.reset()
         done = False
@@ -62,14 +60,10 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             cnt += 1
             with torch.no_grad():
                 if algorithm != "random":
-                    if algorithm == "zoo":
-                        action, lstm_states = model.predict(obs, state=lstm_states, episode_start=episode_start, deterministic=False)
-                    else:
-                        action = model.test_step(obs)
+                    action = model.test_step(obs)
                 else:
                     action = env.action_space.sample()
             obs, reward, done, info, *_ = env.step(action)
-            episode_start = done
             if mujoco_env:
                 #Try rendering for MyoSuite
                 env.sim.renderer.render_to_window()
@@ -113,10 +107,8 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
         ep_joint_velocities = []
         position = 0
         for step in range(duration):
-            if alg == "MPO":
+            if alg != "random":
                 action = agent.test_step(obs)
-            elif alg == "SAC":
-                action, *_ = agent.predict(obs, deterministic=True)
             else:
                 action, lstm_states = agent.predict(
                         obs,  # type: ignore[arg-type]

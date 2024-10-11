@@ -115,7 +115,3 @@ class MPO(base_agent.BaseAgent):
         actor_infos = self.actor_updater(observations)
         self.model.update_targets()
         return dict(critic=critic_infos, actor=actor_infos)
-
-
-    def get_config(self):
-        return self.config

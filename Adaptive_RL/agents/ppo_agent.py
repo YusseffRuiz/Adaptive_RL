@@ -148,6 +148,4 @@ class PPO(base_agent.BaseAgent):
         critic_infos = self.critic_updater(observations, returns)
         return dict(actor=actor_infos, critic=critic_infos)
 
-    def get_config(self):
-        return self.config
 

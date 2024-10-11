@@ -11,6 +11,7 @@ class BaseAgent(abc.ABC):
 
     def initialize(self, observation_space, action_space, seed=None):
         self.model = None
+        self.config = None
 
     @abc.abstractmethod
     def step(self, observations, steps):
@@ -48,5 +49,11 @@ class BaseAgent(abc.ABC):
         logger.log(f'\nLoading weights from {path}')
         self.model.load_state_dict(torch.load(path, weights_only=True))
 
-    def get_config(self):
-        pass
+    def get_config(self, print_conf=False):
+        """
+        Print all configuration, if required, can be saved in variable
+        """
+        if print_conf:
+            for key, value in self.config.items():
+                print(f"{key}: {value}")
+        return self.config

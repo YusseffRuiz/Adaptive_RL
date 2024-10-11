@@ -6,7 +6,6 @@ import Experiments.experiments_utils as trials
 import warnings
 import logging
 from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
-from rl_zoo3 import ALGOS
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -59,8 +58,6 @@ def main_running():
 
         else:
             """ load network weights """
-            # agent.model.eval()
-            print(agent.get_config())
             trials.evaluate(agent, env, algorithm, num_episodes)
     else:
         algorithm = "random"
@@ -103,7 +100,6 @@ def load_agent(config, path, env):
         agent = SAC(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["neuron_number"],
                     discount_factor=config.agent["gamma"], hidden_layers=config.agent["layers_number"],)
     elif config.agent["agent"] == "PPO":
-        print(config)
         agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
                     hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
                     batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
@@ -112,6 +108,7 @@ def load_agent(config, path, env):
         agent = None
     agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
     agent.load(path)
+    agent.get_config(print_conf=True)
     return agent
 
 
