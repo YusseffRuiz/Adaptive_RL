@@ -1,9 +1,16 @@
 import os
-from Adaptive_RL import logger
+from Adaptive_RL.agents import SAC, PPO, MPO, DDPG
+from Adaptive_RL.utils import logger
 from gymnasium.envs.registration import register
 import yaml
 import argparse
+from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
 
+
+"""
+TODO:
+Modify video recorder 
+"""
 
 def get_last_checkpoint(path):
     arguments_path = os.path.join(path, 'config.yaml')
@@ -78,6 +85,54 @@ def load_checkpoint(checkpoint, path):
                 logger.error(f'No checkpoint found in {checkpoint_path}, starting from scratch')
                 checkpoint_path = None
     return checkpoint_path
+
+
+def load_agent(config, path, env):
+    if config.agent["agent"] == "DDPG":
+        agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
+                     learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                     hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"])
+    elif config.agent["agent"] == "MPO":
+        agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], lr_dual=config.agent["lr_dual"],
+                    hidden_size=config.agent["neuron_number"], discount_factor=config.agent["gamma"],
+                    replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["layers_number"])
+    elif config.agent["agent"] == "SAC":
+        agent = SAC(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["neuron_number"],
+                    discount_factor=config.agent["gamma"], hidden_layers=config.agent["layers_number"],)
+    elif config.agent["agent"] == "PPO":
+        agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
+                    hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
+                    batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
+                    clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"])
+    else:
+        agent = None
+    agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+    agent.load(path)
+    agent.get_config(print_conf=True)
+    return agent
+
+def record_video(env_name, video_folder, alg, agent):
+    video_length = 1000
+    vec_env = DummyVecEnv([lambda: gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)])
+
+    obs = vec_env.reset()
+    # Record the video starting at the first step
+    vec_env = VecVideoRecorder(vec_env, video_folder,
+                               record_video_trigger=lambda x: x == 0, video_length=video_length,
+                               name_prefix=f"{alg}-agent-{env_name}")
+    vec_env.reset()
+    for _ in range(video_length + 1):
+        if alg == "mpo":
+            action = agent.test_step(obs)
+        elif alg == "sac":
+            action, *_ = [agent.predict(obs, deterministic=True)]
+            action = action[0]
+        else:
+            action, *_ = [agent.select_action((obs[None, :]))]
+            action = action.cpu().numpy()[0]
+        obs, _, _, _ = vec_env.step(action)
+    # Save the video
+    vec_env.close()
 
 
 def register_new_env():
