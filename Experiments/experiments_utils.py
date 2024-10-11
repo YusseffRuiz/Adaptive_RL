@@ -68,7 +68,7 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
                         action = model.test_step(obs)
                 else:
                     action = env.action_space.sample()
-            obs, reward, done, *_ = env.step(action)
+            obs, reward, done, info, *_ = env.step(action)
             episode_start = done
             if mujoco_env:
                 #Try rendering for MyoSuite

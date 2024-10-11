@@ -5,9 +5,6 @@ import torch
 class MeanStd(torch.nn.Module):
     def __init__(self, mean=0, std=1, clip=None, shape=None):
         super().__init__()
-        self._std = None
-        self._mean = None
-        self.mean_sq = None
         self.mean = mean
         self.std = std
         self.clip = clip
@@ -29,15 +26,12 @@ class MeanStd(torch.nn.Module):
         else:
             self.std = np.array(self.std, np.float32)
         self.mean_sq = np.square(self.mean)
-        self._mean = torch.nn.Parameter(torch.as_tensor(self.mean, dtype=torch.float32), requires_grad=False)
-        self._std = torch.nn.Parameter(torch.as_tensor(self.std, dtype=torch.float32), requires_grad=False)
+        self._mean = torch.nn.Parameter(torch.as_tensor(
+            self.mean, dtype=torch.float32), requires_grad=False)
+        self._std = torch.nn.Parameter(torch.as_tensor(
+            self.std, dtype=torch.float32), requires_grad=False)
 
     def forward(self, val):
-        """
-        Normalize values to avoid unexpected actions
-        :param val: Values to be normalized
-        :return: clipped values of the mean and standard deviation
-        """
         with torch.no_grad():
             val = (val - self._mean) / self._std
             if self.clip is not None:
@@ -45,11 +39,6 @@ class MeanStd(torch.nn.Module):
         return val
 
     def unnormalize(self, val):
-        """
-        Return to original values
-        :param val: clipped values
-        :return: original values
-        """
         return val * self._std + self._mean
 
     def record(self, values):

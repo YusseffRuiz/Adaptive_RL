@@ -30,7 +30,7 @@ class Critic(torch.nn.Module):
         self.head = head
 
     def initialize(self, observation_space, action_space, observation_normalizer=None, return_normalizer=None):
-        size = self.encoder.initialize(observation_space, action_space, observation_normalizer)
+        size = self.encoder.initialize(observation_space, observation_normalizer)
         size = self.torso.initialize(size)
         self.head.initialize(size, return_normalizer)
 
@@ -61,8 +61,6 @@ class ValueHead(torch.nn.Module):
 
     def __init__(self, fn=None):
         super().__init__()
-        self.v_layer = None
-        self.return_normalizer = None
         self.fn = fn
 
     def initialize(self, input_size, return_normalizer=None):

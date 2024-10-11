@@ -1,6 +1,6 @@
 import torch
 import copy
-from Adaptive_RL.neural_networks.utils import local_optimizer, trainable_variables
+from Adaptive_RL.neural_networks.utils import local_optimizer, trainable_variables, tile, merge_first_two_dims
 
 class ActorCriticWithTargets(torch.nn.Module):
     """
@@ -215,19 +215,19 @@ class ActorTwinCriticWithTargets(torch.nn.Module):
 
 class ClippedRatio:
     def __init__(
-        self, ratio_clip=0.2, kl_threshold=0.015,
-        entropy_coeff=0, gradient_clip=0, lr_actor=3e-4
+        self, learning_rate=3e-4, ratio_clip=0.2, kl_threshold=0.015,
+        entropy_coeff=0, gradient_clip=0
     ):
+        self.learning_rate = learning_rate
         self.ratio_clip = ratio_clip
         self.kl_threshold = kl_threshold
         self.entropy_coeff = entropy_coeff
         self.gradient_clip = gradient_clip
-        self.lr_actor = lr_actor
 
     def initialize(self, model):
         self.model = model
         self.variables = trainable_variables(self.model.actor)
-        self.optimizer = local_optimizer(self.variables, lr=self.lr_actor)
+        self.optimizer = local_optimizer(self.variables, lr=self.learning_rate)
 
     def __call__(self, observations, actions, advantages, log_probs):
         if (advantages == 0.).all():
@@ -472,13 +472,8 @@ class MaximumAPosterioriPolicyOptimization:
         epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
         initial_log_alpha_mean=1., initial_log_alpha_std=10.,
         min_log_dual=-18., per_dim_constraining=True, action_penalization=True,
-        gradient_clip=0.1, lr_actor=3e-4, lr_dual=1e-4,
+        gradient_clip=0.1, lr_actor=3e-4, lr_dual=1e-2,
     ):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.log_alpha_std = None
-        self.log_alpha_mean = None
-        self.actor_variables = None
-        self.model = None
         self.num_samples = num_samples
         self.epsilon = epsilon
         self.epsilon_mean = epsilon_mean
@@ -494,15 +489,6 @@ class MaximumAPosterioriPolicyOptimization:
         self.lr_actor = lr_actor
         self.lr_dual = lr_dual
 
-        # Dual Variables
-        self.dual_variables = []
-        self.log_temperature = torch.nn.Parameter(torch.as_tensor(
-            [initial_log_temperature], dtype=torch.float32))
-        self.dual_variables.append(self.log_temperature)
-        if self.action_penalization:
-            self.log_penalty_temperature = torch.nn.Parameter(torch.as_tensor(
-                [initial_log_temperature], dtype=torch.float32))
-            self.dual_variables.append(self.log_penalty_temperature)
 
     def initialize(self, model, action_space):
         """
@@ -516,7 +502,11 @@ class MaximumAPosterioriPolicyOptimization:
         self.actor_variables = trainable_variables(self.model.actor)
         self.actor_optimizer = local_optimizer(params=self.actor_variables, lr=self.lr_actor)
 
-        # Initialize dual variables for KL regularization
+        # Dual variables.
+        self.dual_variables = []
+        self.log_temperature = torch.nn.Parameter(torch.as_tensor(
+            [self.initial_log_temperature], dtype=torch.float32))
+        self.dual_variables.append(self.log_temperature)
         shape = [action_space.shape[0]] if self.per_dim_constraining else [1]
         self.log_alpha_mean = torch.nn.Parameter(torch.full(
             shape, self.initial_log_alpha_mean, dtype=torch.float32))
@@ -524,6 +514,10 @@ class MaximumAPosterioriPolicyOptimization:
         self.log_alpha_std = torch.nn.Parameter(torch.full(
             shape, self.initial_log_alpha_std, dtype=torch.float32))
         self.dual_variables.append(self.log_alpha_std)
+        if self.action_penalization:
+            self.log_penalty_temperature = torch.nn.Parameter(torch.as_tensor(
+                [self.initial_log_temperature], dtype=torch.float32))
+            self.dual_variables.append(self.log_penalty_temperature)
         self.dual_optimizer = local_optimizer(params=self.dual_variables, lr=self.lr_dual)
 
     def __call__(self, observations):
@@ -583,11 +577,10 @@ class MaximumAPosterioriPolicyOptimization:
             actions = target_distributions.sample((self.num_samples,))
 
             # Repeat for the number of samples
-            tiled_observations = observations[None].repeat([self.num_samples] + [1] * len(observations.shape))
-            flat_observations = tiled_observations.view(tiled_observations.shape[0] * tiled_observations.shape[1],
-                                                        *tiled_observations.shape[2:])  # Merging first 2 dimensions
+            tiled_observations = tile(observations, self.num_samples)
+            flat_observations = merge_first_two_dims(tiled_observations)
 
-            flat_actions = actions.view(actions.shape[0] * actions.shape[1], *actions.shape[2:])
+            flat_actions = merge_first_two_dims(actions)
             values = self.model.target_critic(flat_observations, flat_actions)
             values = values.view(self.num_samples, -1)
 
@@ -602,24 +595,23 @@ class MaximumAPosterioriPolicyOptimization:
         distributions = self.model.actor(observations)
         distributions = independent_normals(distributions)
 
-        temperature = (torch.nn.functional.softplus(self.log_temperature) + FLOAT_EPSILON).to(self.device)
-        alpha_mean = (torch.nn.functional.softplus(self.log_alpha_mean) + FLOAT_EPSILON).to(self.device)
-        alpha_std = (torch.nn.functional.softplus(self.log_alpha_std) + FLOAT_EPSILON).to(self.device)
+        temperature = (torch.nn.functional.softplus(self.log_temperature) + FLOAT_EPSILON)
+        alpha_mean = (torch.nn.functional.softplus(self.log_alpha_mean) + FLOAT_EPSILON)
+        alpha_std = (torch.nn.functional.softplus(self.log_alpha_std) + FLOAT_EPSILON)
 
         # Compute weights and temperature loss
         weights, temperature_loss = weights_and_temperature_loss(
             values, self.epsilon, temperature)
 
         # Action penalization is quadratic beyond [-1, 1].
-        penalty_temperature = 0
         if self.action_penalization:
-            penalty_temperature = (torch.nn.functional.softplus(
-                self.log_penalty_temperature) + FLOAT_EPSILON).to(self.device)
+            penalty_temperature = torch.nn.functional.softplus(
+                self.log_penalty_temperature) + FLOAT_EPSILON
             diff_bounds = actions - torch.clamp(actions, -1, 1)
             action_bound_costs = -torch.norm(diff_bounds, dim=-1)
             penalty_weights, penalty_temperature_loss = \
                 weights_and_temperature_loss(
-                    action_bound_costs.to(self.device),
+                    action_bound_costs,
                     self.epsilon_penalty, penalty_temperature)
             weights += penalty_weights
             temperature_loss += penalty_temperature_loss

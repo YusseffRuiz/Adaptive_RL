@@ -123,7 +123,6 @@ def train_agent(
         checkpoint_path, config = Adaptive_RL.get_last_checkpoint(path)
         if config is not None:
             # Load the experiment configuration.
-            agent = agent or config.agent
             environment = environment or config.test_environment
             environment = environment or config.environment
             trainer = trainer or config.trainer
@@ -142,7 +141,6 @@ def train_agent(
     # Build the agent.
     if not agent:
         raise ValueError('No agent specified.')
-
 
     agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                      seed=seed)
@@ -173,30 +171,30 @@ if __name__ == "__main__":
     trianing_sac = "SAC"
     training_ppo = "PPO"
     training_ddpg = "DDPG"
-    training_algorithm = training_ddpg
+    training_algorithm = training_ppo
 
-    env_name = "Walker2d-v4"
-    # env_name = "Humanoid-v4"
-    cpg_flag = False
+    # env_name = "Walker2d-v4"
+    env_name = "Humanoid-v4"
+    cpg_flag = True
     experiment_number = 0
 
     # Steps to train
-    max_steps = int(1e7)
-    epochs = int(max_steps / 500)
-    save_steps = int(max_steps / 200)
+    max_steps = int(100000000.0)
+    epochs = int(max_steps / 1000)
+    save_steps = int(max_steps / 500)
 
     # Hyperparameters
-    sequential = 5
+    sequential = 4
     parallel = 2
-    lr_actor = 2.0633e-05
-    lr_critic = 2.0633e-05
-    ent_coeff = 0.000401762
-    clip_range = 0.1
+    learning_rate = 3.56987e-05
+    lr_critic = 3e-4
+    ent_coeff = 0.00238306
+    clip_range = 0.3
     lr_dual = 3.56987e-04
-    gamma = 0.98
+    gamma = 0.95
     neuron_number = 256
     layers_number = 2
-    batch_size = 64
+    batch_size = 256
     replay_buffer_size = 10e5
     epsilon = 0.1
 
@@ -204,16 +202,16 @@ if __name__ == "__main__":
                                                                  algorithm=training_algorithm, create=True,
                                                                  experiment_number=experiment_number)
 
-    if training_algorithm == "MPO":
-        agent = MPO(lr_actor=lr_actor, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
+    if training_algorithm == training_mpo:
+        agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
-    elif training_algorithm == "SAC":
-        agent = SAC(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma, hidden_layers=layers_number,)
-    elif training_algorithm == "PPO":
-        agent = PPO(lr_actor=lr_actor, lr_critic=lr_critic, hidden_size=neuron_number, hidden_layers=layers_number, discount_factor=gamma,
+    elif training_algorithm == trianing_sac:
+        agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma, hidden_layers=layers_number,)
+    elif training_algorithm == training_ppo:
+        agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number, discount_factor=gamma,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     elif training_algorithm == training_ddpg:
-        agent = DDPG(learning_rate=0.001, batch_size=256, learning_starts=10000, noise_std=0.1, hidden_layers=2, hidden_size=400)
+        agent = DDPG(learning_rate=0.001, batch_size=256, learning_starts=10000, noise_std=0.1, hidden_layers=2, hidden_size=[400, 300])
     else:
         agent = None
 
@@ -221,7 +219,7 @@ if __name__ == "__main__":
         train_agent(agent=agent,
                     environment=env_name,
                     sequential=1, parallel=1,
-                    trainer=Adaptive_RL.Trainer(steps=1000000.0, epoch_steps=epochs, save_steps=save_steps),
+                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
 
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)

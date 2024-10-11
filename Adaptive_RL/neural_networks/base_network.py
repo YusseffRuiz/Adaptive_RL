@@ -22,7 +22,7 @@ class ObservationEncoder(torch.nn.Module):
         Applies the normalizer (if available) to the observations and returns the result.
     """
 
-    def initialize(self, observation_space, action_space=None, observation_normalizer=None):
+    def initialize(self, observation_space, observation_normalizer=None):
         self.observation_normalizer = observation_normalizer
         observation_size = observation_space.shape[0]
         return observation_size
@@ -99,7 +99,6 @@ class MLP(torch.nn.Module):
 
     def __init__(self, sizes, activation, fn=None, noise=False):
         super().__init__()
-        self.model = None
         self.sizes = sizes
         self.activation = activation
         self.fn = fn
@@ -153,8 +152,6 @@ class GaussianPolicyHead(torch.nn.Module):
         self.scale_max = scale_max
         self.scale_fn = scale_fn
         self.distribution = distribution
-        self.scale_layer = None
-        self.loc_layer = None
 
     def initialize(self, input_size, action_size):
         self.loc_layer = torch.nn.Sequential(
@@ -171,6 +168,22 @@ class GaussianPolicyHead(torch.nn.Module):
         scale = self.scale_layer(inputs)
         scale = torch.clamp(scale, self.scale_min, self.scale_max)
         return self.distribution(loc, scale)
+
+
+
+class DeterministicPolicyHead(torch.nn.Module):
+    def __init__(self, activation=torch.nn.Tanh, fn=None):
+        super().__init__()
+        self.activation = activation
+        self.fn = fn
+
+    def initialize(self, input_size, action_size):
+        self.action_layer = torch.nn.Sequential(torch.nn.Linear(input_size, action_size), self.activation())
+        if self.fn is not None:
+            self.action_layer.apply(self.fn)
+
+    def forward(self, inputs):
+        return self.action_layer(inputs)
 
 
 FLOAT_EPSILON = 1e-8  # Small constant to prevent divide by zero errors
@@ -250,8 +263,10 @@ class SquashedMultivariateNormalDiag:
         return torch.tanh(samples)
 
     def log_prob(self, samples):
+        """Required unsquashed samples cannot be accurately recovered."""
         raise NotImplementedError(
-            'Not implemented to avoid approximation errors. Use sample_with_log_prob directly.')
+            'Not implemented to avoid approximation errors. '
+            'Use sample_with_log_prob directly.')
 
     @property
     def loc(self):
@@ -273,25 +288,54 @@ class BaseModel(torch.nn.Module):
         Returns the full Actor-Critic model with target networks.
     """
 
-    def __init__(self, hidden_size, hidden_layers=2):
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.ReLU):
         super().__init__()
-        self.neuron_shape = np.full(hidden_layers, hidden_size)
+        if hidden_layers > 1:
+            if isinstance(hidden_size, int):
+                self.neuron_shape = [hidden_size] * hidden_layers
+            elif len(hidden_size) != hidden_layers-1:
+                self.neuron_shape = [hidden_size[0]] * hidden_layers
+            else:
+                self.neuron_shape = hidden_size
+        else:
+            if len(hidden_size > 1 and hidden_layers == 1):
+                self.neuron_shape = hidden_size*2
+            self.neuron_shape = hidden_size
+        self.activation_fn = activation_fn
 
     def get_model(self):
         return ActorCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.ReLU),
+                torso=MLP(self.neuron_shape, self.activation_fn),
                 head=GaussianPolicyHead()),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.ReLU),
+                torso=MLP(self.neuron_shape, self.activation_fn),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )
 
 
-class ActorTwinCriticsModelNetwork(torch.nn.Module):
+class ActorCriticDeterministic(BaseModel):
+
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.ReLU):
+        super().__init__(hidden_size, hidden_layers, activation_fn)
+
+    def get_model(self):
+        return ActorCriticWithTargets(
+        actor=Actor(
+            encoder=ObservationEncoder(),
+            torso=MLP(self.neuron_shape, self.activation_fn),
+            head=DeterministicPolicyHead()),
+        critic=Critic(
+                encoder=ObservationActionEncoder(),
+                torso=MLP(self.neuron_shape, self.activation_fn),
+                head=ValueHead()),
+            observation_normalizer=normalizers.MeanStd())
+
+
+class ActorTwinCriticsModelNetwork(BaseModel):
     """
     Actor-Twin-Critic Model Network with soft updates for actor and twin critics.
 
@@ -306,39 +350,37 @@ class ActorTwinCriticsModelNetwork(torch.nn.Module):
         Returns the actor-twin-critic model with target networks.
     """
 
-    def __init__(self, hidden_size, hidden_layers=2):
-        super().__init__()
-        self.neuron_shape = np.full(hidden_layers, hidden_size)
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.ReLU):
+        super().__init__(hidden_size, hidden_layers, activation_fn)
 
     def get_model(self):
         return ActorTwinCriticWithTargets(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, self.activation_fn),
                 head=GaussianPolicyHead(
                     loc_activation=torch.nn.Identity,
                     distribution=SquashedMultivariateNormalDiag)),
             critic=Critic(
                 encoder=ObservationActionEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.SiLU),
+                torso=MLP(self.neuron_shape, self.activation_fn),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd())
 
 
-class ActorCriticModelNetwork(torch.nn.Module):
-    def __init__(self, hidden_size, hidden_layers=2):
-        super().__init__()
-        self.neuron_shape = np.full(hidden_layers, hidden_size)
+class ActorCriticModelNetwork(BaseModel):
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.Tanh):
+        super().__init__(hidden_size, hidden_layers, activation_fn)
 
     def get_model(self):
         return ActorCritic(
             actor=Actor(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.Tanh),
+                torso=MLP(self.neuron_shape, self.activation_fn),
                 head=DetachedScaleGaussianPolicyHead()),
             critic=Critic(
                 encoder=ObservationEncoder(),
-                torso=MLP(self.neuron_shape, torch.nn.Tanh),
+                torso=MLP(self.neuron_shape, self.activation_fn),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )

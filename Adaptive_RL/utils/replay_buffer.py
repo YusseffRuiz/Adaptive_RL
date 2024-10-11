@@ -25,8 +25,7 @@ class ReplayBuffer:
             - steps_before_batches (int): Minimum number of steps before starting to sample batches. Default is 1e4.
             - steps_between_batches (int): Minimum number of steps between consecutive batch sampling operations.
         """
-        self.max_size = None
-        self.num_workers = None
+
         self.full_max_size = int(size)
         self.return_steps = return_steps
         self.batch_iterations = batch_iterations

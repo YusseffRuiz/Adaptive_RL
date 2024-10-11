@@ -21,17 +21,17 @@ def main_running():
     env_walker = "Walker2d-v4"
     env_mujoco = "Humanoid-v4"
     env_myo = "myoLegWalk-v0"
-    env_name = env_walker
+    env_name = env_mujoco
 
     video_record = False
     experiment = False
-    cpg_flag = False
+    cpg_flag = True
     random = False
     algorithm_mpo = "MPO"
     algorithm_sac = "SAC"
     algorithm_ppo = "PPO"
     algorithm_ddpg = "DDPG"
-    algorithm = algorithm_ddpg
+    algorithm = algorithm_ppo
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm, experiment_number=0)
 
@@ -45,8 +45,7 @@ def main_running():
     path, config = Adaptive_RL.get_last_checkpoint(path=path)
 
     if not random:
-        agent = load_agent(config, path)
-        agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
+        agent = load_agent(config, path, env)
 
         print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
 
@@ -91,7 +90,7 @@ def record_video(env_name, video_folder, alg, agent):
     # Save the video
     vec_env.close()
 
-def load_agent(config, path):
+def load_agent(config, path, env):
     if config.agent["agent"] == "DDPG":
         agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
                      learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
@@ -101,15 +100,17 @@ def load_agent(config, path):
                     hidden_size=config.agent["neuron_number"], discount_factor=config.agent["gamma"],
                     replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["layers_number"])
     elif config.agent["agent"] == "SAC":
-        agent = SAC(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], hidden_size=config.agent["neuron_number"],
+        agent = SAC(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["neuron_number"],
                     discount_factor=config.agent["gamma"], hidden_layers=config.agent["layers_number"],)
     elif config.agent["agent"] == "PPO":
-        agent = PPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], hidden_size=config.agent["neuron_number"],
-                    hidden_layers=config.agent["layers_number"], discount_factor=config.agent["gamma"],
-                    batch_size=config.agent["batch_size"], entropy_coeff=config.agent["ent_coeff"], clip_range=config.agent["clip_range"])
+        print(config)
+        agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
+                    hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
+                    batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
+                    clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"])
     else:
         agent = None
-
+    agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
     agent.load(path)
     return agent
 
