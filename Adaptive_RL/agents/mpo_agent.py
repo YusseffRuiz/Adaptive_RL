@@ -36,9 +36,11 @@ class MPO(base_agent.BaseAgent):
             "agent": "MPO",
             "lr_actor": lr_actor,
             "lr_critic": lr_critic,
+            "lr_dual": lr_dual,
             "hidden_size": hidden_size,
             "hidden_layers": hidden_layers,
             "discount_factor": discount_factor,
+            "gamma": discount_factor,
             "batch_size": batch_size,
             "replay_buffer_size": replay_buffer_size,
         }

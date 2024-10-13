@@ -38,6 +38,7 @@ def get_last_checkpoint(path):
         with open(arguments_path, 'r') as config_file:
             config = yaml.load(config_file, Loader=yaml.FullLoader)
         config = argparse.Namespace(**config)
+        print(f"Load from {arguments_path}")
     else:
         config = None
     return checkpoint_path, config
@@ -94,8 +95,8 @@ def load_agent(config, path, env):
                      hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"])
     elif config.agent["agent"] == "MPO":
         agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], lr_dual=config.agent["lr_dual"],
-                    hidden_size=config.agent["neuron_number"], discount_factor=config.agent["gamma"],
-                    replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["layers_number"])
+                    hidden_size=config.agent["hidden_size"], discount_factor=config.agent["gamma"],
+                    replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["hidden_layers"])
     elif config.agent["agent"] == "SAC":
         agent = SAC(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["neuron_number"],
                     discount_factor=config.agent["gamma"], hidden_layers=config.agent["layers_number"],)
