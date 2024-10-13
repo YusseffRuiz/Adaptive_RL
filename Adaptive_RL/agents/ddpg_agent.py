@@ -37,7 +37,6 @@ class DDPG(base_agent.BaseAgent):
         self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
 
     def initialize(self, observation_space, action_space, seed=None):
-        super().initialize(observation_space, action_space, seed)
         self.model.initialize(observation_space, action_space)
         self.exploration.initialize(self._policy, action_space, seed)
         self.actor_updater.initialize(self.model)

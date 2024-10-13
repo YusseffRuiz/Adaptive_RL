@@ -22,7 +22,7 @@ class ObservationEncoder(torch.nn.Module):
         Applies the normalizer (if available) to the observations and returns the result.
     """
 
-    def initialize(self, observation_space, observation_normalizer=None):
+    def initialize(self, observation_space, action_space, observation_normalizer=None):
         self.observation_normalizer = observation_normalizer
         observation_size = observation_space.shape[0]
         return observation_size
@@ -293,8 +293,6 @@ class BaseModel(torch.nn.Module):
         if hidden_layers > 1:
             if isinstance(hidden_size, int):
                 self.neuron_shape = [hidden_size] * hidden_layers
-            elif len(hidden_size) != hidden_layers-1:
-                self.neuron_shape = [hidden_size[0]] * hidden_layers
             else:
                 self.neuron_shape = hidden_size
         else:
@@ -302,7 +300,6 @@ class BaseModel(torch.nn.Module):
                 self.neuron_shape = hidden_size*2
             self.neuron_shape = hidden_size
         self.activation_fn = activation_fn
-
     def get_model(self):
         return ActorCriticWithTargets(
             actor=Actor(

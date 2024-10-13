@@ -6,6 +6,45 @@ import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import Experiments.experiments_utils as trials
 from myosuite.utils import gym
+import argparse
+import os
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run RL training with hyperparameters and CPG environment")
+
+    # Algorithm and environment
+    parser.add_argument('--algorithm', type=str, default='PPO',
+                        choices=['PPO', 'SAC', 'MPO', 'DDPG', 'ppo', 'sac', 'mpo', 'ddpg'],
+                        help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG).')
+    parser.add_argument('--env', type=str, default='Humanoid-v4', help='Name of the environment to train on.')
+    parser.add_argument('--cpg', action='store_true', help='Whether to enable CPG flag.')
+    parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
+
+    # General Paramenters
+    parser.add_argument('--experiment_number', type=int, default=0, help='Experiment number for logging.')
+    parser.add_argument('--steps', type=int, default=int(1e7), help='Maximum steps for training.')
+    parser.add_argument('--seq', type=int, default=1, help='Number of sequential environments.')
+    parser.add_argument('--parallel', type=int, default=1, help='Number of parallel environments.')
+
+    # Hyperparameters
+    parser.add_argument('--learning_rate', type=float, default=3.56987e-05, help='Learning rate for the actor.')
+    parser.add_argument('--lr_critic', type=float, default=3e-4, help='Learning rate for the critic.')
+    parser.add_argument('--ent_coeff', type=float, default=0.00238306, help='Entropy coefficient for PPO or SAC.')
+    parser.add_argument('--clip_range', type=float, default=0.3, help='Clip range for PPO.')
+    parser.add_argument('--lr_dual', type=float, default=3.56987e-04, help='Learning rate for dual variables (MPO).')
+    parser.add_argument('--gamma', type=float, default=0.95, help='Discount factor.')
+    parser.add_argument('--neuron_number', type=int, nargs='+', default=[256],
+                        help='Number of neurons in hidden layers. Can be a single integer or a list of integers.')
+    parser.add_argument('--layers_number', type=int, default=2, help='Number of hidden layers.')
+    parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training.')
+    parser.add_argument('--replay_buffer_size', type=int, default=int(10e5), help='Replay buffer size.')
+    parser.add_argument('--epsilon', type=float, default=0.1, help='Exploration rate (epsilon-greedy).')
+    parser.add_argument('--learning_starts', type=int, default=10000, help='Number of steps before learning starts.')
+    parser.add_argument('--noise', type=float, default=0.01, help='Noise added to future rewards.')
+
+    return parser.parse_args()
+
 
 # Basic Matsuoka Oscillator Implementation
 def matsuoka_main():
@@ -100,9 +139,9 @@ def train_agent(
     :param path: Path where the experiment to check for checkpoints
     :param log_dir:: Path to add the logs of the experiment
     """
-    torch.set_default_device('cuda' if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         device = torch.cuda.get_device_name(torch.cuda.current_device())
+        torch.set_default_device('cuda')
         print(f"Runing with {device}")
     else:
         print("Running with CPU")
@@ -161,58 +200,63 @@ def train_agent(
 
 
 if __name__ == "__main__":
-    # register_new_env()
-    training_mpo = "MPO"
-    trianing_sac = "SAC"
-    training_ppo = "PPO"
-    training_ddpg = "DDPG"
-    training_algorithm = training_ppo
+
+    args = parse_args()
+
+    training_algorithm = args.algorithm.upper()
 
     # env_name = "Walker2d-v4"
-    env_name = "Humanoid-v4"
-    cpg_flag = True
-    experiment_number = 0
+    env_name = args.env
+    cpg_flag = args.cpg
+    experiment_number = args.experiment_number
 
     # Steps to train
-    max_steps = int(100000000.0)
+    max_steps = args.steps
     epochs = int(max_steps / 1000)
     save_steps = int(max_steps / 500)
 
+    save_folder = args.f
+
     # Training Mode
-    sequential = 4
-    parallel = 2
+    sequential = args.seq
+    parallel = args.parallel
 
     # Hyperparameters
-    learning_rate = 3.56987e-05
-    lr_critic = 3e-4
-    ent_coeff = 0.00238306
-    clip_range = 0.3
-    lr_dual = 3.56987e-04
-    gamma = 0.95
-    neuron_number = 256
-    layers_number = 2
-    batch_size = 256
-    replay_buffer_size = 10e5
-    epsilon = 0.1
-    learning_starts = 10000
+    # Hyperparameters
+    learning_rate = args.learning_rate
+    lr_critic = args.lr_critic
+    ent_coeff = args.ent_coeff
+    clip_range = args.clip_range
+    lr_dual = args.lr_dual
+    gamma = args.gamma
+    neuron_number = args.neuron_number
+    layers_number = args.layers_number
+    batch_size = args.batch_size
+    replay_buffer_size = args.replay_buffer_size
+    epsilon = args.epsilon
+    learning_starts = args.learning_starts
+    noise_std = args.noise
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag,
                                                                  algorithm=training_algorithm, create=True,
-                                                                 experiment_number=experiment_number)
+                                                                 experiment_number=experiment_number,
+                                                                 external_folder=save_folder)
 
-    if training_algorithm == training_mpo:
+    if training_algorithm == "MPO":
         agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
-    elif training_algorithm == trianing_sac:
+    elif training_algorithm == "SAC":
 
         agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
                     hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
                     learning_starts=learning_starts)
-    elif training_algorithm == training_ppo:
-        agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number, discount_factor=gamma,
+    elif training_algorithm == "PPO":
+        agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number,
+                    discount_factor=gamma,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
-    elif training_algorithm == training_ddpg:
-        agent = DDPG(learning_rate=0.001, batch_size=256, learning_starts=10000, noise_std=0.1, hidden_layers=2, hidden_size=[400, 300])
+    elif training_algorithm == "DDPG":
+        agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
+                     noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number)
     else:
         agent = None
 

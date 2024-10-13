@@ -12,7 +12,7 @@ from scipy.signal import savgol_filter
 import seaborn as sns
 
 
-def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False):
+def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False, external_folder=None):
     """
     :param algorithm: algorithm being used to create the required folder
     :param name: of the environment
@@ -27,23 +27,27 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
     if cpg:
         env_name = env_name + "-CPG"
 
-    print(f"Creating env {env_name}")
-
-    if algorithm is not None:
-        if experiment_number > 0:
-            save_folder = f"{env_name}-{algorithm}/{experiment_number}"
+    if external_folder:
+        if not os.path.exists(external_folder):
+            os.makedirs(external_folder)
+            print(f"Folder {external_folder} created.")
         else:
-            save_folder = f"{env_name}-{algorithm}"
+            print(f"Using existing folder: {external_folder}")
+        if experiment_number > 0:
+            save_folder = f"training/{external_folder}/{env_name}-{algorithm}/{experiment_number}"
+        else:
+            save_folder = f"training/{external_folder}/{env_name}-{algorithm}"
     else:
         if experiment_number > 0:
-            save_folder = f"{env_name}/{experiment_number}"
+            save_folder = f"training/{env_name}-{algorithm}/{experiment_number}"
         else:
-            save_folder = f"{env_name}"
-    log_dir = f"{env_name}/logs/{save_folder}"
+            save_folder = f"training/{env_name}-{algorithm}"
+    log_dir = f"{save_folder}/logs/"
     if create:
         # Create log dir
+        os.makedirs(save_folder, exist_ok=True)
         os.makedirs(log_dir, exist_ok=True)
-        print(f"Folder {log_dir} created")
+        print(f"Folders {save_folder} and {log_dir} created")
     return env_name, save_folder, log_dir
 
 

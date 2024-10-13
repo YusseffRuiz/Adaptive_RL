@@ -44,7 +44,6 @@ class MPO(base_agent.BaseAgent):
         }
 
     def initialize(self, observation_space, action_space, seed=None):
-        super().initialize(observation_space, action_space, seed=seed)
         self.model.initialize(observation_space, action_space)
         self.actor_updater.initialize(self.model, action_space)
         self.critic_updater.initialize(self.model)
