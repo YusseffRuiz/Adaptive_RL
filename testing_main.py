@@ -4,31 +4,45 @@ import Adaptive_RL
 import Experiments.experiments_utils as trials
 import warnings
 import logging
+import argparse
 
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Load Experiment")
+
+    # Algorithm and environment
+    parser.add_argument('--algorithm', type=str, default='PPO',
+                        choices=['PPO', 'SAC', 'MPO', 'DDPG', 'ppo', 'sac', 'mpo', 'ddpg'],
+                        help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG).')
+    parser.add_argument('--env', type=str, default='Humanoid-v4', help='Name of the environment to train on.')
+    parser.add_argument('--cpg', action='store_true', help='Whether to enable CPG flag.')
+    parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
+    parser.add_argument('--episodes', type=int, default=5, help='Number of episodes.')
+    parser.add_argument('--E', action='store_true', default=False, help='Whether to enable experimentation mode.')
+    parser.add_argument('--V', action='store_true', default=False, help='Whether to record video.')
+    parser.add_argument('--R', action='store_true', default=False, help='Run random actions.')
+
+    return parser.parse_args()
+
+
 def main_running():
+    args = parse_args()
     """ play a couple of showcase episodes """
-    num_episodes = 5
+    num_episodes = args.episodes
 
     # env_name = "Ant-v4"
-    env_walker = "Walker2d-v4"
-    env_mujoco = "Humanoid-v4"
-    env_myo = "myoLegWalk-v0"
-    env_name = env_mujoco
+    env_name = args.env
 
-    video_record = False
-    experiment = False
-    cpg_flag = True
-    random = False
-    algorithm_mpo = "MPO"
-    algorithm_sac = "SAC"
-    algorithm_ppo = "PPO"
-    algorithm_ddpg = "DDPG"
-    algorithm = algorithm_ppo
+    video_record = args.V
+    experiment = args.E
+    cpg_flag = args.cpg
+    random = args.R
+    algorithm = args.algorithm.upper()
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm, experiment_number=0)
 
@@ -38,7 +52,7 @@ def main_running():
     else:
         env = Adaptive_RL.Gym(env_name, render_mode="human")
 
-    path = f"{env_name}/logs/{save_folder}/"
+    path = log_dir
     path, config = Adaptive_RL.get_last_checkpoint(path=path)
 
     if not random:

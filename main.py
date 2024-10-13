@@ -222,7 +222,6 @@ if __name__ == "__main__":
     parallel = args.parallel
 
     # Hyperparameters
-    # Hyperparameters
     learning_rate = args.learning_rate
     lr_critic = args.lr_critic
     ent_coeff = args.ent_coeff
