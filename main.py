@@ -184,8 +184,9 @@ def train_agent(
     agent.get_config(print_conf=True)
 
     # Load the weights of the agent form a checkpoint.
+    step_number = 0
     if checkpoint_path:
-        agent.load(checkpoint_path)
+        step_number = agent.load(checkpoint_path)
 
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=log_dir, config=args)
@@ -193,7 +194,7 @@ def train_agent(
     # Build the trainer.
     trainer.initialize(
         agent=agent, environment=environment,
-        test_environment=test_environment)
+        test_environment=test_environment, step_saved=step_number)
 
     # Train.
     trainer.run()
@@ -245,7 +246,12 @@ if __name__ == "__main__":
         agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
     elif training_algorithm == "SAC":
-
+        learning_rate = 3e-4
+        buffer_size = 1e6
+        learning_starts = 100000
+        batch_size = 256
+        tau = 0.005
+        gamma = 0.99
         agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
                     hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
                     learning_starts=learning_starts)
@@ -255,7 +261,7 @@ if __name__ == "__main__":
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     elif training_algorithm == "DDPG":
         agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
-                     noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number)
+                     noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number, replay_buffer_size=replay_buffer_size)
     else:
         agent = None
 

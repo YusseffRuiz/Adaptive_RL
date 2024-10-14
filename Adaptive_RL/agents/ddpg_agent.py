@@ -27,11 +27,10 @@ class DDPG(base_agent.BaseAgent):
             "steps_between_batches": steps_between_batches,
             "replay_buffer_size": replay_buffer_size,
         }
-        self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        self.model = neural_networks.ActorCriticDeterministic(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
-                                                           batch_size=batch_size,
-                                                           steps_between_batches=steps_between_batches,
-                                                           size=replay_buffer_size)
+                                          batch_size=batch_size, steps_between_batches=steps_between_batches,
+                                          size=int(replay_buffer_size))
         self.exploration = explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
         self.actor_updater = DeterministicPolicyGradient(lr_actor=learning_rate)
         self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
@@ -54,9 +53,10 @@ class DDPG(base_agent.BaseAgent):
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store last transition in the replay buffer
-        self.replay_buffer.push(observations=self.last_observations, actions=self.last_actions,
-                                next_observations=observations, rewards=rewards, resets=resets,
-                                terminations=terminations)
+        self.replay_buffer.push(
+            observations=self.last_observations, actions=self.last_actions,
+            next_observations=observations, rewards=rewards, resets=resets,
+            terminations=terminations)
 
         # Update the normalizers
         if self.model.observation_normalizer:
@@ -72,11 +72,11 @@ class DDPG(base_agent.BaseAgent):
 
     def test_step(self, observations):
         # Greedy actions for testing.
-        return self._greedy_actions(observations).numpy()
+        return self._greedy_actions(observations).cpu().numpy()
 
 
     def _policy(self, observations):
-        return self._greedy_actions(observations).numpy()
+        return self._greedy_actions(observations).cpu().numpy()
 
     def _greedy_actions(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
@@ -94,7 +94,7 @@ class DDPG(base_agent.BaseAgent):
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.numpy())
+                    logger.store(key + '/' + k, v.cpu().numpy())
 
         # Update the normalizers.
         if self.model.observation_normalizer:
@@ -105,8 +105,7 @@ class DDPG(base_agent.BaseAgent):
     def _update_actor_critic(
             self, observations, actions, next_observations, rewards, discounts
     ):
-        critic_infos = self.critic_updater(
-            observations, actions, next_observations, rewards, discounts)
+        critic_infos = self.critic_updater(observations, actions, next_observations, rewards, discounts)
         actor_infos = self.actor_updater(observations)
         self.model.update_targets()
         return dict(critic=critic_infos, actor=actor_infos)

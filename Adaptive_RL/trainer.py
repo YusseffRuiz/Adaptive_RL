@@ -1,6 +1,5 @@
 import os
 import time
-
 import numpy as np
 
 from Adaptive_RL import logger
@@ -25,10 +24,12 @@ class Trainer:
         self.environment = None
         self.agent = None
 
-    def initialize(self, agent, environment, test_environment=None):
+    def initialize(self, agent, environment, test_environment=None, step_saved=None):
         self.agent = agent
         self.environment = environment
         self.test_environment = test_environment
+        if step_saved is not None:
+            self.steps = step_saved
 
     def run(self):
         """Runs the main training loop."""
@@ -41,8 +42,8 @@ class Trainer:
         num_workers = len(observations)
         scores = np.zeros(num_workers)
         lengths = np.zeros(num_workers, int)
-        self.steps, epoch_steps, epochs, episodes = 0, 0, 0, 0
-        steps_since_save = 0
+        self.steps, epoch_steps, epochs, episodes = self.steps, self.steps, self.steps, self.steps
+        steps_since_save = self.steps
         stop_training = False
 
         while not stop_training:
@@ -54,7 +55,6 @@ class Trainer:
             # Take a step in the environments.
             observations, infos = self.environment.step(actions)
             self.agent.update(**infos, steps=self.steps)
-
             scores += infos['rewards']
             lengths += 1
             self.steps += num_workers

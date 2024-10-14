@@ -39,7 +39,7 @@ class SAC(DDPG):
                  discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e6, noise_std=0.1,
                  learning_starts=20000):
         model = neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
-        exploration = explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
+        exploration = explorations.NoNoiseExploration(start_steps=learning_starts)
         replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                                       batch_size=batch_size, steps_between_batches=steps_between_batches
                                                       , size=replay_buffer_size)
@@ -93,4 +93,4 @@ class SAC(DDPG):
         """
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            return self.model.actor(observations).loc
+            return self.model.actor(observations) # Verify

@@ -2,6 +2,7 @@ import abc
 import torch
 import os
 from Adaptive_RL import logger
+import re
 
 class BaseAgent(abc.ABC):
     """
@@ -43,11 +44,15 @@ class BaseAgent(abc.ABC):
         torch.save(self.model.state_dict(), path)
 
     def load(self, path):
-        """Reloads the agent weights from a checkpoint."""
+        """Reloads the agent weights from a checkpoint, and returns the step number."""
         if not path[-3:] == '.pt':
             path = path + '.pt'
         logger.log(f'\nLoading weights from {path}')
+        match = re.search(r'step_(\d+)\.pt', path) # With regex catch the step saved
+        step_number = int(match.group(1))
+
         self.model.load_state_dict(torch.load(path, weights_only=True))
+        return step_number
 
     def get_config(self, print_conf=False):
         """
