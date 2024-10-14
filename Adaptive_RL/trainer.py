@@ -109,7 +109,7 @@ class Trainer:
                             os.remove(os.path.join(path, file))
                 checkpoint_name = f'step_{self.steps}'
                 save_path = os.path.join(path, checkpoint_name)
-                self.agent.save(save_path)
+                self.agent.save(save_path, step=self.steps, save_path=path)
                 steps_since_save = self.steps % self.save_steps
 
     def _test(self):
