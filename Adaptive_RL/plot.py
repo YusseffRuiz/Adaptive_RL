@@ -258,16 +258,14 @@ def get_data(
 def plot(
         paths, x_axis="train_steps", y_axis="test/episode_score", x_label="steps", y_label="score", window=1,
         interval="bounds", show_seeds=False, columns=None, x_min=None, x_max=None, y_min=None, y_max=None,baselines="+",
-        baselines_source="tensorflow", name="None", save_formats=['pdf', 'png'], cmap=None, legend_columns=None,
+        baselines_source="torch", name="None", save_formats=['pdf', 'png'], cmap=None, legend_columns=None,
         legend_marker_size=0, dpi=150, title="Training Score", fig=None
 ):
     """Plots results from experiments and benchmark data."""
 
     # Extract the data.
     logger.log('Loading data...')
-    data = get_data(
-        paths, baselines, baselines_source, x_axis, y_axis, x_min, x_max,
-        window)
+    data = get_data(paths, baselines, baselines_source, x_axis, y_axis, x_min, x_max, window)
 
     # List the environments.
     envs = sorted(data.keys(), key=str.casefold)
@@ -402,6 +400,7 @@ def plot(
     # Save the plot in different formats if needed.
     if save_formats:
         logger.log('Saving...')
+        name = title
         if name is None:
             if len(envs) > 1:
                 name = 'results'

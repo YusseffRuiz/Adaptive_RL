@@ -174,7 +174,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     cross_fourier_transform(joints[0], joints[2], joint="Hip", save_folder=save_folder)
     perform_autocorrelation(joints[0], joints[2], joint="Hip", save_folder=save_folder)
     jerk = get_jerk(total_accelerations, dt)
-    statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="jerk and acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
+    statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="Acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
     statistical_analysis(jerk, x_axis_name="Time", y_axis_name="Jerk (m/s^3)", title="jerk (m/s^3)", save_folder=save_folder, figure_name="Jerk")
     get_energy_per_meter(total_energy, total_distance, average_energy, save_folder=save_folder)
 
