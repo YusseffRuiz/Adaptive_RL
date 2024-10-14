@@ -5,6 +5,7 @@ import time
 import numpy as np
 import termcolor
 import yaml
+import shutil
 
 
 current_logger = None
@@ -35,6 +36,7 @@ class Logger:
         self.stat_keys = set()
         self.epoch_dict = {}
         self.width = width
+        self.complete_width = shutil.get_terminal_size().columns
         self.last_epoch_progress = None
         self.start_time = time.time()
 
@@ -158,6 +160,7 @@ class Logger:
 
         epoch_steps = (steps - 1) % num_epoch_steps + 1
         epoch_progress = int(self.width * epoch_steps / num_epoch_steps)
+        complete_progress = int(self.complete_width * steps / num_steps)
         if epoch_progress != self.last_epoch_progress:
             current_time = time.time()
             seconds = current_time - self.start_time
@@ -170,10 +173,16 @@ class Logger:
             total_rem_secs = max(total_rem_steps * seconds_per_step, 0)
             total_rem_secs = datetime.timedelta(seconds=total_rem_secs)
             total_rem_secs = str(total_rem_secs)[:-7]
-            msg = f'Time left:  epoch {epoch_rem_secs}  total {total_rem_secs}'
-            msg = msg.center(self.width)
-            print(termcolor.colored('\r' + msg[:epoch_progress], color=color, on_color="on_blue"), end='')
-            print(msg[epoch_progress:], sep='', end='')
+            step_percentage = int(steps * 100 / num_steps)
+            # msg = f'Time left:  epoch {epoch_rem_secs}  total {total_rem_secs}'
+            # msg = msg.center(self.width)
+            # print(termcolor.colored('\r' + msg[:epoch_progress], color=color, on_color="on_blue"), end='')
+            # print(msg[epoch_progress:], sep='', end='')
+            complete_msg = (f'Completion Percentage: {step_percentage} %, step: {steps}/{num_steps}, '
+                            f'Time left:  {total_rem_secs}')
+            complete_msg = complete_msg.center(self.complete_width)
+            print(termcolor.colored('\r' + complete_msg[:complete_progress], color=color, on_color="on_green"), end='')
+            print(complete_msg[complete_progress:], sep='', end='')
             self.last_epoch_progress = epoch_progress
 
 

@@ -70,7 +70,6 @@ class MPO(base_agent.BaseAgent):
             observations=self.last_observations, actions=self.last_actions,
             next_observations=observations, rewards=rewards, resets=resets,
             terminations=terminations)
-
         # Prepare to update the normalizers.
         if self.model.observation_normalizer:
             self.model.observation_normalizer.record(self.last_observations)

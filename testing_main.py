@@ -21,7 +21,7 @@ def parse_args():
                         help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG).')
     parser.add_argument('--env', type=str, default='Humanoid-v4', help='Name of the environment to train on.')
     parser.add_argument('--cpg', action='store_true', help='Whether to enable CPG flag.')
-    parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
+    parser.add_argument('--f', type=str, default=None, help='Folder to load weights, models, and results.')
     parser.add_argument('--episodes', type=int, default=5, help='Number of episodes.')
     parser.add_argument('--E', action='store_true', default=False, help='Whether to enable experimentation mode.')
     parser.add_argument('--V', action='store_true', default=False, help='Whether to record video.')
@@ -44,7 +44,8 @@ def main_running():
     random = args.R
     algorithm = args.algorithm.upper()
 
-    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm, experiment_number=0)
+    env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm,
+                                                                 experiment_number=0, external_folder=args.f)
 
     if experiment:
         num_episodes = 40

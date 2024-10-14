@@ -13,6 +13,7 @@ Modify video recorder
 """
 
 def get_last_checkpoint(path):
+    print(path)
     arguments_path = os.path.join(path, 'config.yaml')
     path = os.path.join(path, 'checkpoints')
     # List all the checkpoints.
