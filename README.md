@@ -51,48 +51,71 @@ pip install -r requirements.txt
 
 **How to use**
 
-To train a new environment, everything can be run in main.py class.
+Running the Training Script
+You can use the training script to train an agent on a specified environment using different algorithms like PPO, SAC, MPO, or DDPG. The training script supports several command-line arguments to customize the training process.
 
-Create the agent, specifying learning rates, however, they can be left for the default values:
+Here is how to run the training script:
 
-**Example Usage**
-
-To Run the SAC agent on the Mujoco Walker2d-v4 environment
+To Run the PPO agent on the Mujoco Humanoid-v4 environment
 
 ```
-import torch
-import gymnasium as gym
-import os
-from Adaptive_RL import SAC
-
-
-env_name = "Walker2d-v4"
-env_name, save_folder, log_dir = trials.get_name_environment(env_name, algorithm="SAC", create=True,
-                                                                 experiment_number=experiment_number)
-agent = MPO_Algorithm.agents.SAC()
-train_agent(agent=agent, environment=env_name)
-```
-or from the command line to run basic training with SAC:
-```
-python main.py
+python train.py --algorithm PPO --env Humanoid-v4 --steps 1000000 --seq 2 --parallel 4 --learning_rate 0.0003
 ```
 
 **Parallelization training via Multiprocess class.**
 
-**Sequential:** Run environments in a for loop.
+## Command-Line Arguments
 
-**Parallel:** Run different processes over either CPU or GPU, using multiprocess class.
+Below are the key arguments that can be passed to the script for customizing the training:
 
-**Hyperparameters**
+| Argument               | Type         | Default         | Description                                                                 |
+|------------------------|--------------|-----------------|-----------------------------------------------------------------------------|
+| `--algorithm`           | `str`        | `'PPO'`         | The RL algorithm to use for training. Options: `'PPO'`, `'SAC'`, `'MPO'`, `'DDPG'`. |
+| `--env`                | `str`        | `'Humanoid-v4'` | The environment name to train on (e.g., `'Humanoid-v4'`, `'Walker2d-v4'`).   |
+| `--cpg`                | `flag`       | `False`         | Enable Central Pattern Generator (CPG) for training.                        |
+| `--f`                  | `str`        | `None`          | Folder to save logs, models, and results. If not specified, it will create one based on the environment and algorithm. |
+| `--experiment_number`   | `int`        | `0`             | Specify the experiment number for logging purposes.                         |
+| `--steps`              | `int`        | `1e7`           | Maximum steps for training.                                                 |
+| `--seq`                | `int`        | `1`             | Number of sequential environments.                                          |
+| `--parallel`           | `int`        | `1`             | Number of parallel environments to run.                                     |
 
-| **Parameter**    | **Description**                                   | **Default Value** |
-|------------------|---------------------------------------------------|-------------------|
-| `lr_actor`       | Learning rate for the actor network               | 3e-4              |
-| `lr_critic`      | Learning rate for the critic network              | 3e-4              |
-| `gamma`          | Discount factor for future rewards                | 0.99              |
-| `buffer_size`    | Size of the replay buffer                         | 1e6               |
-| `batch_size`     | Batch size for updates                            | 256               |
-| `entropy_coeff`  | Coefficient for entropy regularization (SAC only) | 0.2               |
+### Hyperparameters
+
+| Argument               | Type         | Default         | Description                                                                 |
+|------------------------|--------------|-----------------|-----------------------------------------------------------------------------|
+| `--learning_rate`      | `float`      | `3.57e-05`      | Learning rate for the actor network.                                        |
+| `--lr_critic`          | `float`      | `3e-4`          | Learning rate for the critic network.                                       |
+| `--ent_coeff`          | `float`      | `0.00238306`    | Entropy coefficient used by PPO or SAC algorithms.                          |
+| `--clip_range`         | `float`      | `0.3`           | Clip range for PPO.                                                         |
+| `--lr_dual`            | `float`      | `0.000356987`   | Learning rate for the dual variables (MPO).                                 |
+| `--gamma`              | `float`      | `0.95`          | Discount factor.                                                            |
+| `--neuron_number`      | `int/list`   | `256`           | Number of neurons in hidden layers. Can be a single integer or a list for specifying different layer sizes. |
+| `--layers_number`      | `int`        | `2`             | Number of hidden layers in the neural network.                              |
+| `--batch_size`         | `int`        | `256`           | Batch size used during training.                                            |
+| `--replay_buffer_size` | `int`        | `10e5`          | Size of the replay buffer used by off-policy algorithms like SAC and DDPG.   |
+| `--epsilon`            | `float`      | `0.1`           | Exploration rate for epsilon-greedy algorithms.                             |
+| `--learning_starts`    | `int`        | `10000`         | Number of steps before learning starts.                                     |
+| `--noise`              | `float`      | `0.01`          | Noise added to future rewards to promote exploration (DDPG).                |
+
+**Example Commands**
+
+Train PPO on Humanoid-v4 for 1 million steps:
+```
+python train.py --algorithm PPO --env Humanoid-v4 --steps 1000000
+```
+Train SAC on Walker2d-v4 with a custom learning rate:
+
+```
+python train.py --algorithm SAC --env Walker2d-v4 --learning_rate 0.0003
+```
+Enable CPG training with DDPG:
+```
+python train.py --algorithm DDPG --env Humanoid-v4 --cpg
+```
+Train MPO on Humanoid-v4 with parallel environments:
+```
+python train.py --algorithm MPO --env Humanoid-v4 --parallel 4
+```
 
 
 **To Do:**
@@ -103,24 +126,21 @@ Environment class modified for MyoLeg.
 
 Automatic CPG adding into the environment. At the moment, CPG must be added into the env class.
 Environments deployed:
-- Ant-v4
 - Humanoid-v4
 - Walker2d-v4
-
-Implementation must be directly into the RL class.
-
+- 
 Development and Implementation of Hodgkin-Huxley neurons CPG. 
 
 **Upcoming Features**
-- Integration of Trust Region Policy Optimization (TRPO).
+- Integration of Trust Region Policy Optimization (TRPO) and Augmented Random Search (ARS).
 - Enhanced support for discrete action spaces.
 
 **Credit**
 
-This repository is based on [Tonic RL](https://github.com/fabiopardo/tonic).
+This repository is based on [Tonic RL](https://github.com/fabiopardo/tonic) and inspired by SB3
 Based on Tonic RL Library and modified to match current Gymnasium implementation and for MyoSuite development.
 
 Changes includes:
 - Direct control over learning rates and neuron size.
-- Usage of Sigmoid Linear Unit instead of Relu
 - Simplification of classes.
+- Updated Libraries.
