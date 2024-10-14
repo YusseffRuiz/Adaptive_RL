@@ -62,6 +62,13 @@ To Run the PPO agent on the Mujoco Humanoid-v4 environment
 python train.py --algorithm PPO --env Humanoid-v4 --steps 1000000 --seq 2 --parallel 4 --learning_rate 0.0003
 ```
 
+**To Plot:**
+
+Plot every algorithm found inside a folder (you can specify only a specific folder):
+
+```
+python Adaptive_RL/plot.py --path training/ --x_axis "train/seconds" --x_label "Time (s)" --title "Training Progress"
+```
 **Parallelization training via Multiprocess class.**
 
 ## Command-Line Arguments

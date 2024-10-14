@@ -400,16 +400,18 @@ def plot(
     # Save the plot in different formats if needed.
     if save_formats:
         logger.log('Saving...')
-        name = title
         if name is None:
             if len(envs) > 1:
                 name = 'results'
             else:
                 name = envs[0]
         for save_format in save_formats:
+            save_folder = "plots/"
+            os.makedirs(save_folder, exist_ok=True)
             file_name = name + '.' + save_format
-            fig.savefig(file_name, facecolor=fig.get_facecolor(), dpi=dpi)
-            print(file_name)
+            save_folder = os.path.join(save_folder, file_name)
+            fig.savefig(save_folder, facecolor=fig.get_facecolor(), dpi=dpi)
+            print(save_folder)
         print('to', os.getcwd())
 
     return fig
