@@ -96,6 +96,7 @@ class DDPG(base_agent.BaseAgent):
                 for k, v in infos[key].items():
                     logger.store(key + '/' + k, v.cpu().numpy())
 
+
         # Update the normalizers.
         if self.model.observation_normalizer:
             self.model.observation_normalizer.update()

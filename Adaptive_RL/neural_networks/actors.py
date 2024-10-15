@@ -500,7 +500,7 @@ class MaximumAPosterioriPolicyOptimization:
         """
         self.model = model
         self.actor_variables = trainable_variables(self.model.actor)
-        self.actor_optimizer = local_optimizer(params=self.actor_variables, lr=self.lr_actor)
+        self.optimizer = local_optimizer(params=self.actor_variables, lr=self.lr_actor)
 
         # Dual variables.
         self.dual_variables = []
@@ -589,7 +589,7 @@ class MaximumAPosterioriPolicyOptimization:
             target_distributions = independent_normals(target_distributions)
 
         # Begin gradient update steps
-        self.actor_optimizer.zero_grad()
+        self.optimizer.zero_grad()
         self.dual_optimizer.zero_grad()
 
         distributions = self.model.actor(observations)
@@ -661,7 +661,7 @@ class MaximumAPosterioriPolicyOptimization:
                 self.actor_variables, self.gradient_clip)
             torch.nn.utils.clip_grad_norm_(
                 self.dual_variables, self.gradient_clip)
-        self.actor_optimizer.step()
+        self.optimizer.step()
         self.dual_optimizer.step()
 
         dual_variables = dict(

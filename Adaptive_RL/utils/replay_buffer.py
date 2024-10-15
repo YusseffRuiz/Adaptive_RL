@@ -66,10 +66,8 @@ class ReplayBuffer:
         if self.buffers is None:
             self.num_workers = len(list(kwargs.values())[0])
             self.max_size = self.full_max_size // self.num_workers
-            self.buffers = {}
-            for key, val in kwargs.items():
-                shape = (self.max_size,) + np.array(val).shape
-                self.buffers[key] = np.full(shape, np.nan, np.float32)
+            self.buffers = {key: np.full((self.max_size,) + np.array(val).shape, np.nan, dtype=np.float32)
+                        for key, val in kwargs.items()}
 
         # Store the new values.
         for key, val in kwargs.items():
@@ -96,19 +94,23 @@ class ReplayBuffer:
         for i in range(min(self.size, self.return_steps - 1)):
             index = (self.index - i - 1) % self.max_size
             masks *= (1 - self.buffers['resets'][index])
-            new_rewards = (self.buffers['rewards'][index] +
-                           self.buffers['discounts'][index] * rewards)
+
+            # Vectorized update for rewards and discounts
             self.buffers['rewards'][index] = (
-                (1 - masks) * self.buffers['rewards'][index] +
-                masks * new_rewards)
-            new_discounts = self.buffers['discounts'][index] * discounts
+                    masks * (self.buffers['rewards'][index] + self.buffers['discounts'][index] * rewards) +
+                    (1 - masks) * self.buffers['rewards'][index]
+            )
+
             self.buffers['discounts'][index] = (
-                (1 - masks) * self.buffers['discounts'][index] +
-                masks * new_discounts)
+                    masks * (self.buffers['discounts'][index] * discounts) +
+                    (1 - masks) * self.buffers['discounts'][index]
+            )
+
             self.buffers['next_observations'][index] = (
-                (1 - masks)[:, None] *
-                self.buffers['next_observations'][index] +
-                masks[:, None] * next_observations)
+                    masks[:, None] * next_observations +
+                    (1 - masks[:, None]) * self.buffers['next_observations'][index]
+            )
+
 
     def get(self, *keys, steps):
         """
