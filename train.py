@@ -7,7 +7,6 @@ from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import Experiments.experiments_utils as trials
 from myosuite.utils import gym
 import argparse
-import re
 
 
 def parse_args():
@@ -153,10 +152,11 @@ def train_agent(
 
 
     checkpoint_path = None
+    checkpoint_folder = None
     config = None
     # Process the checkpoint path same way as in tonic.play
     if path:
-        checkpoint_path, config = Adaptive_RL.get_last_checkpoint(path)
+        checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path)
         if config is not None:
             # Load the experiment configuration.
             environment = environment or config.test_environment
@@ -185,11 +185,9 @@ def train_agent(
 
     # Load the weights of the agent form a checkpoint.
     step_number = 0
+    buffer_data = None
     if checkpoint_path:
-        path = "training/Humanoid-v4-SAC/logs/checkpoints/step_10400.pt"
-        cleaned_path = re.sub(r'step_\d+\.pt', '', path)
-        print(cleaned_path)
-        step_number = agent.load(path=checkpoint_path, load_path=cleaned_path)
+        step_number = agent.load(path=checkpoint_path)
 
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=log_dir, config=args)
@@ -198,7 +196,7 @@ def train_agent(
     trainer.initialize(
         agent=agent, environment=environment,
         test_environment=test_environment, step_saved=step_number)
-
+    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay_buffer, save_path=checkpoint_folder)
     # Train.
     trainer.run()
 
@@ -263,10 +261,11 @@ if __name__ == "__main__":
         agent = None
 
     if agent is not None:
+        print("Max Steps: ", max_steps)
         train_agent(agent=agent,
                     environment=env_name,
                     sequential=1, parallel=1,
-                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    trainer=Adaptive_RL.Trainer(max_steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
 
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)

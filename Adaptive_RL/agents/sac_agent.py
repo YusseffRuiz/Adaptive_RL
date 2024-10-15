@@ -78,8 +78,7 @@ class SAC(DDPG):
         """
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            return self.model.actor(observations).sample()
-
+            return self.model.actor(observations) # .sample() removed, verify
     def _policy(self, observations):
         """
         Returns the policy action by sampling stochastic actions from the actor model.

@@ -13,9 +13,9 @@ Modify video recorder
 """
 
 def get_last_checkpoint(path):
-    print(path)
     arguments_path = os.path.join(path, 'config.yaml')
     path = os.path.join(path, 'checkpoints')
+    checkpoint_folder = path
     # List all the checkpoints.
     checkpoint_ids = []
     if os.path.exists(path):
@@ -42,7 +42,7 @@ def get_last_checkpoint(path):
         print(f"Load from {arguments_path}")
     else:
         config = None
-    return checkpoint_path, config
+    return checkpoint_path, config, checkpoint_folder
 
 
 def load_checkpoint(checkpoint, path):
