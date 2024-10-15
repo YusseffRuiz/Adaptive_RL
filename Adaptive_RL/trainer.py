@@ -21,7 +21,7 @@ class Trainer:
         self.replace_checkpoint = replace_checkpoint
 
         self.steps = 0
-        self.save_cycles = self.max_steps / 10
+        self.save_cycles = 1
         self.test_environment = None
         self.environment = None
         self.agent = None
@@ -32,7 +32,6 @@ class Trainer:
         self.test_environment = test_environment
         if step_saved is not None:
             self.steps = step_saved
-        self.save_cycles = self.max_steps / 10
 
     def run(self):
         """Runs the main training loop."""
@@ -114,7 +113,9 @@ class Trainer:
                 save_path = os.path.join(path, checkpoint_name)
                 self.agent.save(save_path)
                 steps_since_save = self.steps % self.save_steps
-                if self.steps%self.save_cycles==0: # Saving everything only every 10% of the total training
+                self.save_cycles+=1
+                if self.save_cycles%10==0: # Saving everything only every 10% of the total training
+                    self.save_cycles=1
                     save_model_path = os.path.join(path, "model_checkpoint.pth")
                     self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay_buffer, save_model_path)
 
@@ -164,7 +165,7 @@ class Trainer:
     def load_model(self, agent, actor_updater, replay_buffer, save_path):
         try:
             # Load the saved data from the file
-            save_path = save_path + '\model_checkpoint.pth'
+            save_path = save_path + '/model_checkpoint.pth'
             checkpoint = torch.load(save_path)
 
             # Load model state
