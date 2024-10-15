@@ -84,7 +84,7 @@ class SAC(DDPG):
         Returns the policy action by sampling stochastic actions from the actor model.
         Already as numppy array
         """
-        return self._stochastic_actions(observations).numpy()
+        return self._stochastic_actions(observations).cpu().numpy()
 
     def _greedy_actions(self, observations):
         """
