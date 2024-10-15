@@ -13,6 +13,7 @@ class BaseAgent(abc.ABC):
     def initialize(self, observation_space, action_space, seed=None):
         self.model = None
         self.config = None
+        self.replay_buffer = None
 
     @abc.abstractmethod
     def step(self, observations, steps):
@@ -47,11 +48,12 @@ class BaseAgent(abc.ABC):
         """Reloads the agent weights from a checkpoint, and returns the step number."""
         if not path[-3:] == '.pt':
             path = path + '.pt'
-        logger.log(f'\nLoading weights from {path}')
+        logger.log(f'\nLoading weights and from {path}')
         match = re.search(r'step_(\d+)\.pt', path) # With regex catch the step saved
         step_number = int(match.group(1))
 
         self.model.load_state_dict(torch.load(path, weights_only=True))
+
         return step_number
 
     def get_config(self, print_conf=False):

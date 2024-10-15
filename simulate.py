@@ -1,10 +1,9 @@
-from myosuite.utils import gym
-
 import Adaptive_RL
 import Experiments.experiments_utils as trials
 import warnings
 import logging
 import argparse
+import os
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -48,29 +47,98 @@ def main_running():
                                                                  experiment_number=0, external_folder=args.f)
 
     if experiment:
-        num_episodes = 40
-        env = gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)
+        num_episodes = num_episodes
+        env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
     else:
         env = Adaptive_RL.Gym(env_name, render_mode="human")
 
     path = log_dir
-    path, config = Adaptive_RL.get_last_checkpoint(path=path)
+    path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
 
     if not random:
-        agent = Adaptive_RL.load_agent(config, path, env)
-
-        print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
 
         if video_record:
             video_folder = "videos/" + env_name
+            agent = Adaptive_RL.load_agent(config, path, env)
+
+            print("Video Recording with loaded weights from {} algorithm, path: {}".format(algorithm, path))
+
             Adaptive_RL.record_video(env_name, video_folder, algorithm, agent)
             print("Video Recorded")
 
         elif experiment:
-            trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes, env_name=save_folder)
+            algos_compare = ['PPO', 'MPO', 'DDPG', 'SAC']
+            trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
+            results = {}
+
+            # Iterate over the found algorithms and run evaluations
+            for algo, algo_folder in trained_algorithms:
+                print(f"Running experiments for algorithm: {algo} in folder: {algo_folder}")
+
+                # Get the last checkpoint path and config for the algorithm
+                path = os.path.join(algo_folder, 'logs')
+                checkpoint_path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
+
+                if checkpoint_path and config:
+                    # Load the agent using the config and checkpoint path
+                    agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
+                    print(f"Loaded weights for {algo} from {checkpoint_path}")
+
+                    result = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
+                                               env_name=save_folder)
+                    results[algo] = result
+
+                else:
+                    print(f"Checking Folder: {checkpoint_path}")
+                    print(f"Folder for {algo} does not exist. Skipping.")
+
+            # Perform comparisons using the collected results
+            if len(results) >= 2:
+                velocities = []
+                energies = []
+                distances = []
+                rewards = []
+
+                algos_found = []
+
+                for algo in algos_compare:
+                    # Collect the velocity, energy, distance, and reward from the results
+                    if algo in results:
+                        algos_found.append(algo)
+                        velocities.append(results[algo]['velocity'])
+                        energies.append(results[algo]['energy'])
+                        distances.append(results[algo]['distance'])
+                        rewards.append(results[algo]['reward'])
+                    else:
+                        # Handle the case where a result does not exist (e.g., missing algorithm folder)
+                        print(f"Results for {algo} not found. Skipping.")
+
+                # Create the directory to save results if it doesn't exist
+                save_exp = "Experiments/Results_own/"
+                os.makedirs(save_exp, exist_ok=True)
+
+                # Perform velocity comparison
+                trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp)
+
+                # Perform energy comparison using vertical bars
+                trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
+                                        units="Joules/s", save_folder=save_exp)
+
+                # Perform distance comparison using horizontal bars
+                trials.compare_horizontal(data=distances, algos=algos_found, data_name="Distance Travelled",
+                                          units="Mts", save_folder=save_exp)
+
+                # Perform reward comparison using vertical bars
+                trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp)
+
+            else:
+                print(f"Not enough results found for comparison. Expected at least 2 results.")
 
         else:
             """ load network weights """
+            agent = Adaptive_RL.load_agent(config, path, env)
+
+            print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env, algorithm, num_episodes)
     else:
         algorithm = "random"

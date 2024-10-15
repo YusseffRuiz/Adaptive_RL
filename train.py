@@ -7,7 +7,6 @@ from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import Experiments.experiments_utils as trials
 from myosuite.utils import gym
 import argparse
-import os
 
 
 def parse_args():
@@ -149,19 +148,11 @@ def train_agent(
     args = dict(locals())
     # Create a new dictionary excluding 'agent' and 'trainer'
     args = {k: v for k, v in args.items() if k not in ['agent', 'trainer']}
-    args['agent'] = agent.get_config()
 
 
     checkpoint_path = None
+    checkpoint_folder = None
     config = None
-    # Process the checkpoint path same way as in tonic.play
-    if path:
-        checkpoint_path, config = Adaptive_RL.get_last_checkpoint(path)
-        if config is not None:
-            # Load the experiment configuration.
-            environment = environment or config.test_environment
-            environment = environment or config.environment
-            trainer = trainer or config.trainer
 
     # Build the training environment.
 
@@ -174,20 +165,32 @@ def train_agent(
     test_environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment)
 
+    # Process the checkpoint path same way as in tonic.play
+    if path:
+        checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path)
+        if config is not None:
+            # Load the experiment configuration.
+            environment = environment or config.test_environment
+            environment = environment or config.environment
+            trainer = trainer or config.trainer
+            print("Loaded Config")
+
     # Build the agent.
     if not agent:
         raise ValueError('No agent specified.')
 
-    agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
-                     seed=seed)
-
-    agent.get_config(print_conf=True)
 
     # Load the weights of the agent form a checkpoint.
     step_number = 0
+    buffer_data = None
     if checkpoint_path:
-        step_number = agent.load(checkpoint_path)
+        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=_environment)
+    else:
+        agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
+                         seed=seed)
+    args['agent'] = agent.get_config()
 
+    agent.get_config(print_conf=True)
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=log_dir, config=args)
 
@@ -195,7 +198,7 @@ def train_agent(
     trainer.initialize(
         agent=agent, environment=environment,
         test_environment=test_environment, step_saved=step_number)
-
+    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay_buffer, save_path=checkpoint_folder)
     # Train.
     trainer.run()
 
@@ -246,12 +249,6 @@ if __name__ == "__main__":
         agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
     elif training_algorithm == "SAC":
-        learning_rate = 3e-4
-        buffer_size = 1e6
-        learning_starts = 100000
-        batch_size = 256
-        tau = 0.005
-        gamma = 0.99
         agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
                     hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
                     learning_starts=learning_starts)
@@ -266,10 +263,11 @@ if __name__ == "__main__":
         agent = None
 
     if agent is not None:
+        print("Max Steps: ", max_steps)
         train_agent(agent=agent,
                     environment=env_name,
                     sequential=1, parallel=1,
-                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    trainer=Adaptive_RL.Trainer(max_steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
 
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
@@ -277,7 +275,7 @@ if __name__ == "__main__":
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
 
-        plot.plot(paths=log_dir, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training")
+        plot.plot(paths=log_dir, x_label="Seconds", title=f"{env_name}_training")
 
         env.close()
     else:
