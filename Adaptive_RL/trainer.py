@@ -63,6 +63,7 @@ class Trainer:
             epoch_steps += num_workers
             steps_since_save += num_workers
 
+
             # Show the progress bar.
             if self.show_progress:
                 logger.show_progress(self.steps, self.epoch_steps, self.max_steps)

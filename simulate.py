@@ -53,7 +53,7 @@ def main_running():
         env = Adaptive_RL.Gym(env_name, render_mode="human")
 
     path = log_dir
-    path, config = Adaptive_RL.get_last_checkpoint(path=path)
+    path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
 
     if not random:
 
@@ -77,11 +77,11 @@ def main_running():
 
                 # Get the last checkpoint path and config for the algorithm
                 path = os.path.join(algo_folder, 'logs')
-                checkpoint_path, config = Adaptive_RL.get_last_checkpoint(path=path)
+                checkpoint_path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
 
                 if checkpoint_path and config:
                     # Load the agent using the config and checkpoint path
-                    agent = Adaptive_RL.load_agent(config, checkpoint_path, env)
+                    agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
                     print(f"Loaded weights for {algo} from {checkpoint_path}")
 
                     result = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,

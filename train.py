@@ -148,20 +148,11 @@ def train_agent(
     args = dict(locals())
     # Create a new dictionary excluding 'agent' and 'trainer'
     args = {k: v for k, v in args.items() if k not in ['agent', 'trainer']}
-    args['agent'] = agent.get_config()
 
 
     checkpoint_path = None
     checkpoint_folder = None
     config = None
-    # Process the checkpoint path same way as in tonic.play
-    if path:
-        checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path)
-        if config is not None:
-            # Load the experiment configuration.
-            environment = environment or config.test_environment
-            environment = environment or config.environment
-            trainer = trainer or config.trainer
 
     # Build the training environment.
 
@@ -174,21 +165,32 @@ def train_agent(
     test_environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment)
 
+    # Process the checkpoint path same way as in tonic.play
+    if path:
+        checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path)
+        if config is not None:
+            # Load the experiment configuration.
+            environment = environment or config.test_environment
+            environment = environment or config.environment
+            trainer = trainer or config.trainer
+            print("Loaded Config")
+
     # Build the agent.
     if not agent:
         raise ValueError('No agent specified.')
 
-    agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
-                     seed=seed)
-
-    agent.get_config(print_conf=True)
 
     # Load the weights of the agent form a checkpoint.
     step_number = 0
     buffer_data = None
     if checkpoint_path:
-        step_number = agent.load(path=checkpoint_path)
+        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=_environment)
+    else:
+        agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
+                         seed=seed)
+    args['agent'] = agent.get_config()
 
+    agent.get_config(print_conf=True)
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=log_dir, config=args)
 
@@ -273,7 +275,7 @@ if __name__ == "__main__":
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
 
-        plot.plot(paths=log_dir, x_axis="train/seconds", x_label="Seconds", title=f"{env_name}_training")
+        plot.plot(paths=log_dir, x_label="Seconds", title=f"{env_name}_training")
 
         env.close()
     else:
