@@ -59,11 +59,12 @@ def main_running():
 
         if video_record:
             video_folder = "videos/" + env_name
-            agent = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env)
 
             print("Video Recording with loaded weights from {} algorithm, path: {}".format(algorithm, path))
+            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
 
-            Adaptive_RL.record_video(env_name, video_folder, algorithm, agent)
+            Adaptive_RL.record_video(env, video_folder, algorithm, agent, env_name)
             print("Video Recorded")
 
         elif experiment:
@@ -146,6 +147,5 @@ def main_running():
 
 
 if __name__ == '__main__':
-    # plot.plot(paths="Walker2d-v4/logs/Walker2d-v4-DDPG", x_axis="train/seconds", x_label="Seconds", title=f"_training")
     main_running()
 

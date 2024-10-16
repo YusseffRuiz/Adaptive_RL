@@ -4,13 +4,8 @@ from Adaptive_RL.utils import logger
 from gymnasium.envs.registration import register
 import yaml
 import argparse
-from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
+from gymnasium.wrappers import RecordVideo
 
-
-"""
-TODO:
-Modify video recorder 
-"""
 
 def get_last_checkpoint(path):
     arguments_path = os.path.join(path, 'config.yaml')
@@ -116,28 +111,29 @@ def load_agent(config, path, env):
     agent.get_config(print_conf=True)
     return agent, step
 
-def record_video(env_name, video_folder, alg, agent):
+def record_video(env, video_folder, alg, agent, env_name):
     video_length = 1000
-    vec_env = DummyVecEnv([lambda: gym.make(env_name, render_mode="rgb_array", max_episode_steps=1000)])
-
-    obs = vec_env.reset()
     # Record the video starting at the first step
-    vec_env = VecVideoRecorder(vec_env, video_folder,
-                               record_video_trigger=lambda x: x == 0, video_length=video_length,
-                               name_prefix=f"{alg}-agent-{env_name}")
-    vec_env.reset()
-    for _ in range(video_length + 1):
-        if alg == "mpo":
+    env.reset()
+    env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: x % 2 == 0,
+                      video_length=0, name_prefix=f"{alg}-agent-{env_name}")
+
+    obs, *_ = env.reset()
+    env.start_video_recorder()
+    for _ in range(video_length+1):
+        if alg != "random":
             action = agent.test_step(obs)
-        elif alg == "sac":
-            action, *_ = [agent.predict(obs, deterministic=True)]
-            action = action[0]
         else:
-            action, *_ = [agent.select_action((obs[None, :]))]
-            action = action.cpu().numpy()[0]
-        obs, _, _, _ = vec_env.step(action)
+            action = env.action_space.sample()
+        obs, reward, terminated, truncated, *_ = env.step(action)
+        env.render()
+
+        if terminated or truncated:
+            obs, *_ = env.reset()
+
     # Save the video
-    vec_env.close()
+    env.close_video_recorder()
+    env.close()
 
 
 def register_new_env():
