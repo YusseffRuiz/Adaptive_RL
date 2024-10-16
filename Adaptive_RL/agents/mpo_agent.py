@@ -17,11 +17,11 @@ class MPO(base_agent.BaseAgent):
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
             action_penalization=True, gradient_clip=0.1, batch_size=512, return_step=5, steps_between_batches=20,
-            replay_buffer_size=10e6):
+            replay_buffer_size=10e5):
         self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
-                                          size=replay_buffer_size)
+                                          size=int(replay_buffer_size))
         self.actor_updater = MaximumAPosterioriPolicyOptimization(lr_actor=lr_actor, lr_dual=lr_dual, epsilon=epsilon,
                                                                   epsilon_mean=epsilon_mean, epsilon_std=epsilon_std,
                                                                   initial_log_temperature=initial_log_temperature,
@@ -52,7 +52,7 @@ class MPO(base_agent.BaseAgent):
 
     def step(self, observations, steps=None):
         actions = self._step(observations)
-        actions = actions.cpu().numpy()
+        actions = actions.numpy()
 
         # Keep some values for the next update.
         self.last_observations = observations.copy()
@@ -62,7 +62,7 @@ class MPO(base_agent.BaseAgent):
 
     def test_step(self, observations):
         # Sample actions for testing.
-        return self._test_step(observations).cpu().numpy()
+        return self._test_step(observations).numpy()
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store the last transitions in the replay.
@@ -101,7 +101,7 @@ class MPO(base_agent.BaseAgent):
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.cpu().numpy())
+                    logger.store(key + '/' + k, v.numpy())
 
         # Update the normalizers.
         if self.model.observation_normalizer:

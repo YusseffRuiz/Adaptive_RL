@@ -138,12 +138,12 @@ def train_agent(
     :param path: Path where the experiment to check for checkpoints
     :param log_dir:: Path to add the logs of the experiment
     """
-    if torch.cuda.is_available():
-        device = torch.cuda.get_device_name(torch.cuda.current_device())
-        torch.set_default_device('cuda')
-        print(f"Runing with {device}")
-    else:
-        print("Running with CPU")
+    # if torch.cuda.is_available():
+    #     device = torch.cuda.get_device_name(torch.cuda.current_device())
+    #     torch.set_default_device('cuda')
+    #     print(f"Runing with {device}")
+    # else:
+    #     print("Running with CPU")
     path = log_dir
     args = dict(locals())
     # Create a new dictionary excluding 'agent' and 'trainer'
@@ -170,8 +170,6 @@ def train_agent(
         checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path)
         if config is not None:
             # Load the experiment configuration.
-            environment = environment or config.test_environment
-            environment = environment or config.environment
             trainer = trainer or config.trainer
             print("Loaded Config")
 
@@ -267,15 +265,13 @@ if __name__ == "__main__":
         train_agent(agent=agent,
                     environment=env_name,
                     sequential=1, parallel=1,
-                    trainer=Adaptive_RL.Trainer(max_steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
+                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
                     log_dir=log_dir)
 
         env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
 
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
-
-        plot.plot(paths=log_dir, x_label="Seconds", title=f"{env_name}_training")
 
         env.close()
     else:

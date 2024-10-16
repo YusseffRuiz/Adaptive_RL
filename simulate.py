@@ -4,9 +4,9 @@ import warnings
 import logging
 import argparse
 import os
+from Adaptive_RL import logger
 
-
-logger: logging.Logger = logging.getLogger(__name__)
+# logger: logging.Logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -67,13 +67,13 @@ def main_running():
             print("Video Recorded")
 
         elif experiment:
-            algos_compare = ['PPO', 'MPO', 'DDPG', 'SAC']
+            algos_compare = ['PPO', 'CPG-PPO', 'MPO', 'CPG-MPO', 'DDPG', 'CPG-DDPG', 'SAC', 'CPG-SAC']
             trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
             results = {}
 
             # Iterate over the found algorithms and run evaluations
             for algo, algo_folder in trained_algorithms:
-                print(f"Running experiments for algorithm: {algo} in folder: {algo_folder}")
+                logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
 
                 # Get the last checkpoint path and config for the algorithm
                 path = os.path.join(algo_folder, 'logs')
@@ -82,15 +82,14 @@ def main_running():
                 if checkpoint_path and config:
                     # Load the agent using the config and checkpoint path
                     agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
-                    print(f"Loaded weights for {algo} from {checkpoint_path}")
 
                     result = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
                                                env_name=save_folder)
                     results[algo] = result
 
                 else:
-                    print(f"Checking Folder: {checkpoint_path}")
-                    print(f"Folder for {algo} does not exist. Skipping.")
+                    logger.log(f"Checking Folder: {checkpoint_path}")
+                    logger.log(f"Folder for {algo} does not exist. Skipping.")
 
             # Perform comparisons using the collected results
             if len(results) >= 2:
@@ -136,7 +135,7 @@ def main_running():
 
         else:
             """ load network weights """
-            agent = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env)
 
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env, algorithm, num_episodes)

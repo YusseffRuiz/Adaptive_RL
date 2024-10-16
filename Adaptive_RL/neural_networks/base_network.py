@@ -240,8 +240,6 @@ class SquashedMultivariateNormalDiag:
         Samples from the distribution and applies the tanh squashing function.
     sample(shape=()):
         Samples from the distribution.
-    log_prob(samples):
-        Raises a NotImplementedError, as recovering unsquashed samples isn't supported.
     """
 
     def __init__(self, loc, scale):
@@ -261,12 +259,6 @@ class SquashedMultivariateNormalDiag:
     def sample(self, shape=()):
         samples = self._distribution.sample(shape)
         return torch.tanh(samples)
-
-    def log_prob(self, samples):
-        """Required unsquashed samples cannot be accurately recovered."""
-        raise NotImplementedError(
-            'Not implemented to avoid approximation errors. '
-            'Use sample_with_log_prob directly.')
 
     @property
     def loc(self):

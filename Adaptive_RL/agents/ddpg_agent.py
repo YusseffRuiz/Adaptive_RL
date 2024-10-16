@@ -12,7 +12,7 @@ class DDPG(base_agent.BaseAgent):
     """
 
     def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, batch_size=512, return_step=5,
-                 discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e6, noise_std=0.1, learning_starts=20000):
+                 discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e5, noise_std=0.1, learning_starts=20000):
         # Store all the inputs in a dictionary
         self.config = {
             "agent" : "DDPG",
@@ -53,10 +53,9 @@ class DDPG(base_agent.BaseAgent):
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store last transition in the replay buffer
-        self.replay_buffer.push(
-            observations=self.last_observations, actions=self.last_actions,
-            next_observations=observations, rewards=rewards, resets=resets,
-            terminations=terminations)
+        self.replay_buffer.push(observations=self.last_observations, actions=self.last_actions,
+                                next_observations=observations, rewards=rewards, resets=resets,
+                                terminations=terminations)
 
         # Update the normalizers
         if self.model.observation_normalizer:
@@ -72,11 +71,11 @@ class DDPG(base_agent.BaseAgent):
 
     def test_step(self, observations):
         # Greedy actions for testing.
-        return self._greedy_actions(observations).cpu().numpy()
+        return self._greedy_actions(observations).numpy()
 
 
     def _policy(self, observations):
-        return self._greedy_actions(observations).cpu().numpy()
+        return self._greedy_actions(observations).numpy()
 
     def _greedy_actions(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
@@ -94,7 +93,7 @@ class DDPG(base_agent.BaseAgent):
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.cpu().numpy())
+                    logger.store(key + '/' + k, v.numpy())
 
 
         # Update the normalizers.

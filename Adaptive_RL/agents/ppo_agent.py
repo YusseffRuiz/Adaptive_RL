@@ -23,7 +23,7 @@ class PPO(base_agent.BaseAgent):
                                                       trace_decay=trace_decay)
         self.actor_updater = neural_networks.ClippedRatio(learning_rate=learning_rate, ratio_clip=clip_range,
                                                                            entropy_coeff=entropy_coeff)
-        self.critic_updater = neural_networks.VRegression(lr_critic=learning_rate)
+        self.critic_updater = neural_networks.VRegression(lr_critic=learning_rate, gradient_clip=clip_range)
         self.config = {
             "agent" : "PPO",
             "learning_rate": learning_rate,
@@ -45,8 +45,8 @@ class PPO(base_agent.BaseAgent):
     def step(self, observations, steps=None):
         # Sample actions and get their log-probabilities for training.
         actions, log_probs = self._step(observations)
-        actions = actions.cpu().numpy()
-        log_probs = log_probs.cpu().numpy()
+        actions = actions.numpy()
+        log_probs = log_probs.numpy()
 
         # Keep some values for the next update.
         self.last_observations = observations.copy()
@@ -73,7 +73,7 @@ class PPO(base_agent.BaseAgent):
 
     def test_step(self, observations):
         # Sample actions for testing.
-        return self._test_step(observations).cpu().numpy()
+        return self._test_step(observations).numpy()
 
 
     def _step(self, observations):
@@ -107,7 +107,7 @@ class PPO(base_agent.BaseAgent):
         # Compute the lambda-returns.
         batch = self.replay_buffer.get_full('observations', 'next_observations')
         values, next_values = self._evaluate(**batch)
-        values, next_values = values.cpu().numpy(), next_values.cpu().numpy()
+        values, next_values = values.numpy(), next_values.numpy()
         self.replay_buffer.compute_returns(values, next_values)
 
         train_actor = True
@@ -129,11 +129,11 @@ class PPO(base_agent.BaseAgent):
 
             # Stop earlier the training of the actor.
             if train_actor:
-                train_actor = not infos['actor']['stop'].cpu().numpy()
+                train_actor = not infos['actor']['stop'].numpy()
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.cpu().numpy())
+                    logger.store(key + '/' + k, v.numpy())
 
         logger.store('actor/iterations', actor_iterations)
         logger.store('critic/iterations', critic_iterations)

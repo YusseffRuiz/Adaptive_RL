@@ -66,12 +66,10 @@ def search_trained_algorithms(env_name, algorithms_list, save_folder=None, exper
         if experiment_number > 0:
             possible_folders = [
                 os.path.join(f"{save_folder}/{env_name}-{algo}", str(experiment_number)),
-                os.path.join(f"{save_folder}/{env_name}-CPG-{algo}", str(experiment_number))
             ]
         else:
             possible_folders = [
                 os.path.join(f"{save_folder}/{env_name}-{algo}"),
-                os.path.join(f"{save_folder}/{env_name}-CPG-{algo}")
             ]
 
         for folder in possible_folders:
@@ -126,7 +124,6 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_energy = []
     total_velocity = []
     dt = 5  # how many steps per dt
-    obs, *_ = env.reset()
     previous_vel = 0
     if alg == "random":
         episode_start = np.ones((env.num_envs,), dtype=bool)
