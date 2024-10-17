@@ -138,12 +138,12 @@ def train_agent(
     :param path: Path where the experiment to check for checkpoints
     :param log_dir:: Path to add the logs of the experiment
     """
-    # if torch.cuda.is_available():
-    #     device = torch.cuda.get_device_name(torch.cuda.current_device())
-    #     torch.set_default_device('cuda')
-    #     print(f"Runing with {device}")
-    # else:
-    #     print("Running with CPU")
+    if torch.cuda.is_available():
+        device = torch.cuda.get_device_name(torch.cuda.current_device())
+        torch.set_default_device('cuda')
+        print(f"Runing with {device}")
+    else:
+        print("Running with CPU")
     path = log_dir
     args = dict(locals())
     # Create a new dictionary excluding 'agent' and 'trainer'

@@ -5,6 +5,7 @@ from gymnasium.envs.registration import register
 import yaml
 import argparse
 from gymnasium.wrappers import RecordVideo
+import torch
 
 
 def get_last_checkpoint(path):
@@ -115,25 +116,40 @@ def record_video(env, video_folder, alg, agent, env_name):
     video_length = 1000
     # Record the video starting at the first step
     env.reset()
-    env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: x % 2 == 0,
-                      video_length=0, name_prefix=f"{alg}-agent-{env_name}")
+    env_v = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: x % 2 == 0,
+                      video_length=video_length, name_prefix=f"{alg}-agent-{env_name}")
 
-    obs, *_ = env.reset()
-    env.start_video_recorder()
+    obs, *_ = env_v.reset()
+    env_v.start_video_recorder()
     for _ in range(video_length+1):
         if alg != "random":
             action = agent.test_step(obs)
         else:
             action = env.action_space.sample()
-        obs, reward, terminated, truncated, *_ = env.step(action)
-        env.render()
-
+        obs, reward, terminated, truncated, *_ = env_v.step(action)
+        env_v.render()
         if terminated or truncated:
-            obs, *_ = env.reset()
+            terminated = False
+            truncated = False
+            obs, *_ = env_v.reset()
 
     # Save the video
-    env.close_video_recorder()
-    env.close()
+    env_v.close_video_recorder()
+    env_v.close()
+
+
+def to_tensor(data, device):
+    """
+    Check if the input data is already a tensor. If not, convert it to a tensor.
+    Parameters:
+        - data: The input data, which may or may not be a tensor.
+    Returns:
+        - Tensor: A PyTorch tensor, either the original data if it was a tensor or the converted tensor.
+    """
+    if torch.is_tensor(data):
+        return data
+    return torch.as_tensor(data, dtype=torch.float32, device=device)
+
 
 
 def register_new_env():
