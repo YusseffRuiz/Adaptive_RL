@@ -2,7 +2,7 @@ import torch
 from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import MaximumAPosterioriPolicyOptimization
-from Adaptive_RL.utils import ReplayBuffer
+from Adaptive_RL.utils import ReplayBuffer, utils
 
 
 class MPO(base_agent.BaseAgent):
@@ -16,7 +16,7 @@ class MPO(base_agent.BaseAgent):
         self, hidden_size=256, hidden_layers=2, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
-            action_penalization=True, gradient_clip=0.1, batch_size=512, return_step=5, steps_between_batches=20,
+            action_penalization=True, gradient_clip=0.1, batch_size=128, return_step=5, steps_between_batches=20,
             replay_buffer_size=10e5):
         self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
@@ -32,6 +32,7 @@ class MPO(base_agent.BaseAgent):
                                                                   action_penalization=action_penalization,
                                                                   gradient_clip=gradient_clip)
         self.critic_updater = neural_networks.ExpectedSARSA(lr_critic=lr_critic)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.config = {
             "agent": "MPO",
             "lr_actor": lr_actor,
@@ -52,7 +53,7 @@ class MPO(base_agent.BaseAgent):
 
     def step(self, observations, steps=None):
         actions = self._step(observations)
-        actions = actions.numpy()
+        actions = actions.cpu().numpy()
 
         # Keep some values for the next update.
         self.last_observations = observations.copy()
@@ -62,14 +63,16 @@ class MPO(base_agent.BaseAgent):
 
     def test_step(self, observations):
         # Sample actions for testing.
-        return self._test_step(observations).numpy()
+        return self._test_step(observations).cpu().numpy()
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store the last transitions in the replay.
-        self.replay_buffer.push(
-            observations=self.last_observations, actions=self.last_actions,
-            next_observations=observations, rewards=rewards, resets=resets,
-            terminations=terminations)
+        self.replay_buffer.push(observations=utils.to_tensor(self.last_observations, self.device),
+                                actions=utils.to_tensor(self.last_actions, self.device),
+                                next_observations=utils.to_tensor(observations, self.device),
+                                rewards=utils.to_tensor(rewards, self.device),
+                                resets=utils.to_tensor(resets, self.device),
+                                terminations=utils.to_tensor(terminations, self.device))
         # Prepare to update the normalizers.
         if self.model.observation_normalizer:
             self.model.observation_normalizer.record(self.last_observations)
@@ -96,12 +99,12 @@ class MPO(base_agent.BaseAgent):
 
         # Update both the actor and the critic multiple times.
         for batch in self.replay_buffer.get(*keys, steps=steps):
-            batch = {k: torch.as_tensor(v) for k, v in batch.items()}
+            # Batch data is already in tensor form, so no need to convert again
             infos = self._update_actor_critic(**batch)
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.numpy())
+                    logger.store(key + '/' + k, v.cpu().numpy())  # Convert back to numpy for logging
 
         # Update the normalizers.
         if self.model.observation_normalizer:

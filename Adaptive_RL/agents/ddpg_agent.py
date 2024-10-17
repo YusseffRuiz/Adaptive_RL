@@ -2,7 +2,8 @@ import torch
 from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
-from Adaptive_RL.utils import explorations, ReplayBuffer
+from Adaptive_RL.utils import explorations, ReplayBuffer, utils
+
 
 
 class DDPG(base_agent.BaseAgent):
@@ -34,6 +35,7 @@ class DDPG(base_agent.BaseAgent):
         self.exploration = explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
         self.actor_updater = DeterministicPolicyGradient(lr_actor=learning_rate)
         self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def initialize(self, observation_space, action_space, seed=None):
         self.model.initialize(observation_space, action_space)
@@ -52,10 +54,11 @@ class DDPG(base_agent.BaseAgent):
         return actions
 
     def update(self, observations, rewards, resets, terminations, steps):
+        # Verify if data is tensor already, otherwise, change it
         # Store last transition in the replay buffer
-        self.replay_buffer.push(observations=self.last_observations, actions=self.last_actions,
-                                next_observations=observations, rewards=rewards, resets=resets,
-                                terminations=terminations)
+        self.replay_buffer.push(observations=utils.to_tensor(self.last_observations, self.device), actions=utils.to_tensor(self.last_actions, self.device),
+                                next_observations=utils.to_tensor(observations, self.device), rewards=utils.to_tensor(rewards, self.device), resets=utils.to_tensor(resets, self.device),
+                                terminations=utils.to_tensor(terminations, self.device))
 
         # Update the normalizers
         if self.model.observation_normalizer:
@@ -71,11 +74,11 @@ class DDPG(base_agent.BaseAgent):
 
     def test_step(self, observations):
         # Greedy actions for testing.
-        return self._greedy_actions(observations).numpy()
+        return self._greedy_actions(observations).cpu().numpy()
 
 
     def _policy(self, observations):
-        return self._greedy_actions(observations).numpy()
+        return self._greedy_actions(observations).cpu().numpy()
 
     def _greedy_actions(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
@@ -88,13 +91,12 @@ class DDPG(base_agent.BaseAgent):
 
         # Update both the actor and the critic multiple times.
         for batch in self.replay_buffer.get(*keys, steps=steps):
-            batch = {k: torch.as_tensor(v) for k, v in batch.items()}
+            # Batch data is already in tensor form, so no need to convert again
             infos = self._update_actor_critic(**batch)
 
             for key in infos:
                 for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.numpy())
-
+                    logger.store(key + '/' + k, v.cpu().numpy())  # Convert back to numpy for logging
 
         # Update the normalizers.
         if self.model.observation_normalizer:

@@ -63,3 +63,5 @@ class BaseAgent(abc.ABC):
             for key, value in self.config.items():
                 print(f"{key}: {value}")
         return self.config
+
+
