@@ -11,7 +11,7 @@ class Trainer:
 
     def __init__(
         self, steps=int(1e7), epoch_steps=int(2e4), save_steps=int(5e5),
-        test_episodes=5, show_progress=True, replace_checkpoint=False,
+        test_episodes=5, show_progress=True, replace_checkpoint=False, early_stopping=False,
     ):
         self.max_steps = steps
         self.epoch_steps = epoch_steps
@@ -25,6 +25,12 @@ class Trainer:
         self.test_environment = None
         self.environment = None
         self.agent = None
+
+        # Early Stop Parameters
+        self.best_reward = -float('inf')
+        self.patience = 10 # 20 episodes limit if there is no improvement
+        self.no_improvement_counter = 0
+        self.early_stopping = early_stopping
 
     def initialize(self, agent, environment, test_environment=None, step_saved=None):
         self.agent = agent
@@ -98,9 +104,18 @@ class Trainer:
                 logger.dump()
                 last_epoch_time = time.time()
                 epoch_steps = 0
+                if scores > self.best_reward:
+                    self.best_reward = scores
+                    self.no_improvement_counter = 0  # Reset counter if there's an improvement
+                else:
+                    self.no_improvement_counter += 1
 
             # End of training.
             stop_training = self.steps >= self.max_steps
+            # Check if no improvement for 'patience' number of epochs
+            if self.no_improvement_counter >= self.patience and self.early_stopping:
+                print(f"Early stopping at epoch {epochs}")
+                stop_training = True
 
             # Save a checkpoint.
             if stop_training or steps_since_save >= self.save_steps:

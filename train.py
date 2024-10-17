@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from sympy.physics.units import action
+
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
@@ -25,6 +27,7 @@ def parse_args():
     parser.add_argument('--steps', type=int, default=int(1e7), help='Maximum steps for training.')
     parser.add_argument('--seq', type=int, default=1, help='Number of sequential environments.')
     parser.add_argument('--parallel', type=int, default=1, help='Number of parallel environments.')
+    parser.add_argument('--early', action='store_true', help='Early stopping if we do not have rewards improvement')
 
     # Hyperparameters
     parser.add_argument('--learning_rate', type=float, default=3.56987e-05, help='Learning rate for the actor.')
@@ -126,7 +129,7 @@ def matsuoka_main():
 
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
-        checkpoint="last", path=None, log_dir=None):
+        checkpoint="last", path=None, log_dir=None, early_stopping=False, cpg_flag=False):
     """
     :param agent: Agent and algorithm to be trained.
     :param environment: Environment name
@@ -157,6 +160,13 @@ def train_agent(
     # Build the training environment.
 
     _environment = Adaptive_RL.Gym(environment)
+    cpg_model = None
+    if cpg_flag:
+        cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
+                                          da=_environment.action_space.shape[0], n_envs=1,
+                                          neuron_number=2, tau_r=2,
+                                          tau_a=12)
+    _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
     environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment, parallel, sequential)
     environment.initialize() if parallel > 1 else 0
@@ -199,6 +209,7 @@ def train_agent(
     trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay_buffer, save_path=checkpoint_folder)
     # Train.
     trainer.run()
+    return agent
 
 
 if __name__ == "__main__":
@@ -222,6 +233,7 @@ if __name__ == "__main__":
     # Training Mode
     sequential = args.seq
     parallel = args.parallel
+    early_stopping = args.early
 
     # Hyperparameters
     learning_rate = args.learning_rate
@@ -261,14 +273,20 @@ if __name__ == "__main__":
         agent = None
 
     if agent is not None:
-        print("Max Steps: ", max_steps)
-        train_agent(agent=agent,
+        agent = train_agent(agent=agent,
                     environment=env_name,
                     sequential=1, parallel=1,
                     trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                    log_dir=log_dir)
+                    log_dir=log_dir, early_stopping=early_stopping, cpg_flag=cpg_flag)
 
-        env = gym.make(env_name, render_mode="human", max_episode_steps=1500)
+        env = Adaptive_RL.Gym(env_name, render_mode="human", max_episode_steps=1500)
+        cpg_model = None
+        if cpg_flag:
+            cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
+                                              da=env.action_space.shape[0], n_envs=1,
+                                              neuron_number=2, tau_r=2,
+                                              tau_a=12)
+        env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)

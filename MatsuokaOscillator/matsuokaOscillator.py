@@ -1,7 +1,7 @@
 import math
-
 import numpy as np
 import torch
+from MatsuokaOscillator import oscillators_helper
 
 
 class MatsuokaNetwork:
@@ -216,7 +216,7 @@ class MatsuokaNetworkWithNN:
         Runs the simulation for a given number of steps, returning the outputs of the oscillators over time.
     """
 
-    def __init__(self, num_oscillators, env, n_envs=1, neuron_number=2,
+    def __init__(self, num_oscillators, da, n_envs=1, neuron_number=2,
                  tau_r=1.0, tau_a=6.0, dt=0.1):
         """
         Initializes the MatsuokaNetworkWithNN with a specified number of oscillators and a neural network model.
@@ -237,24 +237,19 @@ class MatsuokaNetworkWithNN:
         # self.env = env
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_oscillators = num_oscillators
-        self.observation_space = env[0]  #env.observation_space
-        self.action_space = None  #env.action_space
         self.neuron_number = neuron_number
-        self.action_dim = env[1]  #env.action_space.shape[0]
+        self.action_dim = da
         self.n_envs = n_envs
         self.parameters_dimension = self.num_oscillators * self.neuron_number
         error_margin = math.pi*0.05
         self.desired_phase_difference = 0.0
         self.phase_error = 0.0
-        self.pid_controller = PIDController(Kp=1.0, Ki=0.05, Kd=0.01, dt=0.01, margin=error_margin)
+        self.pid_controller = oscillators_helper.PIDController(Kp=1.0, Ki=0.05, Kd=0.01, dt=0.01, margin=error_margin)
         """ You can create similar characteristics oscillators or different"""
-        # self.oscillators = MatsuokaOscillator(action_space=self.action_dim, num_oscillators=num_oscillators,
-        #                                       initial_phase=0.0, frequency=1.0, amplitude=2.5,
-        #                                       neuron_number=neuron_number, tau_r=tau_r,
-        #                                       tau_a=tau_a, dt=dt)
-        self.oscillator_right, self.oscillator_left = initialize_oscillator(action_dim=self.action_dim, frequency_right=1.0,
-                                                      frequency_left=2.0, neuron_number=neuron_number, amplitude=0.75,
-                                                      tau_r=tau_r, tau_a=tau_a, dt=dt)
+
+        self.oscillator_right, self.oscillator_left = self.initialize_oscillator(action_dim=self.action_dim,
+                                                                                 neuron_number=neuron_number, amplitude=1.5,
+                                                                                 tau_r=tau_r, tau_a=tau_a, dt=dt)
 
 
         # self.nn_model = MatsuokaActor(env, neuron_number=self.neuron_number, num_oscillators=self.num_oscillators).to(
@@ -282,9 +277,34 @@ class MatsuokaNetworkWithNN:
 
         # Original inputs are in the shape [B, sample, num_oscillators*neuron_number
         # Rearrange inputs in the form num_oscillators*neuron_numer
-        oscillators_input = env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
-        self.oscillator_right.step(weights_in=oscillators_input[0:self.neuron_number])
-        self.oscillator_left.step(weights_in=oscillators_input[self.neuron_number:])
+
+        oscillators_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
+
+        if self.action_dim == 70:
+            quadriceps_input = oscillators_input[0:4]  # Assuming 4 quadriceps-related muscles
+            hamstrings_input = oscillators_input[4:6]
+            hip_flexors_input = oscillators_input[6:9]
+            hip_extensors_input = oscillators_input[9:14]
+            dorsiflexors_input = oscillators_input[14:17]
+            plantarflexors_input = oscillators_input[17:22]
+            motor_input = oscillators_input[22]  # Motor actuator input for the right leg
+            # Update oscillators for the right leg
+            self.oscillator_right['quadriceps'].step(quadriceps_input)
+            self.oscillator_right['hamstrings'].step(hamstrings_input)
+            self.oscillator_right['hip_flexors'].step(hip_flexors_input)
+            self.oscillator_right['hip_extensors'].step(hip_extensors_input)
+            self.oscillator_right['ankle_motor'].step(motor_input)  # Control motor directly for right leg
+
+            # Update oscillators for the left leg
+            self.oscillator_left['quadriceps'].step(quadriceps_input)
+            self.oscillator_left['hamstrings'].step(hamstrings_input)
+            self.oscillator_left['hip_flexors'].step(hip_flexors_input)
+            self.oscillator_left['hip_extensors'].step(hip_extensors_input)
+            self.oscillator_left['ankle_dorsiflexors'].step(dorsiflexors_input)
+            self.oscillator_left['ankle_plantarflexors'].step(plantarflexors_input)
+        else:
+            self.oscillator_right.step(weights_in=oscillators_input[0:self.neuron_number])
+            self.oscillator_left.step(weights_in=oscillators_input[self.neuron_number:])
 
         actual_phase_difference = self.oscillator_right.phase - self.oscillator_left.phase
         error = self.desired_phase_difference - actual_phase_difference
@@ -296,7 +316,7 @@ class MatsuokaNetworkWithNN:
         left_output = self.oscillator_left.apply_control_signal(control_signal)
 
         oscillators_output = torch.stack([right_output, left_output], dim=0)
-        output_actions = env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
+        output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
 
         # output_actions = self.nn_model.output_neuron(output_y) # Possible not working
@@ -327,147 +347,98 @@ class MatsuokaNetworkWithNN:
             y_outputs[t, :, :] = self.oscillators.y
         return y_outputs
 
-
-class PIDController:
-    def __init__(self, Kp, Ki, Kd, dt, margin=0.1):
+    def initialize_oscillator(self, action_dim, initial_phase=0.0, amplitude=1.5,
+                              neuron_number=2, tau_r=1.0, tau_a=6.0, dt=0.1):
+        """ Initialize multiple oscillators with different frequencies.
+        Must be modified and improved to match higher size Action spaces, multiple oscillators with different muscle groups.
         """
-        Initialize the PID controller with specified parameters.
+        if action_dim == 70: # Creation of different size oscillators
+            # Define the frequencies for different muscle groups (example values, can be tuned)
+            frequency_right = {
+                'quadriceps': 1.0,
+                'hamstrings': 0.8,
+                'hip_flexors': 1.2,
+                'hip_extensors': 1.1,
+                'ankle_motor': 0.9  # This is for the prosthetic motor
+            }
 
-        Parameters:
-        - Kp, Ki, Kd: PID gains.
-        - dt: Time step size.
-        - margin: Acceptable phase error margin.
-        """
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-        self.dt = dt
-        self.prev_error = 0.0
-        self.integral = 0.0
-        self.margin = margin
+            frequency_left = {
+                'quadriceps': 1.0,
+                'hamstrings': 0.8,
+                'hip_flexors': 1.2,
+                'hip_extensors': 1.1,
+                'ankle_dorsiflexors': 1.0,
+                'ankle_plantarflexors': 1.0,
+            }
 
-    def step(self, error):
-        """
-        Calculate the control signal using PID control logic.
+            # Initialize the oscillators for the right leg
+            right_oscillators = {
+                'quadriceps': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                 initial_phase=initial_phase, frequency=frequency_right['quadriceps'],
+                                                 amplitude=amplitude, neuron_number=neuron_number,
+                                                 tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'hamstrings': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                 initial_phase=initial_phase, frequency=frequency_right['hamstrings'],
+                                                 amplitude=amplitude, neuron_number=neuron_number,
+                                                 tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'hip_flexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                  initial_phase=initial_phase, frequency=frequency_right['hip_flexors'],
+                                                  amplitude=amplitude, neuron_number=neuron_number,
+                                                  tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'hip_extensors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                    initial_phase=initial_phase,
+                                                    frequency=frequency_right['hip_extensors'],
+                                                    amplitude=amplitude, neuron_number=neuron_number,
+                                                    tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'ankle_motor': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                  initial_phase=initial_phase, frequency=frequency_right['ankle_motor'],
+                                                  amplitude=amplitude, neuron_number=neuron_number,
+                                                  tau_r=tau_r, tau_a=tau_a, dt=dt)
+            }
 
-        Parameters:
-        - error: The phase error (difference between actual and desired phase).
+            # Initialize the oscillators for the left leg
+            left_oscillators = {
+                'quadriceps': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                 initial_phase=initial_phase, frequency=frequency_left['quadriceps'],
+                                                 amplitude=amplitude, neuron_number=neuron_number,
+                                                 tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'hamstrings': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                 initial_phase=initial_phase, frequency=frequency_left['hamstrings'],
+                                                 amplitude=amplitude, neuron_number=neuron_number,
+                                                 tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'hip_flexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                  initial_phase=initial_phase, frequency=frequency_left['hip_flexors'],
+                                                  amplitude=amplitude, neuron_number=neuron_number,
+                                                  tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'hip_extensors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                    initial_phase=initial_phase,
+                                                    frequency=frequency_left['hip_extensors'],
+                                                    amplitude=amplitude, neuron_number=neuron_number,
+                                                    tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'ankle_dorsiflexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                         initial_phase=initial_phase,
+                                                         frequency=frequency_left['ankle_dorsiflexors'],
+                                                         amplitude=amplitude, neuron_number=neuron_number,
+                                                         tau_r=tau_r, tau_a=tau_a, dt=dt),
+                'ankle_plantarflexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                           initial_phase=initial_phase,
+                                                           frequency=frequency_left['ankle_plantarflexors'],
+                                                           amplitude=amplitude, neuron_number=neuron_number,
+                                                           tau_r=tau_r, tau_a=tau_a, dt=dt)
+            }
 
-        Returns:
-        - control_signal: The computed control signal to minimize phase error.
-        """
-        # Check if the error is within the margin
-        if abs(error) <= self.margin:
-            return 0.0  # No correction needed within margin
+            return right_oscillators, left_oscillators
+        else: # Regular same size oscillator
+            frequency_right = 1.0
+            frequency_left = 1.5
+            right_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                  initial_phase=initial_phase, frequency=frequency_right,
+                                                  amplitude=amplitude,
+                                                  neuron_number=neuron_number, tau_r=tau_r,
+                                                  tau_a=tau_a, dt=dt)
+            left_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                                                 initial_phase=initial_phase, frequency=frequency_left, amplitude=amplitude,
+                                                 neuron_number=neuron_number, tau_r=tau_r,
+                                                 tau_a=tau_a, dt=dt)
+        return right_oscillator, left_oscillator
 
-        # Proportional term
-        P = self.Kp * error
-
-        # Integral term (accumulating error over time)
-        self.integral += error * self.dt
-        I = self.Ki * self.integral
-
-        # Derivative term (rate of change of the error)
-        derivative = (error - self.prev_error) / self.dt
-        D = self.Kd * derivative
-
-        # Update the previous error for the next time step
-        self.prev_error = error
-
-        # Calculate the control signal
-        control_signal = P + I + D
-
-        return control_signal
-
-
-def initialize_oscillator(action_dim, initial_phase=0.0, frequency_right=1.0, frequency_left=2.0, amplitude=2.5,
-                          neuron_number=2, tau_r=1.0, tau_a=6.0, dt=0.1):
-    """ Initialize multiple oscillators with different frequencies.
-    Must be modified and improved to match higher size Action spaces, multiple oscillators with different muscle groups.
-    """
-    right_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
-                       initial_phase=initial_phase, frequency=frequency_right, amplitude=amplitude,
-                       neuron_number=neuron_number, tau_r=tau_r,
-                       tau_a=tau_a, dt=dt)
-    left_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
-                       initial_phase=initial_phase, frequency=frequency_left, amplitude=amplitude,
-                       neuron_number=neuron_number, tau_r=tau_r,
-                       tau_a=tau_a, dt=dt)
-    return right_oscillator, left_oscillator
-
-
-def env_selection(action_dim, weights, device, output=None):
-    """
-    Used to determine automatically which environment we are working now
-    :param action_dim: action dimension for the different enviroments
-    :param weights: weights comming from the DRL algorithm
-    :param device: device to run the algorithm on
-    :param output: None when weights are received, otherwise the output of the CPG
-    :return: either weights if weights are received or the output of the CPG
-    """
-    if action_dim == 6:
-        cpg_values = weight_conversion_walker(weights, device, output=output)
-    elif action_dim == 17:
-        cpg_values = weight_conversion_humanoid(weights, device, output=output)
-    elif action_dim == 80:
-        cpg_values = weight_conversion_myoleg(weights, device, output=output)
-    elif action_dim == 7:
-        cpg_values = weight_conversion_ant(weights, device, output=output)
-    else:
-        print("Not an implemented environment")
-        return None
-
-    return cpg_values
-
-
-def weight_conversion_ant(weights, device, output=None):
-    if output is None:
-        weights_tmp = torch.tensor([weights[0], weights[6], weights[4], weights[2]], dtype=torch.float32,
-                                   device=device)
-        return weights_tmp
-    else:
-        output_tensor = weights
-        output_tensor[0] = output[0, 0]
-        output_tensor[2] = output[1, 1]
-        output_tensor[4] = output[1, 0]
-        output_tensor[6] = output[0, 1]
-        return output_tensor
-
-
-def weight_conversion_walker(weights, device, output=None):
-    if output is None:
-        weights_tmp = torch.tensor([weights[0], weights[1], weights[3], weights[4]], dtype=torch.float32, device=device)
-        return weights_tmp
-    else:
-        output_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
-        output_tensor[0] = output[0, 0]
-        output_tensor[1] = output[0, 1]
-        output_tensor[3] = output[1, 0]
-        output_tensor[4] = output[1, 1]
-
-        return output_tensor
-
-
-def weight_conversion_humanoid(weights, device, output=None):
-    if output is None:
-        weights_tmp = torch.tensor([weights[5], weights[6], weights[9], weights[10]], dtype=torch.float32, device=device)
-        return weights_tmp
-    else:
-        output_tensor = weights
-        output_tensor[5] = output[0, 0]
-        output_tensor[6] = output[0, 1]
-        output_tensor[9] = output[1, 0]
-        output_tensor[10] = output[1, 1]
-        return output_tensor
-
-def weight_conversion_myoleg(weights, device, output=None):
-    if output is None:
-        weights_tmp = torch.tensor(weights, dtype=torch.float32, device=device)
-        return weights_tmp
-    else:
-        output_tensor = weights
-        return output_tensor
-
-
-def leg_synchronize(data_left, data_right):
-    pass

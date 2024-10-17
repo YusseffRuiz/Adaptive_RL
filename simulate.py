@@ -1,10 +1,10 @@
 import Adaptive_RL
 import Experiments.experiments_utils as trials
 import warnings
-import logging
 import argparse
 import os
 from Adaptive_RL import logger
+from MatsuokaOscillator import MatsuokaNetworkWithNN
 
 # logger: logging.Logger = logging.getLogger(__name__)
 
@@ -51,6 +51,14 @@ def main_running():
         env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
     else:
         env = Adaptive_RL.Gym(env_name, render_mode="human")
+
+    cpg_model = None
+    if cpg_flag:
+        cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
+                                                      da=env.action_space.shape[0], n_envs=1,
+                                                      neuron_number=2, tau_r=2,
+                                                      tau_a=12)
+    env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
     path = log_dir
     path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
