@@ -54,7 +54,7 @@ def main_running():
     cpg_model = None
     if cpg_flag:
         cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
-                                                      da=env.action_space.shape[0], n_envs=1,
+                                                      da=env.action_space.shape[0],
                                                       neuron_number=2, tau_r=2,
                                                       tau_a=12)
     env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
