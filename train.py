@@ -1,13 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sympy.physics.units import action
 
 from MatsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
 import Experiments.experiments_utils as trials
-from myosuite.utils import gym
 import argparse
 
 

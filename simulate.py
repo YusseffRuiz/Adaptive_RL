@@ -6,7 +6,6 @@ import os
 from Adaptive_RL import logger
 from MatsuokaOscillator import MatsuokaNetworkWithNN
 
-# logger: logging.Logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
