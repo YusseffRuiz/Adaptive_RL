@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 class ReplayBuffer:
     """
@@ -10,22 +10,23 @@ class ReplayBuffer:
     """
 
     def __init__(
-        self, size=int(1e6), return_steps=1, batch_iterations=64,
-        batch_size=256, discount_factor=0.99, steps_before_batches=int(1e4),
-        steps_between_batches=50
+        self, size=int(1e5), return_steps=1, batch_iterations=20,
+        batch_size=256, discount_factor=0.99, steps_before_batches=int(1e3),
+        steps_between_batches=50, device='cuda'
     ):
         """
         Initializes the replay buffer.
         Parameters:
-            - size (int): Maximum number of experiences to store in the buffer. Default is 1e6.
+            - size (int): Maximum number of experiences to store in the buffer. Default is 1e5.
             - return_steps (int): Number of steps to consider for n-step return calculations. Default is 1.
             - batch_iterations (int): Number of times to sample batches during training. Default is 20.
-            - batch_size (int): Number of experiences to sample in each batch. Default is 100.
+            - batch_size (int): Number of experiences to sample in each batch. Default is 256.
             - discount_factor (float): Discount factor (gamma) for calculating n-step returns. Default is 0.99.
             - steps_before_batches (int): Minimum number of steps before starting to sample batches. Default is 1e4.
             - steps_between_batches (int): Minimum number of steps between consecutive batch sampling operations.
         """
 
+        self.device = device
         self.full_max_size = int(size)
         self.return_steps = return_steps
         self.batch_iterations = batch_iterations
@@ -59,21 +60,21 @@ class ReplayBuffer:
             - kwargs (dict): Experience data to store (e.g., 'observations', 'actions', 'rewards', etc.).
         """
         if 'terminations' in kwargs:
-            continuations = np.float32(1 - kwargs['terminations'])
+            continuations = torch.tensor((1 - kwargs['terminations']), dtype=torch.float).to(self.device)
             kwargs['discounts'] = continuations * self.discount_factor
 
         # Create the named buffers.
         if self.buffers is None:
             self.num_workers = len(list(kwargs.values())[0])
             self.max_size = self.full_max_size // self.num_workers
-            self.buffers = {}
+            self.buffers = {}  # Initialize buffers as a dictionary
             for key, val in kwargs.items():
-                shape = (self.max_size,) + np.array(val).shape
-                self.buffers[key] = np.full(shape, np.nan, np.float32)
+                shape = (self.max_size,) + torch.tensor(val).shape
+                self.buffers[key] = torch.full(shape, float('nan'), dtype=torch.float32, device=self.device)
 
         # Store the new values.
         for key, val in kwargs.items():
-            self.buffers[key][self.index] = val
+            self.buffers[key][self.index] = torch.tensor(val, dtype=torch.float32, device=self.device)
 
         # Accumulate values for n-step returns.
         if self.return_steps > 1:
@@ -91,24 +92,29 @@ class ReplayBuffer:
         rewards = kwargs['rewards']
         next_observations = kwargs['next_observations']
         discounts = kwargs['discounts']
-        masks = np.ones(self.num_workers, np.float32)
+        # Convert masks to a torch tensor (same as your buffers)
+        masks = torch.ones(self.num_workers, dtype=torch.float32, device=self.device)
 
         for i in range(min(self.size, self.return_steps - 1)):
             index = (self.index - i - 1) % self.max_size
             masks *= (1 - self.buffers['resets'][index])
-            new_rewards = (self.buffers['rewards'][index] +
-                           self.buffers['discounts'][index] * rewards)
+
+            # Vectorized update for rewards and discounts
             self.buffers['rewards'][index] = (
-                (1 - masks) * self.buffers['rewards'][index] +
-                masks * new_rewards)
-            new_discounts = self.buffers['discounts'][index] * discounts
+                    masks * (self.buffers['rewards'][index] + self.buffers['discounts'][index] * rewards) +
+                    (1 - masks) * self.buffers['rewards'][index]
+            )
+
             self.buffers['discounts'][index] = (
-                (1 - masks) * self.buffers['discounts'][index] +
-                masks * new_discounts)
+                    masks * (self.buffers['discounts'][index] * discounts) +
+                    (1 - masks) * self.buffers['discounts'][index]
+            )
+
             self.buffers['next_observations'][index] = (
-                (1 - masks)[:, None] *
-                self.buffers['next_observations'][index] +
-                masks[:, None] * next_observations)
+                    masks[:, None] * next_observations +
+                    (1 - masks[:, None]) * self.buffers['next_observations'][index]
+            )
+
 
     def get(self, *keys, steps):
         """
@@ -121,7 +127,7 @@ class ReplayBuffer:
         """
         for _ in range(self.batch_iterations):
             total_size = self.size * self.num_workers
-            indices = self.np_random.randint(total_size, size=self.batch_size)
+            indices = torch.randint(0, total_size, (self.batch_size,), device=self.device)
             rows = indices // self.num_workers
             columns = indices % self.num_workers
             yield {k: self.buffers[k][rows, columns] for k in keys}

@@ -51,3 +51,12 @@ class TimeFeature(gym.Wrapper):
         v = self.low + (self.high - self.low) * prop
         observation = np.append(observation, v)
         return observation, reward, done, info
+
+
+class CPGWrapper(gym.Wrapper):
+    def __init__(self, env, cpg_model=None, use_cpg=False):
+        super(CPGWrapper, self).__init__(env)
+        if use_cpg:
+            self.cpg_model = cpg_model  # The CPG model should be passed in as an argument
+
+

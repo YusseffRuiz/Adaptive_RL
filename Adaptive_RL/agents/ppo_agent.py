@@ -23,7 +23,7 @@ class PPO(base_agent.BaseAgent):
                                                       trace_decay=trace_decay)
         self.actor_updater = neural_networks.ClippedRatio(learning_rate=learning_rate, ratio_clip=clip_range,
                                                                            entropy_coeff=entropy_coeff)
-        self.critic_updater = neural_networks.VRegression(lr_critic=learning_rate)
+        self.critic_updater = neural_networks.VRegression(lr_critic=learning_rate, gradient_clip=clip_range)
         self.config = {
             "agent" : "PPO",
             "learning_rate": learning_rate,
@@ -107,7 +107,7 @@ class PPO(base_agent.BaseAgent):
         # Compute the lambda-returns.
         batch = self.replay_buffer.get_full('observations', 'next_observations')
         values, next_values = self._evaluate(**batch)
-        values, next_values = values.cpu().numpy(), next_values.cpu().numpy()
+        values, next_values = values.cpu().numpy(), next_values.cpu().umpy()
         self.replay_buffer.compute_returns(values, next_values)
 
         train_actor = True

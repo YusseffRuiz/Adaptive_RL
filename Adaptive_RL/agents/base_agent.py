@@ -13,7 +13,6 @@ class BaseAgent(abc.ABC):
     def initialize(self, observation_space, action_space, seed=None):
         self.model = None
         self.config = None
-        self.replay_buffer = None
 
     @abc.abstractmethod
     def step(self, observations, steps):
@@ -64,3 +63,5 @@ class BaseAgent(abc.ABC):
             for key, value in self.config.items():
                 print(f"{key}: {value}")
         return self.config
+
+

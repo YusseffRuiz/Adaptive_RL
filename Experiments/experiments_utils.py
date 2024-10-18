@@ -51,7 +51,7 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
         os.makedirs(save_folder, exist_ok=True)
         os.makedirs(log_dir, exist_ok=True)
         print(f"Folders {save_folder} and {log_dir} created")
-    return env_name, save_folder, log_dir
+    return name, save_folder, log_dir
 
 
 # Define function to search for trained algorithms in specified folders
@@ -66,12 +66,10 @@ def search_trained_algorithms(env_name, algorithms_list, save_folder=None, exper
         if experiment_number > 0:
             possible_folders = [
                 os.path.join(f"{save_folder}/{env_name}-{algo}", str(experiment_number)),
-                os.path.join(f"{save_folder}/{env_name}-CPG-{algo}", str(experiment_number))
             ]
         else:
             possible_folders = [
                 os.path.join(f"{save_folder}/{env_name}-{algo}"),
-                os.path.join(f"{save_folder}/{env_name}-CPG-{algo}")
             ]
 
         for folder in possible_folders:
@@ -126,7 +124,6 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_energy = []
     total_velocity = []
     dt = 5  # how many steps per dt
-    obs, *_ = env.reset()
     previous_vel = 0
     if alg == "random":
         episode_start = np.ones((env.num_envs,), dtype=bool)
@@ -175,7 +172,6 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
             ep_torques.append(torques)
             reward += rw
             ep_energy.append(step_energy)
-        # print(f"Episode {episode}: Average speed of: {np.mean(ep_velocity):.2f} m/s, with reward: {reward:.2f}")
         if reward < 0:
             print("Episode failed")
         total_distance.append(position)
@@ -198,12 +194,11 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_velocity = np.array(total_velocity)
     total_accelerations = np.array(total_accelerations)
 
-    average_reward = np.sum(total_rewards)/episodes_num
+    average_reward = np.mean(total_rewards)
     velocity_total = np.mean(total_velocity)
     average_energy = (np.sum(np.trapz(total_energy, dx=1)/np.mean(total_steps))/episodes_num)
     average_distance = np.mean(total_distance)
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
-    print(f"Average Steps travelled: {np.mean(total_steps)}")
     print(f"Average Speed and Distance over {episodes_num} episodes: {velocity_total:.2f} m/s with "
           f"total energy: {average_energy:.2f} Joules per second, travelled {average_distance:.2f} meters")
     joints = separate_joints(total_joint_angles, action_dim)

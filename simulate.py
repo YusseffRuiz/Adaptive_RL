@@ -1,12 +1,11 @@
 import Adaptive_RL
 import Experiments.experiments_utils as trials
 import warnings
-import logging
 import argparse
 import os
+from Adaptive_RL import logger
+from MatsuokaOscillator import MatsuokaNetworkWithNN
 
-
-logger: logging.Logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -52,6 +51,14 @@ def main_running():
     else:
         env = Adaptive_RL.Gym(env_name, render_mode="human")
 
+    cpg_model = None
+    if cpg_flag:
+        cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
+                                                      da=env.action_space.shape[0], n_envs=1,
+                                                      neuron_number=2, tau_r=2,
+                                                      tau_a=12)
+    env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+
     path = log_dir
     path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
 
@@ -59,21 +66,22 @@ def main_running():
 
         if video_record:
             video_folder = "videos/" + env_name
-            agent = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env)
 
             print("Video Recording with loaded weights from {} algorithm, path: {}".format(algorithm, path))
+            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
 
-            Adaptive_RL.record_video(env_name, video_folder, algorithm, agent)
+            Adaptive_RL.record_video(env, video_folder, algorithm, agent, env_name)
             print("Video Recorded")
 
         elif experiment:
-            algos_compare = ['PPO', 'MPO', 'DDPG', 'SAC']
+            algos_compare = ['PPO', 'CPG-PPO', 'MPO', 'CPG-MPO', 'DDPG', 'CPG-DDPG', 'SAC', 'CPG-SAC']
             trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
             results = {}
 
             # Iterate over the found algorithms and run evaluations
             for algo, algo_folder in trained_algorithms:
-                print(f"Running experiments for algorithm: {algo} in folder: {algo_folder}")
+                logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
 
                 # Get the last checkpoint path and config for the algorithm
                 path = os.path.join(algo_folder, 'logs')
@@ -82,15 +90,14 @@ def main_running():
                 if checkpoint_path and config:
                     # Load the agent using the config and checkpoint path
                     agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
-                    print(f"Loaded weights for {algo} from {checkpoint_path}")
 
                     result = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
                                                env_name=save_folder)
                     results[algo] = result
 
                 else:
-                    print(f"Checking Folder: {checkpoint_path}")
-                    print(f"Folder for {algo} does not exist. Skipping.")
+                    logger.log(f"Checking Folder: {checkpoint_path}")
+                    logger.log(f"Folder for {algo} does not exist. Skipping.")
 
             # Perform comparisons using the collected results
             if len(results) >= 2:
@@ -136,7 +143,7 @@ def main_running():
 
         else:
             """ load network weights """
-            agent = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env)
 
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env, algorithm, num_episodes)
@@ -147,6 +154,5 @@ def main_running():
 
 
 if __name__ == '__main__':
-    # plot.plot(paths="Walker2d-v4/logs/Walker2d-v4-DDPG", x_axis="train/seconds", x_label="Seconds", title=f"_training")
     main_running()
 

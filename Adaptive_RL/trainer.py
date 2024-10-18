@@ -10,10 +10,10 @@ class Trainer:
     """Trainer used to train and evaluate an agent on an environment."""
 
     def __init__(
-        self, max_steps=int(1e7), epoch_steps=int(2e4), save_steps=int(5e5),
-        test_episodes=5, show_progress=True, replace_checkpoint=False,
+        self, steps=int(1e7), epoch_steps=int(2e4), save_steps=int(5e5),
+        test_episodes=5, show_progress=True, replace_checkpoint=False, early_stopping=False,
     ):
-        self.max_steps = max_steps
+        self.max_steps = steps
         self.epoch_steps = epoch_steps
         self.save_steps = save_steps
         self.test_episodes = test_episodes
@@ -21,10 +21,16 @@ class Trainer:
         self.replace_checkpoint = replace_checkpoint
 
         self.steps = 0
-        self.save_cycles = self.max_steps / 10
+        self.save_cycles = 1
         self.test_environment = None
         self.environment = None
         self.agent = None
+
+        # Early Stop Parameters
+        self.best_reward = -float('inf')
+        self.patience = 10 # 20 episodes limit if there is no improvement
+        self.no_improvement_counter = 0
+        self.early_stopping = early_stopping
 
     def initialize(self, agent, environment, test_environment=None, step_saved=None):
         self.agent = agent
@@ -32,7 +38,6 @@ class Trainer:
         self.test_environment = test_environment
         if step_saved is not None:
             self.steps = step_saved
-        self.save_cycles = self.max_steps / 10
 
     def run(self):
         """Runs the main training loop."""
@@ -99,9 +104,18 @@ class Trainer:
                 logger.dump()
                 last_epoch_time = time.time()
                 epoch_steps = 0
+                if scores > self.best_reward:
+                    self.best_reward = scores
+                    self.no_improvement_counter = 0  # Reset counter if there's an improvement
+                else:
+                    self.no_improvement_counter += 1
 
             # End of training.
             stop_training = self.steps >= self.max_steps
+            # Check if no improvement for 'patience' number of epochs
+            if self.no_improvement_counter >= self.patience and self.early_stopping:
+                print(f"Early stopping at epoch {epochs}")
+                stop_training = True
 
             # Save a checkpoint.
             if stop_training or steps_since_save >= self.save_steps:
@@ -114,7 +128,9 @@ class Trainer:
                 save_path = os.path.join(path, checkpoint_name)
                 self.agent.save(save_path)
                 steps_since_save = self.steps % self.save_steps
-                if self.steps%self.save_cycles==0: # Saving everything only every 10% of the total training
+                self.save_cycles+=1
+                if self.save_cycles%10==0: # Saving everything only every 10% of the total training
+                    self.save_cycles=1
                     save_model_path = os.path.join(path, "model_checkpoint.pth")
                     self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay_buffer, save_model_path)
 
@@ -164,7 +180,7 @@ class Trainer:
     def load_model(self, agent, actor_updater, replay_buffer, save_path):
         try:
             # Load the saved data from the file
-            save_path = save_path + '\model_checkpoint.pth'
+            save_path = save_path + '/model_checkpoint.pth'
             checkpoint = torch.load(save_path)
 
             # Load model state
