@@ -107,7 +107,7 @@ class PPO(base_agent.BaseAgent):
         # Compute the lambda-returns.
         batch = self.replay_buffer.get_full('observations', 'next_observations')
         values, next_values = self._evaluate(**batch)
-        values, next_values = values.cpu().numpy(), next_values.cpu().umpy()
+        values, next_values = values.cpu().numpy(), next_values.cpu().numpy()
         self.replay_buffer.compute_returns(values, next_values)
 
         train_actor = True
