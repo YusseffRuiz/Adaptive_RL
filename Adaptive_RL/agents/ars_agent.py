@@ -1,10 +1,8 @@
+import torch
 import numpy as np
-import torch
-import torch
-import os
-from Adaptive_RL import logger, ReplayBuffer, neural_networks
+from Adaptive_RL import neural_networks, logger
 from Adaptive_RL.agents import base_agent
-from Adaptive_RL.neural_networks.utils import trainable_variables
+from Adaptive_RL.utils import Segment
 
 class ARS(base_agent.BaseAgent):
     """
@@ -13,100 +11,203 @@ class ARS(base_agent.BaseAgent):
     Implements ARS which perturbs the policy in random directions and evaluates its performance.
     """
 
-    def __init__(self, model, lr=0.02, step_size=0.03, n_directions=16, n_top_directions=8):
-        """
-        Initializes the ARS Agent.
-
-        Args:
-        - policy: The policy network to be perturbed and updated.
-        - lr: Learning rate for policy updates.
-        - step_size: Step size for perturbations.
-        - n_directions: Number of random directions to explore.
-        - n_top_directions: Number of top-performing directions used for updates.
-        """
+    def __init__(self, environment, hidden_size=256, hidden_layers=2, learning_rate = 0.02, num_directions=8, delta_std=0.05, num_top_directions=None,
+                 alive_bonus_offset=0.0, epsilon=1e-6):
         super().__init__()
-        self.model = model or neural_networks.BaseModel(hidden_size=256).get_model()
-        self.model_updater = neural_networks.StochasticPolicyGradient()
-        self.lr = lr
-        self.step_size = step_size
-        self.n_directions = n_directions
-        self.n_top_directions = n_top_directions
+        self.num_directions = num_directions
+        self.delta_std = delta_std
+        self.step_size = learning_rate * 0.5 # Step size
+        self.learning_rate = learning_rate
+        self.epsilon = epsilon
+        self.num_top_directions = int(num_top_directions) or num_directions
+        self.num_top_directions = min(self.num_top_directions, self.num_directions)
+        self.model = neural_networks.ARSModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        self.replay_buffer = Segment()
+        # self.actor_updater = StochasticPolicyGradient(lr_actor=learning_rate)  # To match General Structure, but not used
+        self.actor_updater = None  # To match General Structure, but not used
+        self.environment = environment # For ARS we need interaction with the environment
+        self.environment.reset()
+        self.alive_bonus_offset = alive_bonus_offset
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Initialize the noise for perturbation and policy weights
-        self.noise = None
-        self.policy_weights = None
-
+        # Initialize config for logging
+        self.config = {
+            "agent": "ARS",
+            "learning_rate": learning_rate,
+            "delta_std": delta_std,
+            "num_directions": num_directions,
+            "num_top_directions": num_top_directions,
+            "hidden_size": hidden_size,
+            "hidden_layers": hidden_layers,
+        }
 
     def initialize(self, observation_space, action_space, seed=None):
-        """
-        Initializes the agent with observation and action spaces.
-        """
+        self.observation_space = observation_space
+        self.action_space = action_space
+
+        # Initialize the model (policy) weights randomly.
         self.model.initialize(observation_space, action_space)
-        self.model_updater.initialize(self.model)
-        self.policy_weights = trainable_variables(self.model)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        # self.actor_updater.initialize(self.model)
 
+    def step(self, observations, steps=None):
+        """Select actions using the policy."""
+        actions = self._step(observations)
+        actions = actions.cpu().numpy()
+        # Keep some values for the next update.
+        self.last_observations = observations.copy()
+        self.last_actions = actions.copy()
 
-    def step(self, observations, steps):
-        """
-        Returns the action taken during training.
-        """
-        # Use the current policy to compute the action
+        return actions
+
+    def test_step(self, observations):
+        # Sample actions for testing.
+        return self._test_step(observations).cpu().numpy()
+
+    def _test_step(self, observations):
+        observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            actions = self.model.forward(observations)
-        return actions.cpu().numpy()
+            return self.model.actor(observations).loc
 
     def update(self, observations, rewards, resets, terminations, steps):
         """
-        Performs the ARS update by generating perturbations and updating policy weights.
+        Store the last transitions in the replay buffer.
         """
-        # Generate random directions for perturbation
-        self.noise = np.random.randn(self.n_directions, *self.policy_weights.shape)
-        rewards_pos = []
-        rewards_neg = []
 
-        # Evaluate rewards for positive and negative perturbations
-        for noise in self.noise:
-            reward_pos = self.evaluate_policy(self.policy_weights + self.step_size * noise, observations)
-            reward_neg = self.evaluate_policy(self.policy_weights - self.step_size * noise, observations)
-            rewards_pos.append(reward_pos)
-            rewards_neg.append(reward_neg)
+        # Prepare to update the normalizers.
+        if self.model.observation_normalizer:
+            self.model.observation_normalizer.record(self.last_observations)
+        if self.model.return_normalizer:
+            self.model.return_normalizer.record(rewards)
 
-        # Compute the gradient and update the policy weights
-        rewards_pos, rewards_neg = np.array(rewards_pos), np.array(rewards_neg)
-        top_rewards = np.argsort(rewards_pos - rewards_neg)[-self.n_top_directions:]
-        gradient = np.sum([self.noise[top] * (rewards_pos[top] - rewards_neg[top]) for top in top_rewards], axis=0)
+        self._update(observations)
 
-        # Update policy weights
-        self.policy_weights += self.lr / (self.n_top_directions * np.std(rewards_pos + rewards_neg)) * gradient
-        self.apply_policy_weights()
+    def _step(self, observations):
+        observations = torch.as_tensor(observations, dtype=torch.float32)
+        with torch.no_grad():
+            actions = self.model.actor(observations).sample()
+        return actions
 
-    def test_step(self, observations):
-        pass
-
-    def test_update(self, observations, rewards, resets, terminations, steps):
-        pass
-
-    def evaluate_policy(self, perturbed_weights, observations):
+    def _update(self, observations):
         """
-        Evaluates the reward obtained with perturbed policy weights.
+        Perform the ARS policy update using deltas.
+        1. Generate deltas for the model's parameters.
+        2. Evaluate both positive and negative perturbations.
+        3. Select top-performing directions.
+        4. Apply the policy update using the selected top directions.
         """
-        self.apply_policy_weights(perturbed_weights)
-        actions = self.step(observations, steps=None)
-        # Here you would return the reward from the environment, for simplicity we assume it's predefined.
-        reward = ...  # Replace with actual reward calculation
-        return reward
+        deltas = []
+        reward_deltas = torch.zeros(self.num_directions, dtype=torch.float32, device=self.device)
 
-    def apply_policy_weights(self, weights=None):
+        # Generate deltas and evaluate their performance
+        for i in range(self.num_directions):
+            delta = self._get_deltas()
+            deltas.append(delta)
+
+            original_parameters = [param.clone() for param in self.model.parameters()]
+
+            # Apply positive delta and evaluate
+            self._apply_deltas(delta, direction=1)
+            reward_pos = self._evaluate_rewards(observations)
+
+            # Reset model parameters to original state
+            for param, original_param in zip(self.model.parameters(), original_parameters):
+                param.data.copy_(original_param.data)
+
+            # Apply negative delta and evaluate
+            self._apply_deltas(delta, direction=-1)  # Reverse deltas
+            reward_neg = self._evaluate_rewards(observations)
+
+            # Store the reward difference
+            reward_deltas[i] = reward_pos - reward_neg
+
+            # Reset model parameters to original state
+            for param, original_param in zip(self.model.parameters(), original_parameters):
+                param.data.copy_(original_param.data)
+
+        # Select top-performing deltas and apply policy update
+        top_deltas = self._select_top_directions(reward_deltas)
+        self._apply_policy_update(deltas, reward_deltas, top_deltas)
+        # actor_infos = self.actor_updater(observations)
+        logger.store('top_deltas: ', top_deltas)
+        # logger.store('actor_infos: ', actor_infos)
+
+        # Update the normalizers.
+        if self.model.observation_normalizer:
+            self.model.observation_normalizer.update()
+        if self.model.return_normalizer:
+            self.model.return_normalizer.update()
+
+
+    def _evaluate_rewards(self, observations):
         """
-        Applies the perturbed policy weights to the policy network.
+        Evaluate the reward by interacting with the environment.
+        This function takes a step in the environment and collects rewards.
         """
-        weights = weights if weights is not None else self.policy_weights
-        self.model.load_state_dict(weights)
+        actions = self.test_step(observations)[0]
+        # Take a step in the environments.
+        obs, reward, done, *infos = self.environment.step(actions)
+        return reward.sum().item()
 
-    def save(self, path):
-        pass
 
-    def load(self, path):
-        pass
+    def _select_top_directions(self, reward_deltas):
+        """
+        Select the top-performing directions based on reward deltas.
+        """
+        if self.num_directions <= len(reward_deltas):
+            top_indices = torch.topk(torch.abs(reward_deltas[:self.num_directions]), self.num_top_directions).indices
+        else:
+            raise ValueError(
+                f"num_directions ({self.num_directions}) exceeds available reward deltas ({len(reward_deltas)}).")
+
+        return top_indices
+
+    def _apply_policy_update(self, deltas, reward_deltas, top_deltas):
+        """
+        Update the model's parameters based on the top-performing deltas.
+        Optimized version to reduce computation time.
+        """
+        # Initialize step with zeros for each parameter
+        step = [torch.zeros_like(param, device=self.device) for param in self.model.parameters()]
+
+
+        std_reward_deltas = torch.std(reward_deltas[:self.num_directions]) + self.epsilon
+
+        for idx in top_deltas:
+            idx = idx.item()  # Convert tensor index to scalar
+
+            # Fetch the reward difference and delta
+            reward_pos_neg_diff = reward_deltas[idx].item()  # Convert to scalar value
+            delta = deltas[idx]  # Fetch the list of parameter-wise deltas for this direction
+            # Move tensors to CPU before converting to NumPy
+            delta = [np.sum(tensor.cpu().numpy()) for tensor in delta]
+            step_res = reward_pos_neg_diff * torch.tensor(delta)
+            for i in range(len(step)):
+                step[i] += step_res[i]  # Update the step for each parameter slot
+                # Normalize the step by the number of top directions and the standard deviation
+                step[i] /= (self.num_top_directions * std_reward_deltas)
+
+        # Apply the step to update the policy parameters
+        with torch.no_grad():
+            for param, param_step in zip(self.model.parameters(), step):
+                param += self.step_size * param_step
+
+        logger.store('step: ', step)
+
+    def _get_deltas(self):
+        """
+        Generate random perturbations (deltas) for the model parameters.
+        """
+        deltas = []
+        for param in self.model.parameters():
+            delta = torch.normal(0, self.delta_std, size=param.shape).to(self.device)
+            deltas.append(delta)
+        return deltas
+
+    def _apply_deltas(self, deltas, direction):
+        """
+        Apply perturbations (deltas) to the model's parameters in the given direction.
+        direction == 1 applies positive delta, direction == -1 applies negative delta.
+        """
+        with torch.no_grad():
+            for param, delta in zip(self.model.parameters(), deltas):
+                param += direction * delta

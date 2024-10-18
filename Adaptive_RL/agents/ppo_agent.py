@@ -1,5 +1,3 @@
-from importlib.metadata import distributions
-
 import torch
 from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
@@ -107,7 +105,7 @@ class PPO(base_agent.BaseAgent):
         # Compute the lambda-returns.
         batch = self.replay_buffer.get_full('observations', 'next_observations')
         values, next_values = self._evaluate(**batch)
-        values, next_values = values.cpu().numpy(), next_values.cpu().umpy()
+        values, next_values = values.cpu().numpy(), next_values.cpu().numpy()
         self.replay_buffer.compute_returns(values, next_values)
 
         train_actor = True
@@ -135,7 +133,7 @@ class PPO(base_agent.BaseAgent):
                 for k, v in infos[key].items():
                     logger.store(key + '/' + k, v.cpu().numpy())
 
-        logger.store('actor/iterations', actor_iterations)
+
         logger.store('critic/iterations', critic_iterations)
 
         # Update the normalizers.

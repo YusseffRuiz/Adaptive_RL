@@ -2,7 +2,7 @@ import torch
 
 from MatsuokaOscillator import MatsuokaNetworkWithNN
 import Adaptive_RL
-from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
+from Adaptive_RL import SAC, DDPG, MPO, PPO, ARS
 import Experiments.experiments_utils as trials
 import argparse
 
@@ -12,8 +12,8 @@ def parse_args():
 
     # Algorithm and environment
     parser.add_argument('--algorithm', type=str, default='PPO',
-                        choices=['PPO', 'SAC', 'MPO', 'DDPG', 'ppo', 'sac', 'mpo', 'ddpg'],
-                        help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG).')
+                        choices=['PPO', 'SAC', 'MPO', 'DDPG', 'ppo', 'sac', 'mpo', 'ddpg', 'ARS', 'ars'],
+                        help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG, ARS).')
     parser.add_argument('--env', type=str, default='Humanoid-v4', help='Name of the environment to train on.')
     parser.add_argument('--cpg', action='store_true', help='Whether to enable CPG flag.')
     parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
@@ -36,10 +36,15 @@ def parse_args():
                         help='Number of neurons in hidden layers. Can be a single integer or a list of integers.')
     parser.add_argument('--layers_number', type=int, default=2, help='Number of hidden layers.')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training.')
+    parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor.')
     parser.add_argument('--replay_buffer_size', type=int, default=int(10e5), help='Replay buffer size.')
     parser.add_argument('--epsilon', type=float, default=0.1, help='Exploration rate (epsilon-greedy) (MPO).')
     parser.add_argument('--learning_starts', type=int, default=10000, help='Number of steps before learning starts.')
     parser.add_argument('--noise', type=float, default=0.01, help='Noise added to future rewards.')
+    parser.add_argument('--num_directions', type=int, default=8, help='Number of directions for ARS')
+    parser.add_argument('--n_top_directions', type=int, default=8, help='Number of top directions for ARS')
+    parser.add_argument('--alive_bonus', type=float, default=0.0, help='Alive Bonus for ARS')
+    parser.add_argument('--delta_std', type=float, default=0.1, help='Standard deviation of alive bonus for ARS')
 
     # CPG Hyperparameters
     parser.add_argument('--cpg_oscillators', type=int, default=2, help='Number of CPG oscillators.')
@@ -158,6 +163,7 @@ if __name__ == "__main__":
     if args.params is not None:
         args, cpg_args = Adaptive_RL.file_to_hyperparameters(args.params, env_name, training_algorithm)
         # Hyperparameters
+
         learning_rate = args['training']['learning_rate']
         lr_critic = args['training'].get('lr_critic', 0.0)
         ent_coeff = args['training'].get('ent_coeff', 0.0)
@@ -166,11 +172,16 @@ if __name__ == "__main__":
         gamma = args['training']['gamma']
         neuron_number = args['model']['neuron_number']
         layers_number = args['model']['layers_number']
-        batch_size = args['training']['batch_size']
+        batch_size = args['training'].get('batch_size', None)
         replay_buffer_size = args['training']['replay_buffer_size']
         epsilon = args['training'].get('epsilon', 0.0)
         learning_starts = args['training'].get('learning_starts', 0.0)
         noise_std = args['training'].get('noise_std', 0.0)
+
+        alive_bonus_offset = args['training'].get('alive_bonus_offset', 0.0)
+        num_directions = args['training'].get('num_directions', 8)
+        num_top_directions = args['training'].get('num_top_directions', 8)
+        delta_std = args['training'].get('delta_std', 1.0)
 
         # CPG params
         cpg_oscillator = cpg_args['num_oscillators']
@@ -199,6 +210,10 @@ if __name__ == "__main__":
         epsilon = args.epsilon
         learning_starts = args.learning_starts
         noise_std = args.noise
+        alive_bonus_offset = args.alive_bonus
+        num_directions = args.num_directions
+        num_top_directions = args.n_top_directions
+        delta_std = args.delta_std
 
         # cpg
         cpg_oscillator = args.cpg_oscillators
@@ -229,6 +244,17 @@ if __name__ == "__main__":
     elif training_algorithm == "DDPG":
         agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
                      noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number, replay_buffer_size=replay_buffer_size)
+    elif training_algorithm == "ARS":
+        env = Adaptive_RL.Gym(env_name)
+        if cpg_flag:
+            cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillator,
+                                              da=env.action_space.shape[0],
+                                              neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                              tau_a=cpg_tau_a)
+            env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+        agent = ARS(environment=env,learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number,
+                    num_directions=num_directions, num_top_directions=num_top_directions,
+                    delta_std=delta_std)
     else:
         agent = None
 

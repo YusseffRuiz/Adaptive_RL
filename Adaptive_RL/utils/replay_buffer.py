@@ -151,6 +151,7 @@ class Segment:
         self.np_random = np.random.RandomState(seed)
         self.buffers = None
         self.index = 0
+        self.count = 0  # Keep track of how many items are currently stored
 
     def ready(self):
         return self.index == self.max_size
@@ -164,7 +165,11 @@ class Segment:
                 self.buffers[key] = np.zeros(shape, np.float32)
         for key, val in kwargs.items():
             self.buffers[key][self.index] = val
-        self.index += 1
+        self.index = (self.index + 1) % self.max_size
+
+        # Track the number of elements in the buffer (to check if it's full).
+        if self.count < self.max_size:
+            self.count += 1
 
     def get_full(self, *keys):
         self.index = 0

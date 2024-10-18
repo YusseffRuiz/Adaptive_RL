@@ -73,6 +73,22 @@ Humanoid-v4:
       neuron_number: [256, 256]
       layers_number : 2
 
+  ARS:
+    training:
+      alive_bonus_offset: -5
+      replay_buffer_size: 4096
+      learning_rate: 0.02
+      gamma: 0.99
+      steps: 250000
+      num_directions: 64
+      num_top_directions: 64
+      delta_std: 0.0075
+
+
+    model:
+      neuron_number: [ 256, 256 ]
+      layers_number: 2
+
 
 Walker2d-v4:
   name: "Walker2d-v4"

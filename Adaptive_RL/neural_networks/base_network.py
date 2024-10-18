@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+
+from . import ARSActor
 from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
 from .critics import Critic, ValueHead
 from Adaptive_RL import normalizers
@@ -373,3 +375,15 @@ class ActorCriticModelNetwork(BaseModel):
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd()
         )
+
+
+class ARSModelNetwork(BaseModel):
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.ReLU):
+        super().__init__(hidden_size, hidden_layers, activation_fn)
+
+    def get_model(self):
+        return ARSActor(
+            actor=Actor(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.neuron_shape, self.activation_fn),
+                head=GaussianPolicyHead()))

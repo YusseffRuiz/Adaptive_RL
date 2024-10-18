@@ -680,3 +680,17 @@ class MaximumAPosterioriPolicyOptimization:
             alpha_std_loss=alpha_std_loss.detach(),
             temperature_loss=temperature_loss.detach(),
             **dual_variables)
+
+
+class ARSActor(torch.nn.Module):
+    def __init__(
+        self, actor, observation_normalizer=None, return_normalizer=None):
+        super().__init__()
+        self.actor = actor
+        self.observation_normalizer = observation_normalizer
+        self.return_normalizer = return_normalizer
+
+    def initialize(self, observation_space, action_space):
+        if self.observation_normalizer:
+            self.observation_normalizer.initialize(observation_space.shape)
+        self.actor.initialize(observation_space, action_space, self.observation_normalizer)
