@@ -151,31 +151,31 @@ def to_tensor(data, device):
     return torch.as_tensor(data, dtype=torch.float32, device=device)
 
 
+def file_to_hyperparameters(file_path, env, algorithm):
+    """
+    Loads the hyperparameters from a YAML file.
+    """
+    if not os.path.isfile(file_path):
+        print("Failed to get configs")
+        return None
+    with open(file_path, 'r') as file:
+        hyperparameters = yaml.safe_load(file)
+    if 'cpg' in hyperparameters[env]:
+        cpg = hyperparameters[env]['cpg']
+    else:
+        cpg = None
+    if algorithm in hyperparameters[env]:
+        hyperparams = hyperparameters[env][algorithm]
+    else:
+        hyperparams = None
+        print("No algorithm found")
+    return hyperparams, cpg
+
 
 def register_new_env():
-
-    register(
-        # unique identifier for the env `name-version`
-        id="Walker2d-v4-CPG",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:Walker2dCPGEnv",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
-    print("Registered new env Walker2d-v4-CPG")
-
-    register(
-        # unique identifier for the env `name-version`
-        id="Ant-v4-CPG",
-        # path to the class for creating the env
-        # Note: entry_point also accept a class as input (and not only a string)
-        entry_point="gymnasium.envs.mujoco:AntCPGEnv",
-        # Max number of steps per episode, using a `TimeLimitWrapper`
-        max_episode_steps=1000,
-    )
-    print("Registered new env Ant-v4-CPG")
-
+    """
+    Used when we wanted to add new environments
+    """
     register(
         # unique identifier for the env `name-version`
         id="Humanoid-v4-CPG",

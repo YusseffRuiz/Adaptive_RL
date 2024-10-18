@@ -1,0 +1,184 @@
+# Hyperparameters for training session
+Humanoid-v4:
+  name: "Humanoid-v4"
+
+  cpg:
+    num_oscillators: 2
+    neuron_number: 2
+    tau_r: 2.0
+    tau_a: 12.0
+    amplitude: 1.5
+
+  DDPG:
+    training:
+      batch_size: 265
+      replay_buffer_size : 100000
+      learning_rate: 0.001
+      gamma: 0.99
+      steps: 4000000
+      learning_starts: 10000
+      noise : 0.1
+
+
+    model:
+      neuron_number: [400, 300]
+      layers_number : 2
+
+  MPO:
+    training:
+      batch_size: 265
+      replay_buffer_size : 1000000
+      learning_rate: 3.56987e-04
+      gamma: 0.95
+      steps: 5000000
+      lr_critic : 3e-4
+      lr_dual : 0.000356987
+      clip_range : 0.3
+      epsilon : 0.1
+
+
+    model:
+      neuron_number: [256, 256]
+      layers_number : 2
+
+  SAC:
+    training:
+      batch_size: 265
+      replay_buffer_size : 100000
+      learning_rate: 0.001
+      gamma: 0.99
+      steps: 2000000
+      learning_starts: 10000
+      noise : 0.1
+
+
+    model:
+      neuron_number: [400, 300]
+      layers_number : 2
+
+
+  PPO:
+    training:
+      batch_size: 256
+      replay_buffer_size : 100000
+      learning_rate: 3.56987e-05
+      gamma: 0.95
+      steps: 5000000
+      learning_starts: 10000
+      ent_coeff : 0.00238306
+      clip_range : 0.3
+
+
+    model:
+      neuron_number: [256, 256]
+      layers_number : 2
+
+
+Walker2d-v4:
+  name: "Walker2d-v4"
+
+  cpg:
+    num_oscillators: 2
+    neuron_number: 2
+    tau_r: 1.0
+    tau_a: 6.0
+    amplitude: 1.5
+
+  DDPG:
+    training:
+      batch_size: 265
+      replay_buffer_size: 4096
+      learning_rate: 0.001
+      gamma: 0.99
+      steps: 1000000
+      learning_starts: 10000
+      noise: 0.1
+
+
+    model:
+      neuron_number: [400, 300]
+      layers_number: 2
+
+  MPO:
+    training:
+      batch_size: 265
+      replay_buffer_size: 4096
+      learning_rate: 3e-04
+      gamma: 0.95
+      steps: 10000000
+      lr_critic: 1.5e-4
+      lr_dual: 0.000156987
+      clip_range: 0.1
+      epsilon: 0.1
+
+
+    model:
+      neuron_number: [400, 300]
+      layers_number: 2
+
+  SAC:
+    training:
+      batch_size: 256
+      replay_buffer_size: 4096
+      learning_rate: 0.001
+      gamma: 0.99
+      steps: 1000000
+      learning_starts: 10000
+      noise: 0.1
+
+
+    model:
+      neuron_number: [400, 300]
+      layers_number: 2
+
+
+  PPO:
+    training:
+      batch_size: 32
+      replay_buffer_size: 4096
+      learning_rate: 3.56987e-05
+      gamma: 0.99
+      steps: 1000000
+      learning_starts: 10000
+      ent_coeff: 0.000585045
+      clip_range: 0.1
+
+
+    model:
+      neuron_number: [256, 256]
+      layers_number: 2
+
+MyoOSl-v0:
+  cpg:
+    num_oscillators: 2
+    neuron_number: 2
+    tau_r: 1.0
+    tau_a: 6.0
+    amplitude: 1.5
+
+  SAC:
+    training:
+      batch_size: 256
+      replay_buffer_size: 4096
+      learning_rate: 0.001
+      gamma: 0.99
+      steps: 1000000
+      learning_starts: 10000
+      noise: 0.1
+
+
+    model:
+      neuron_number: [400, 300]
+      layers_number: 2
+
+
+  PPO:
+    training:
+      batch_size: 32
+      replay_buffer_size: 4096
+      learning_rate: 3.56987e-05
+      gamma: 0.99
+      steps: 1000000
+      learning_starts: 10000
+      ent_coeff: 0.000585045
+      clip_range: 0.1
