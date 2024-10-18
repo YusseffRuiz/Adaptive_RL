@@ -216,8 +216,8 @@ class MatsuokaNetworkWithNN:
         Runs the simulation for a given number of steps, returning the outputs of the oscillators over time.
     """
 
-    def __init__(self, num_oscillators, da, n_envs=1, neuron_number=2,
-                 tau_r=1.0, tau_a=6.0, dt=0.1):
+    def __init__(self, num_oscillators, da, neuron_number=2,
+                 tau_r=1.0, tau_a=6.0, dt=0.1, amplitude=1.75):
         """
         Initializes the MatsuokaNetworkWithNN with a specified number of oscillators and a neural network model.
 
@@ -239,7 +239,6 @@ class MatsuokaNetworkWithNN:
         self.num_oscillators = num_oscillators
         self.neuron_number = neuron_number
         self.action_dim = da
-        self.n_envs = n_envs
         self.parameters_dimension = self.num_oscillators * self.neuron_number
         error_margin = math.pi*0.05
         self.desired_phase_difference = 0.0
@@ -248,7 +247,8 @@ class MatsuokaNetworkWithNN:
         """ You can create similar characteristics oscillators or different"""
 
         self.oscillator_right, self.oscillator_left = self.initialize_oscillator(action_dim=self.action_dim,
-                                                                                 neuron_number=neuron_number, amplitude=1.5,
+                                                                                 neuron_number=neuron_number,
+                                                                                 amplitude=amplitude,
                                                                                  tau_r=tau_r, tau_a=tau_a, dt=dt)
 
 

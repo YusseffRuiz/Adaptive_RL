@@ -85,8 +85,9 @@ class Trainer:
             # End of the epoch.
             if epoch_steps >= self.epoch_steps:
                 # Evaluate the agent on the test environment.
+                tmp_score = 0
                 if self.test_environment:
-                    self._test()
+                    tmp_score = self._test()
 
                 # Log the data.
                 epochs += 1
@@ -104,8 +105,8 @@ class Trainer:
                 logger.dump()
                 last_epoch_time = time.time()
                 epoch_steps = 0
-                if scores > self.best_reward:
-                    self.best_reward = scores
+                if tmp_score > self.best_reward:
+                    self.best_reward = tmp_score
                     self.no_improvement_counter = 0  # Reset counter if there's an improvement
                 else:
                     self.no_improvement_counter += 1
@@ -165,6 +166,7 @@ class Trainer:
             # Log the data.
             logger.store('test/episode_score', score, stats=True)
             logger.store('test/episode_length', length, stats=True)
+            return score
 
     def save_model(self, agent, optimizer, replay_buffer, save_path):
         save_data = {
