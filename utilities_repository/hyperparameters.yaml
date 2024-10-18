@@ -47,7 +47,7 @@ Humanoid-v4:
       replay_buffer_size : 100000
       learning_rate: 0.001
       gamma: 0.99
-      steps: 4000000
+      steps: 2000000
       learning_starts: 10000
       noise : 0.1
 
