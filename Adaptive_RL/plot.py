@@ -257,7 +257,7 @@ def get_data(
 
 def plot(
         paths, x_axis="train_steps", y_axis="test/episode_score", x_label="steps", y_label="score", window=1,
-        interval="bounds", show_seeds=False, columns=None, x_min=None, x_max=None, y_min=None, y_max=None,baselines="+",
+        interval="std", show_seeds=False, columns=None, x_min=None, x_max=None, y_min=None, y_max=None,baselines="+",
         baselines_source="torch", name="None", save_formats=['pdf', 'png'], cmap=None, legend_columns=None,
         legend_marker_size=0, dpi=150, title="Training Score", fig=None
 ):
@@ -426,7 +426,7 @@ if __name__ == '__main__':
     parser.add_argument('--y_axis', default='test/episode_score')
     parser.add_argument('--x_label')
     parser.add_argument('--y_label')
-    parser.add_argument('--interval', default='bounds')
+    parser.add_argument('--interval', default='std')
     parser.add_argument('--window', type=int, default=1)
     parser.add_argument('--show_seeds', type=bool, default=False)
     parser.add_argument('--columns', type=int)

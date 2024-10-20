@@ -1,6 +1,6 @@
 import torch
 
-from MatsuokaOscillator import MatsuokaNetworkWithNN
+from MatsuokaOscillator import MatsuokaNetworkWithNN, HHMatsuokaNetwork
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO, ARS
 import Experiments.experiments_utils as trials
@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument('--cpg', action='store_true', help='Whether to enable CPG flag.')
     parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
     parser.add_argument('--params', type=str, default=None, help='Parameters to load from a file.')
+    parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
 
     # General Paramenters
     parser.add_argument('--experiment_number', type=int, default=0, help='Experiment number for logging.')
@@ -30,6 +31,7 @@ def parse_args():
     parser.add_argument('--learning_rate', type=float, default=3.56987e-05, help='Learning rate for the actor.')
     parser.add_argument('--lr_critic', type=float, default=3e-4, help='Learning rate for the critic.')
     parser.add_argument('--ent_coeff', type=float, default=0.00238306, help='Entropy coefficient for PPO or SAC.')
+    parser.add_argument('--gamma', type=float, default=0.98, help='Discount factor for replay buffer')
     parser.add_argument('--clip_range', type=float, default=0.3, help='Clip range for PPO and MPO.')
     parser.add_argument('--lr_dual', type=float, default=3.56987e-04, help='Learning rate for dual variables (MPO).')
     parser.add_argument('--neuron_number', type=int, nargs='+', default=[256],
@@ -58,7 +60,7 @@ def parse_args():
 
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
-        checkpoint="last", path=None, log_dir=None, early_stopping=False, cpg_flag=False, cpg_oscillators=2,
+        checkpoint="last", path=None, log_dir=None, early_stopping=False, cpg_flag=False, hh=False, cpg_oscillators=2,
         cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=12.0, cpg_amplitude=1.75):
     """
     :param agent: Agent and algorithm to be trained.
@@ -95,7 +97,7 @@ def train_agent(
         cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
                                           da=_environment.action_space.shape[0],
                                           neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                          tau_a=cpg_tau_a)
+                                          tau_a=cpg_tau_a, hh=hh)
     _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
     environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment, parallel, sequential)
@@ -150,6 +152,7 @@ if __name__ == "__main__":
 
     env_name = args.env
     cpg_flag = args.cpg
+    hh = args.hh
     experiment_number = args.experiment_number
 
     save_folder = args.f
@@ -232,7 +235,8 @@ if __name__ == "__main__":
 
     if training_algorithm == "MPO":
         agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
-                    discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number)
+                    discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number,
+                    batch_size=batch_size, epsilon=epsilon, gradient_clip=clip_range)
     elif training_algorithm == "SAC":
         agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
                     hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
@@ -263,7 +267,7 @@ if __name__ == "__main__":
                     environment=env_name,
                     sequential=1, parallel=1,
                     trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps),
-                    log_dir=log_dir, early_stopping=early_stopping, cpg_flag=cpg_flag)
+                    log_dir=log_dir, early_stopping=early_stopping, cpg_flag=cpg_flag, hh=hh)
 
         env = Adaptive_RL.Gym(env_name, render_mode="human", max_episode_steps=1500)
         cpg_model = None
@@ -271,7 +275,7 @@ if __name__ == "__main__":
             cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillator,
                                               da=env.action_space.shape[0],
                                               neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                              tau_a=cpg_tau_a, amplitude=cpg_amplitude)
+                                              tau_a=cpg_tau_a, amplitude=cpg_amplitude, hh=hh)
         env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
         print("Starting Evaluation")

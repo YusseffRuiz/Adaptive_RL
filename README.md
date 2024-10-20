@@ -6,7 +6,7 @@ Adaptive_RL is an open-source framework for implementing state-of-the-art Reinfo
 designed to be modular and easily adaptable for different research and real-world applications. This repository has 
 emphasis in Continuous space problems.
 
-Current implementation for Gymnasium and MyoSuite deployment.
+Current implementation for Gymnasium and MyoSuite deployment, using torch.
 
 Currently, the repository supports DDPG (Deep Deterministic Policy Gradient), SAC (Soft Actor-Critic), PPO (Proximal Policy Optimization),
 and MPO (Maximum a Posteriori Optimization) with a flexible architecture that allows for the integration of new algorithms.
@@ -39,6 +39,9 @@ Development of a DRL framework in the MatsuokaOscillator Folder.
 MatsuokaOscillator Directory created with multiple neurons and multiple oscillators implementation for oscillated
 pattern movements. To be controlled by manual parameters or a DRL algorithm.
 
+Hudgkin and Huxley Neurons: Simulate ionic currents such as sodium and potassium, allowing the system to generate more
+biologically accurate oscillations. This addition provides the flexibility to model more complex neuronal behaviors and 
+enriches the simulation of Central Pattern Generators (CPGs) in robotic control, prosthetics, and other neural control systems.
 
 **Quickstart**
 
@@ -56,11 +59,12 @@ You can use the training script to train an agent on a specified environment usi
 
 Here is how to run the training script:
 
-To Run the PPO agent on the Mujoco Humanoid-v4 environment
+To Run the SAC agent on the Mujoco Humanoid-v4 environment
 
 ```
-python train.py --algorithm PPO --env Humanoid-v4 --steps 1000000 --seq 2 --parallel 4 --learning_rate 0.0003
+python train.py --algorithm SAC --env Humanoid-v4 --steps 1000000
 ```
+
 
 **To Plot:**
 
@@ -69,6 +73,20 @@ Plot every algorithm found inside a folder (you can specify only a specific fold
 ```
 python Adaptive_RL/plot.py --path training/ --x_axis "train/seconds" --x_label "Time (s)" --title "Training Progress"
 ```
+
+To plot multiple folders:
+```
+python Adaptive_RL/plot.py --path training/Humanoid-v4-{SAC,CPG-SAC,DDPG,CPG-DDPG} --x_axis "train/seconds" --x_label "Time (s)" --title "Training Progress"
+```
+
+Test an Agent:
+
+```
+python simulate.py --algorithm SAC --env Humanoid-v4
+```
+
+
+
 **Parallelization training via Multiprocess class.**
 
 ## Command-Line Arguments
@@ -119,24 +137,27 @@ Enable CPG training with DDPG:
 ```
 python train.py --algorithm DDPG --env Humanoid-v4 --cpg
 ```
-Train MPO on Humanoid-v4 with parallel environments:
+To Run the SAC agent on the Mujoco Humanoid-v4 environment with CPG
+
 ```
-python train.py --algorithm MPO --env Humanoid-v4 --parallel 4
+python train.py --algorithm SAC --env Humanoid-v4 --steps 1000000 --cpg
+```
+
+Train MPO on Humanoid-v4 with parallel environments and multiple sequenced environments:
+```
+python train.py --algorithm MPO --env Humanoid-v4 --parallel 4 --seq 4
+```
+
+Train SAC with optimized HyperParameters based on rl3-zoo library:
+```
+python train.py --algorithm SAC --env Humanoid-v4 --params utilities_repository/hyperparameters.yaml
 ```
 
 
 **To Do:**
 
 ARS, TRPO implementation, analysing other state-of-the-art algorithms.
-
-Environment class modified for MyoLeg.
-
-Automatic CPG adding into the environment. At the moment, CPG must be added into the env class.
-Environments deployed:
-- Humanoid-v4
-- Walker2d-v4
-- 
-Development and Implementation of Hodgkin-Huxley neurons CPG. 
+Tensorflow Implementation.
 
 **Upcoming Features**
 - Integration of Trust Region Policy Optimization (TRPO) and Augmented Random Search (ARS).
@@ -151,3 +172,4 @@ Changes includes:
 - Direct control over learning rates and neuron size.
 - Simplification of classes.
 - Updated Libraries.
+- Parallelization of algorithm and buffer by using torch tensors.
