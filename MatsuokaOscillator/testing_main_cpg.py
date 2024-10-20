@@ -1,21 +1,24 @@
 import matplotlib.pyplot as plt
+import torch
 import numpy as np
-from MatsuokaOscillator import MatsuokaNetworkWithNN, MatsuokaOscillator, MatsuokaNetwork
+from MatsuokaOscillator import MatsuokaNetworkWithNN, MatsuokaNetwork, MatsuokaOscillator
+from MatsuokaOscillator.matsuokaOscillator import HHMatsuokaNetwork, HHMatsuokaOscillator
+
 
 # Basic Matsuoka Oscillator Implementation
 def matsuoka_main():
     # Parameters
-    neural_net = False
+    neural_net = True
+    hh_neuron = True  # Running with hudgkin huxley neurons if True
     num_oscillators = 2
     neuron_number = 2
-    tau_r = 2
-    tau_a = 12
+    tau_r = 1
+    tau_a = 6
     amplitude = 1.5
     w12 = 2.5
-    u1 = 2.5
     beta = 2.5
-    dt = 1
-    steps = 1000
+    dt = 0.01
+    steps = 20
     weights = np.full(neuron_number, w12)
     time = np.linspace(0, steps * dt, steps)
 
@@ -27,12 +30,13 @@ def matsuoka_main():
 
         matsuoka_network = MatsuokaNetworkWithNN(num_oscillators=num_oscillators,
                                                  neuron_number=neuron_number,
-                                                 tau_r=tau_r, tau_a=tau_a, amplitude=amplitude)
+                                                 tau_r=tau_r, tau_a=tau_a, amplitude=amplitude, hh=hh_neuron)
         # Create a sample sensory input sequence
-        # sensory_input_seq = torch.rand(steps, num_oscillators, input_size, dtype=torch.float32, device="cuda")
+        sensory_input_seq = torch.rand(steps, num_oscillators, input_size, dtype=torch.float32, device="cuda")
 
         # Run the coupled system with NN control
-        outputs = matsuoka_network.run(steps=steps)
+        outputs = matsuoka_network.run(steps=steps, sensory_input_seq=sensory_input_seq)
+        outputs = outputs.cpu().numpy()
 
         for i in range(num_oscillators):
             plt.plot(time, outputs[:, i, 0], label=f'Oscillator {i + 1} Neuron 1')
@@ -49,11 +53,18 @@ def matsuoka_main():
         # Run of the events
         if num_oscillators == 1:
             # Create Matsuoka Oscillator with N neurons
-            oscillator = MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a,
-                                            beta=beta, dt=dt, action_space=neuron_number * num_oscillators,
+            if hh_neuron is False:
+                oscillator = MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a,
+                                            beta=beta, dt=dt,
                                             num_oscillators=num_oscillators)
-            y_output = oscillator.run(steps=steps)
+            else:
+                oscillator = HHMatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a,
+                                            beta=beta, dt=dt,
+                                            num_oscillators=num_oscillators)
+            weights_seq = [weights]*steps
+            y_output = oscillator.run(steps=steps, weights_seq=weights_seq)
 
+            y_output = y_output.cpu().numpy()
             for i in range(y_output.shape[1]):
                 plt.plot(time, y_output[:, i], label=f'y{i + 1} (Neuron {i + 1})')
             plt.xlabel('Time')
@@ -64,9 +75,12 @@ def matsuoka_main():
             plt.show()
         else:
             # Coupled System
-            coupled_system = MatsuokaNetwork(num_oscillators=num_oscillators, neuron_number=neuron_number, tau_r=tau_r,
-                                             tau_a=tau_a, weights=weights, beta=beta, dt=dt,
-                                             action_space=neuron_number * num_oscillators)
+            if hh_neuron is False:
+                coupled_system = MatsuokaNetwork(num_oscillators=num_oscillators, neuron_number=neuron_number, tau_r=tau_r,
+                                             tau_a=tau_a, beta=beta, dt=dt)
+            else:
+                coupled_system = HHMatsuokaNetwork(num_oscillators=num_oscillators, neuron_number=neuron_number, tau_r=tau_r,
+                                             tau_a=tau_a, beta=beta, dt=dt)
             y_output = coupled_system.run(steps=steps)
 
             # Coupled Oscillators
@@ -80,3 +94,6 @@ def matsuoka_main():
             plt.legend()
             plt.grid(True)
             plt.show()
+
+if __name__ == "__main__":
+    matsuoka_main()

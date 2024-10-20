@@ -1,7 +1,7 @@
-from .matsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN
+from .matsuokaOscillator import MatsuokaOscillator, MatsuokaNetwork, MatsuokaNetworkWithNN, HHMatsuokaNetwork
 
 PACKAGE_NAME = "Matsuoka_Oscillator_Algorithm"
-VERSION = "1.0.2"
+VERSION = "2.0.1"
 """
-Implementation with external MPO
+Implementation with Hudgkin Huxley Neurons
 """

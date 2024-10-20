@@ -2,10 +2,11 @@ import math
 import numpy as np
 import torch
 from MatsuokaOscillator import oscillators_helper
+from MatsuokaOscillator.hudgkin_huxley import HHNeuron
 
 
 class MatsuokaNetwork:
-    def __init__(self, num_oscillators, action_space=None, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
+    def __init__(self, num_oscillators, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
                  beta=2.5, dt=0.01):
         """
         Initialize the Coupled Oscillators system.
@@ -23,15 +24,13 @@ class MatsuokaNetwork:
         self.num_oscillators = num_oscillators
         self.oscillators = MatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, weights=weights,
                                               u=u, beta=beta,
-                                              dt=dt, action_space=action_space, num_oscillators=num_oscillators)
+                                              dt=dt, num_oscillators=num_oscillators)
 
     def step(self):
         """
         Perform a single step for all coupled oscillators.
         Each oscillator's output is fed as input to the next oscillator.
         """
-        outputs = self.oscillators.y
-
         # Update each oscillator with the output of the previous one
         self.oscillators.step()
 
@@ -45,18 +44,18 @@ class MatsuokaNetwork:
         Returns:
         - y_outputs (list of arrays): Outputs of all oscillators over time.
         """
-        y_outputs = [np.zeros((steps, self.neuron_number)) for _ in range(self.num_oscillators)]
+        y_outputs = [torch.zeros((steps, self.neuron_number)) for _ in range(self.num_oscillators)]
 
         for step_ in range(steps):
             self.step()
             for i in range(self.num_oscillators):
-                y_outputs[i][step_, :] = self.oscillators.y[i].detach().cpu().numpy
+                y_outputs[i][step_, :] = self.oscillators.y[i]
 
         return y_outputs
 
 
 class MatsuokaOscillator:
-    def __init__(self, action_space, num_oscillators, amplitude=2.5, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
+    def __init__(self, num_oscillators=1, amplitude=2.5, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
                  beta=2.5, dt=0.01):
         """
                 Initialize the Matsuoka Oscillator.
@@ -80,45 +79,57 @@ class MatsuokaOscillator:
         self.amplitude = amplitude
         self.frequency = frequency
         self.phase = initial_phase
-        self.action_dim = action_space
         self.neuron_number = neuron_number
         self.param_dim = neuron_number * num_oscillators
+        self.num_oscillators = num_oscillators
         self.tau_r = tau_r
         self.tau_a = tau_a
         self.beta = beta
         self.dt = dt
+        escalated_number = 0.1
         excitation_signal = 2.5
         self.x = torch.arange(0, num_oscillators * neuron_number, 1, dtype=torch.float32).to(self.device)
         if num_oscillators > 1:
             self.x = self.x.view(num_oscillators, neuron_number)
             # Neuron initial membrane potential
-            self.y = torch.zeros((num_oscillators, neuron_number), dtype=torch.float32, device=self.device)
+            oscillator_numbers = torch.arange(1, num_oscillators + 1, dtype=torch.float32,
+                                              device=self.device).unsqueeze(1)
+            self.y = torch.ones((num_oscillators, neuron_number), dtype=torch.float32,
+                                 device=self.device)*0.1 * oscillator_numbers * frequency
             # Output, it is the neurons update, which is mapped via NN to the action space.
             self.z = torch.zeros((num_oscillators, neuron_number), dtype=torch.float32,
                                  device=self.device)  # Correction value
+            if weights is None:
+                self.weights = torch.ones((num_oscillators,neuron_number), dtype=torch.float32, device=self.device)
+                self.weights *= excitation_signal
+            else:
+                assert len(self.weights) == self.param_dim, \
+                    f"Weights must be a matrix with size equal to the number of neurons, right now is {self.weights.shape}."
+                self.weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
         else:
-            self.y = torch.zeros(neuron_number, dtype=torch.float32, device=self.device)
+            self.y = torch.randn(neuron_number, dtype=torch.float32, device=self.device) * escalated_number * frequency
             self.z = torch.zeros(neuron_number, dtype=torch.float32, device=self.device)
 
-        if weights is None:
-            self.weights = torch.ones(neuron_number, dtype=torch.float32, device=self.device)
-        else:
-            assert len(weights) == neuron_number, \
-                "Weights must be a square matrix with size equal to the number of neurons."
-            self.weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
+            if weights is None:
+                self.weights = torch.ones(neuron_number, dtype=torch.float32, device=self.device)
+                self.weights *= excitation_signal
+            else:
+                assert len(weights) == neuron_number, \
+                    "Weights must be a square matrix with size equal to the number of neurons."
+                self.weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
 
         # Initialize external input (ones by default)
         if u is None:
             if num_oscillators > 1:
-                self.u = torch.full((num_oscillators - 1, neuron_number), excitation_signal,
-                                    dtype=torch.float32, device=self.device)
+                self.u = torch.ones((num_oscillators,neuron_number), dtype=torch.float32, device=self.device)
+                self.u *= excitation_signal
             else:
                 self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * excitation_signal
         else:
             assert len(u) == neuron_number, "Input array u - (fire rate) must match the number of neurons."
             self.u = torch.tensor(u, dtype=torch.float32, device=self.device)
 
-    def step(self, weights_in=None, num_oscillators=1):
+    def step(self, weights=None):
         """
           Perform a single update step for the Matsuoka oscillator network.
 
@@ -128,28 +139,24 @@ class MatsuokaOscillator:
             - beta (float): Optional. Adaptation coefficient.
         """
         # Update parameters if provided
-
-        # Verify input comes in tensor form
-        if not torch.is_tensor(weights_in):
-            weights = torch.tensor(weights_in, dtype=torch.float32, device=self.device)
-        else:
-            weights = weights_in
-
         if weights is not None:
+            # Verify input comes in tensor form
+            if not torch.is_tensor(weights):
+                weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
             self.weights = weights
         else:
             weights = self.weights
 
-        # Reshape params if necessary
-        # weights_tmp = env_selection(self.action_dim, weights, self.device)
         weights_tmp = weights
 
-        assert len(weights_tmp) == self.param_dim, \
-            f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
-        if num_oscillators > 1:
-            weights_tmp = weights_tmp.reshape(num_oscillators, self.neuron_number)
+        if self.num_oscillators > 1:
+            assert len(weights_tmp) * len(weights_tmp[0]) == self.param_dim, \
+                f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
+            weights_tmp = weights_tmp.reshape(self.num_oscillators, self.neuron_number)
             y_prev = torch.roll(self.y, shifts=1, dims=1)
         else:
+            assert len(weights_tmp) == self.param_dim, \
+                f"Weights must be a matrix with size equal to the number of neurons, right now is {self.weights.shape}."
             y_prev = torch.roll(self.y, shifts=1)
 
         dx = (-self.x - weights_tmp * y_prev + self.amplitude*self.u - self.beta * self.z) * self.dt / self.tau_r
@@ -162,18 +169,8 @@ class MatsuokaOscillator:
 
         # Update phase and frequency
         self.phase += self.frequency * self.dt
+        self.y = torch.relu(self.x)
 
-        # Generalized mapping using PyTorch's advanced indexing and reshaping
-        # osc_indices = torch.arange(num_oscillators).repeat_interleave(self.neuron_number)  # [0, 0, 1, 1, 2, 2, ...]
-        # neuron_indices = torch.arange(self.neuron_number).repeat(num_oscillators)  # [0, 1, 0, 1, 0, 1, ...]
-
-        # Use advanced indexing to fill the output tensor
-        # output_tensor = torch.cat((self.y[osc_indices, neuron_indices], output), dim=-1)
-        # output_tensor = self.y[osc_indices, neuron_indices]
-        # output_tensor = env_selection(self.action_dim, weights, self.device, output=self.y)
-
-        # right_output = output_tensor[:self.action_dim // 2]
-        # left_output = output_tensor[self.action_dim // 2:]
         return self.y
 
     def run(self, steps=1000, weights_seq=None):
@@ -184,9 +181,10 @@ class MatsuokaOscillator:
         :return: output of the oscillators funcion, with the number of neurons
         """
         y_output = torch.zeros(steps, self.neuron_number, dtype=torch.float32, device=self.device)
+
         for i in range(steps):
             weights = weights_seq[i] if weights_seq is not None else None
-            self.step(weights_in=weights)
+            self.step(weights=weights)
             y_output[i, :] = self.y
         return y_output
 
@@ -216,8 +214,8 @@ class MatsuokaNetworkWithNN:
         Runs the simulation for a given number of steps, returning the outputs of the oscillators over time.
     """
 
-    def __init__(self, num_oscillators, da, neuron_number=2,
-                 tau_r=1.0, tau_a=6.0, dt=0.1, amplitude=1.75):
+    def __init__(self, num_oscillators, da=None, neuron_number=2,
+                 tau_r=1.0, tau_a=6.0, dt=0.1, amplitude=1.75, hh=False):
         """
         Initializes the MatsuokaNetworkWithNN with a specified number of oscillators and a neural network model.
 
@@ -247,10 +245,9 @@ class MatsuokaNetworkWithNN:
         """ You can create similar characteristics oscillators or different"""
 
         self.oscillator_right, self.oscillator_left = self.initialize_oscillator(action_dim=self.action_dim,
-                                                                                 neuron_number=neuron_number,
+                                                                                 neuron_number=neuron_number, num_oscillators=num_oscillators,
                                                                                  amplitude=amplitude,
-                                                                                 tau_r=tau_r, tau_a=tau_a, dt=dt)
-
+                                                                                 tau_r=tau_r, tau_a=tau_a, dt=dt, hh=hh)
 
         # self.nn_model = MatsuokaActor(env, neuron_number=self.neuron_number, num_oscillators=self.num_oscillators).to(
         #    self.device)
@@ -275,10 +272,11 @@ class MatsuokaNetworkWithNN:
 
         # nn_output = self.nn_model.input_forward(sensory_input)  # Output is a matrix size [oscillators, neurons]
 
-        # Original inputs are in the shape [B, sample, num_oscillators*neuron_number
-        # Rearrange inputs in the form num_oscillators*neuron_numer
-
-        oscillators_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
+        # oscillators_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
+        oscillators_input = params_input
+        if self.action_dim is None:
+            output_actions = self.oscillator_right.step(weights=oscillators_input)
+            return output_actions
 
         if self.action_dim == 70:
             quadriceps_input = oscillators_input[0:4]  # Assuming 4 quadriceps-related muscles
@@ -303,8 +301,8 @@ class MatsuokaNetworkWithNN:
             self.oscillator_left['ankle_dorsiflexors'].step(dorsiflexors_input)
             self.oscillator_left['ankle_plantarflexors'].step(plantarflexors_input)
         else:
-            self.oscillator_right.step(weights_in=oscillators_input[0:self.neuron_number])
-            self.oscillator_left.step(weights_in=oscillators_input[self.neuron_number:])
+            self.oscillator_right.step(weights=oscillators_input[0:self.neuron_number])
+            self.oscillator_left.step(weights=oscillators_input[self.neuron_number:])
 
         actual_phase_difference = self.oscillator_right.phase - self.oscillator_left.phase
         error = self.desired_phase_difference - actual_phase_difference
@@ -319,7 +317,6 @@ class MatsuokaNetworkWithNN:
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
 
-        # output_actions = self.nn_model.output_neuron(output_y) # Possible not working
         return output_actions
 
     def run(self, steps=1000, sensory_input_seq=None):
@@ -339,19 +336,27 @@ class MatsuokaNetworkWithNN:
                     A 3D array containing the outputs of the oscillators at each time step. The shape of the array is
                     (steps, num_oscillators, neuron_number).
                 """
-        y_outputs = np.zeros((steps, self.num_oscillators, self.neuron_number))
+        y_outputs = torch.zeros(steps, self.num_oscillators, self.neuron_number, dtype=torch.float32, device=self.device)
 
         for t in range(steps):
             sensory_input = sensory_input_seq[t] if sensory_input_seq is not None else np.ones(self.num_oscillators)
             self.step(sensory_input)
-            y_outputs[t, :, :] = self.oscillators.y
+            y_outputs[t, :, :] = self.oscillator_right.y
         return y_outputs
 
     def initialize_oscillator(self, action_dim, initial_phase=0.0, amplitude=1.5,
-                              neuron_number=2, tau_r=1.0, tau_a=6.0, dt=0.1):
+                              neuron_number=2, num_oscillators=None, tau_r=1.0, tau_a=6.0, dt=0.01, hh=False):
         """ Initialize multiple oscillators with different frequencies.
         Must be modified and improved to match higher size Action spaces, multiple oscillators with different muscle groups.
         """
+        OscillatorClass = HHMatsuokaOscillator if hh else MatsuokaOscillator
+        if action_dim is None:
+            oscillators = OscillatorClass(num_oscillators=num_oscillators,
+                                                  initial_phase=initial_phase,
+                                                  amplitude=amplitude,
+                                                  neuron_number=neuron_number, tau_r=tau_r,
+                                                  tau_a=tau_a, dt=dt)
+            return oscillators, None
         if action_dim == 70: # Creation of different size oscillators
             # Define the frequencies for different muscle groups (example values, can be tuned)
             frequency_right = {
@@ -373,24 +378,24 @@ class MatsuokaNetworkWithNN:
 
             # Initialize the oscillators for the right leg
             right_oscillators = {
-                'quadriceps': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'quadriceps': OscillatorClass(num_oscillators=1,
                                                  initial_phase=initial_phase, frequency=frequency_right['quadriceps'],
                                                  amplitude=amplitude, neuron_number=neuron_number,
                                                  tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'hamstrings': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'hamstrings': OscillatorClass(num_oscillators=1,
                                                  initial_phase=initial_phase, frequency=frequency_right['hamstrings'],
                                                  amplitude=amplitude, neuron_number=neuron_number,
                                                  tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'hip_flexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'hip_flexors': OscillatorClass(num_oscillators=1,
                                                   initial_phase=initial_phase, frequency=frequency_right['hip_flexors'],
                                                   amplitude=amplitude, neuron_number=neuron_number,
                                                   tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'hip_extensors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'hip_extensors': OscillatorClass(num_oscillators=1,
                                                     initial_phase=initial_phase,
                                                     frequency=frequency_right['hip_extensors'],
                                                     amplitude=amplitude, neuron_number=neuron_number,
                                                     tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'ankle_motor': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'ankle_motor': OscillatorClass(num_oscillators=1,
                                                   initial_phase=initial_phase, frequency=frequency_right['ankle_motor'],
                                                   amplitude=amplitude, neuron_number=neuron_number,
                                                   tau_r=tau_r, tau_a=tau_a, dt=dt)
@@ -398,29 +403,29 @@ class MatsuokaNetworkWithNN:
 
             # Initialize the oscillators for the left leg
             left_oscillators = {
-                'quadriceps': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'quadriceps': OscillatorClass(num_oscillators=1,
                                                  initial_phase=initial_phase, frequency=frequency_left['quadriceps'],
                                                  amplitude=amplitude, neuron_number=neuron_number,
                                                  tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'hamstrings': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'hamstrings': OscillatorClass(num_oscillators=1,
                                                  initial_phase=initial_phase, frequency=frequency_left['hamstrings'],
                                                  amplitude=amplitude, neuron_number=neuron_number,
                                                  tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'hip_flexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'hip_flexors': OscillatorClass(num_oscillators=1,
                                                   initial_phase=initial_phase, frequency=frequency_left['hip_flexors'],
                                                   amplitude=amplitude, neuron_number=neuron_number,
                                                   tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'hip_extensors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'hip_extensors': OscillatorClass(num_oscillators=1,
                                                     initial_phase=initial_phase,
                                                     frequency=frequency_left['hip_extensors'],
                                                     amplitude=amplitude, neuron_number=neuron_number,
                                                     tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'ankle_dorsiflexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'ankle_dorsiflexors': OscillatorClass(num_oscillators=1,
                                                          initial_phase=initial_phase,
                                                          frequency=frequency_left['ankle_dorsiflexors'],
                                                          amplitude=amplitude, neuron_number=neuron_number,
                                                          tau_r=tau_r, tau_a=tau_a, dt=dt),
-                'ankle_plantarflexors': MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+                'ankle_plantarflexors': OscillatorClass(num_oscillators=1,
                                                            initial_phase=initial_phase,
                                                            frequency=frequency_left['ankle_plantarflexors'],
                                                            amplitude=amplitude, neuron_number=neuron_number,
@@ -431,14 +436,78 @@ class MatsuokaNetworkWithNN:
         else: # Regular same size oscillator
             frequency_right = 1.0
             frequency_left = 1.5
-            right_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+            right_oscillator = OscillatorClass(num_oscillators=1,
                                                   initial_phase=initial_phase, frequency=frequency_right,
                                                   amplitude=amplitude,
                                                   neuron_number=neuron_number, tau_r=tau_r,
                                                   tau_a=tau_a, dt=dt)
-            left_oscillator = MatsuokaOscillator(action_space=action_dim, num_oscillators=1,
+            left_oscillator = OscillatorClass(num_oscillators=1,
                                                  initial_phase=initial_phase, frequency=frequency_left, amplitude=amplitude,
                                                  neuron_number=neuron_number, tau_r=tau_r,
                                                  tau_a=tau_a, dt=dt)
         return right_oscillator, left_oscillator
 
+
+class HHMatsuokaOscillator(MatsuokaOscillator):
+    def __init__(self, num_oscillators, amplitude=2.5, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=1.0,
+                 tau_a=12.0, weights=None, u=None, beta=2.5, dt=0.01):
+        super(HHMatsuokaOscillator, self).__init__(num_oscillators, amplitude, frequency, initial_phase,
+                                                         neuron_number, tau_r, tau_a, weights, u, beta, dt)
+        # Create an array of HH Neurons for each oscillator
+        if num_oscillators==1:
+            self.neurons = torch.nn.ModuleList([HHNeuron(dt=dt) for _ in range(neuron_number)])
+        else:
+            self.neurons = [[HHNeuron(dt=dt) for _ in range(neuron_number)] for _ in range(num_oscillators)]
+
+
+    def step(self, weights=None):
+        """
+            Perform a single update step using Hodgkin-Huxley neurons.
+            """
+        m = 0.05
+        h = 0.6
+        n = 0.32
+        if self.num_oscillators==1:
+            for i, neuron in enumerate(self.neurons):
+                # Each neuron updates its membrane potential and other variables
+                total_input = self.u[i] + torch.sum(self.weights[i] + self.y[i])  # Neurons influence each other
+                dVdt, dmdt, dhdt, dndt = neuron.forward(V=self.y[i],m=m, h=h, n=n, I_ext=total_input, dt=self.dt)
+
+                # Update the gating variables for each neuron
+                if i+1 % 2 == 0:
+                    self.y[i] = torch.sin(self.y[i] + dVdt*self.dt)
+                else:
+                    self.y[i] = torch.sin(-(self.y[i] + dVdt*self.dt))
+                m = dmdt
+                h = dhdt
+                n = dndt
+        else:
+            for i in range(self.num_oscillators):
+                for j in range(self.neuron_number):
+                    # Each neuron updates its membrane potential and other variables
+                    total_input = self.u[i][j] + torch.sum(self.weights[i][j] * self.y[i][j])  # Neurons influence each other
+                    dVdt, dmdt, dhdt, dndt = self.neurons[i][j].forward(V=self.y[i, j], m=m, h=h,
+                                                                    n=n, I_ext=total_input, dt=self.dt)
+
+                    # Update the gating variables for each neuron
+                    if i + 1 % 2 == 0:
+                        self.y[i][j] = torch.sin(self.y[i][j] + dVdt * self.dt)
+                    else:
+                        self.y[i][j] = torch.sin(-(self.y[i][j] + dVdt * self.dt))
+                    m = dmdt
+                    h = dhdt
+                    n = dndt
+        # **Baseline correction step by step** (compute mean and subtract from the output)
+        baseline_correction = torch.mean(self.y)  # Compute mean across neurons
+        self.y -= baseline_correction  # Subtract baseline correction from outputs
+
+        return self.y
+
+
+class HHMatsuokaNetwork(MatsuokaNetwork):
+    def __init__(self, num_oscillators=2, neuron_number=2, tau_r=1.0, tau_a=12.0, weights=None, u=None,
+                 beta=2.5, dt=0.01):
+        super(HHMatsuokaNetwork, self).__init__(num_oscillators, neuron_number, tau_r, tau_a, weights, u, beta, dt)
+        self.oscillators = HHMatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a, weights=weights,
+                                              u=u, beta=beta,
+                                              dt=dt, num_oscillators=num_oscillators)
