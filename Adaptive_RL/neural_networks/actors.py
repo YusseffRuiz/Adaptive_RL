@@ -371,6 +371,38 @@ class DeterministicPolicyGradient:
         return dict(loss=loss.detach())
 
 
+class DistributionalDeterministicPolicyGradient:
+    def __init__(self, lr_actor=3e-4, gradient_clip=0):
+        self.gradient_clip = gradient_clip
+        self.lr_actor = lr_actor
+
+    def initialize(self, model):
+        self.model = model
+        self.variables = trainable_variables(self.model.actor)
+        self.optimizer = local_optimizer(self.variables, lr=self.lr_actor)
+
+    def __call__(self, observations):
+        critic_variables = trainable_variables(self.model.critic)
+
+        for var in critic_variables:
+            var.requires_grad = False
+
+        self.optimizer.zero_grad()
+        actions = self.model.actor(observations)
+        value_distributions = self.model.critic(observations, actions)
+        values = value_distributions.mean()
+        loss = -values.mean()
+
+        loss.backward()
+        if self.gradient_clip > 0:
+            torch.nn.utils.clip_grad_norm_(self.variables, self.gradient_clip)
+        self.optimizer.step()
+
+        for var in critic_variables:
+            var.requires_grad = True
+
+        return dict(loss=loss.detach())
+
 class TwinCriticSoftDeterministicPolicyGradient:
     """
     Implements Twin-Critic Soft Deterministic Policy Gradient (SAC) for actor-critic training.

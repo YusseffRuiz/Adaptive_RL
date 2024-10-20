@@ -101,6 +101,54 @@ class VRegression:
         return dict(loss=loss.detach(), v=values.detach())
 
 
+class CategoricalWithSupport:
+    def __init__(self, values, logits):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.values = values.to(self.device)
+        self.logits = logits
+        self.probabilities = torch.nn.functional.softmax(logits, dim=-1).to(self.device)
+
+    def mean(self):
+        return (self.probabilities * self.values).sum(dim=-1)
+
+    def project(self, returns):
+        vmin, vmax = self.values[0], self.values[-1]
+        d_pos = torch.cat([self.values, vmin[None]], 0)[1:]
+        d_pos = (d_pos - self.values)[None, :, None]
+        d_neg = torch.cat([vmax[None], self.values], 0)[:-1]
+        d_neg = (self.values - d_neg)[None, :, None]
+
+        clipped_returns = torch.clamp(returns, vmin, vmax)
+        delta_values = clipped_returns[:, None] - self.values[None, :, None]
+        delta_sign = (delta_values >= 0).float()
+        delta_hat = ((delta_sign * delta_values / d_pos) -
+                     ((1 - delta_sign) * delta_values / d_neg))
+        delta_clipped = torch.clamp(1 - delta_hat, 0, 1)
+
+        return (delta_clipped * self.probabilities[:, None]).sum(dim=2)
+
+
+class DistributionalValueHead(torch.nn.Module):
+    def __init__(self, vmin, vmax, num_atoms, fn=None):
+        super().__init__()
+        self.num_atoms = num_atoms
+        self.fn = fn
+        self.values = torch.linspace(vmin, vmax, num_atoms).float()
+
+    def initialize(self, input_size, return_normalizer=None):
+        if return_normalizer:
+            raise ValueError(
+                'Return normalizers cannot be used with distributional value'
+                'heads.')
+        self.distributional_layer = torch.nn.Linear(input_size, self.num_atoms)
+        if self.fn:
+            self.distributional_layer.apply(self.fn)
+
+    def forward(self, inputs):
+        logits = self.distributional_layer(inputs)
+        return CategoricalWithSupport(values=self.values, logits=logits)
+
+
 class DeterministicQLearning:
     """
     Implements Deterministic Q-learning for updating the critic.
@@ -148,6 +196,46 @@ class DeterministicQLearning:
         self.optimizer.step()
 
         return dict(loss=loss.detach(), q=values.detach())
+
+
+class DistributionalDeterministicQLearning:
+    def __init__(self, lr_critic=1e-3, gradient_clip=0):
+        self.lr_critic = lr_critic
+        self.gradient_clip = gradient_clip
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    def initialize(self, model):
+        self.model = model
+        self.variables = trainable_variables(self.model.critic)
+        self.optimizer = local_optimizer(self.variables, lr=self.lr_critic)
+
+    def __call__(
+        self, observations, actions, next_observations, rewards, discounts
+    ):
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
+        discounts = torch.tensor(discounts, dtype=torch.float32, device=self.device)
+        observations = torch.tensor(observations, dtype=torch.float32, device=self.device)
+        actions = torch.tensor(actions, dtype=torch.float32, device=self.device)
+        next_observations = torch.tensor(next_observations, dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            next_actions = self.model.target_actor(next_observations)
+            next_value_distributions = self.model.target_critic(next_observations, next_actions)
+            values = next_value_distributions.values.to(self.device)
+            returns = rewards[:, None] + discounts[:, None] * values
+            targets = next_value_distributions.project(returns)
+
+        self.optimizer.zero_grad()
+        value_distributions = self.model.critic(observations, actions)
+        log_probabilities = torch.nn.functional.log_softmax(
+            value_distributions.logits, dim=-1)
+        loss = -(targets * log_probabilities).sum(dim=-1).mean()
+
+        loss.backward()
+        if self.gradient_clip > 0:
+            torch.nn.utils.clip_grad_norm_(self.variables, self.gradient_clip)
+        self.optimizer.step()
+
+        return dict(loss=loss.detach())
 
 
 class TwinCriticSoftQLearning:

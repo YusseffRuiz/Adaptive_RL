@@ -3,7 +3,7 @@ import torch
 
 from . import ARSActor
 from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
-from .critics import Critic, ValueHead
+from .critics import Critic, ValueHead, DistributionalValueHead
 from Adaptive_RL import normalizers
 
 
@@ -323,6 +323,23 @@ class ActorCriticDeterministic(BaseModel):
                 encoder=ObservationActionEncoder(),
                 torso=MLP(self.neuron_shape, self.activation_fn),
                 head=ValueHead()),
+            observation_normalizer=normalizers.MeanStd())
+
+class ActorCriticDistributional(BaseModel):
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.ReLU):
+        super().__init__(hidden_size, hidden_layers, activation_fn)
+
+    def get_model(self):
+        return ActorCriticWithTargets(
+            actor=Actor(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.neuron_shape, self.activation_fn),
+                head=DeterministicPolicyHead()),
+            critic=Critic(
+                encoder=ObservationActionEncoder(),
+                torso=MLP(self.neuron_shape, self.activation_fn),
+                # These values are for the control suite with 0.99 discount.
+                head=DistributionalValueHead(-150., 150., 51)),
             observation_normalizer=normalizers.MeanStd())
 
 

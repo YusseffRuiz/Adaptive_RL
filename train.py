@@ -2,7 +2,7 @@ import torch
 
 from MatsuokaOscillator import MatsuokaNetworkWithNN, HHMatsuokaNetwork
 import Adaptive_RL
-from Adaptive_RL import SAC, DDPG, MPO, PPO, ARS
+from Adaptive_RL import SAC, DDPG, MPO, PPO, ARS, D4PG
 import Experiments.experiments_utils as trials
 import argparse
 
@@ -12,8 +12,8 @@ def parse_args():
 
     # Algorithm and environment
     parser.add_argument('--algorithm', type=str, default='PPO',
-                        choices=['PPO', 'SAC', 'MPO', 'DDPG', 'ppo', 'sac', 'mpo', 'ddpg', 'ARS', 'ars'],
-                        help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG, ARS).')
+                        choices=['PPO', 'SAC', 'MPO', 'DDPG', 'ppo', 'sac', 'mpo', 'ddpg', 'ARS', 'ars', 'D4PG', 'd4pg'],
+                        help='Choose the RL algorithm to use (PPO, SAC, MPO, DDPG, ARS, D4PG).')
     parser.add_argument('--env', type=str, default='Humanoid-v4', help='Name of the environment to train on.')
     parser.add_argument('--cpg', action='store_true', help='Whether to enable CPG flag.')
     parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
@@ -38,7 +38,6 @@ def parse_args():
                         help='Number of neurons in hidden layers. Can be a single integer or a list of integers.')
     parser.add_argument('--layers_number', type=int, default=2, help='Number of hidden layers.')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training.')
-    parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor.')
     parser.add_argument('--replay_buffer_size', type=int, default=int(10e5), help='Replay buffer size.')
     parser.add_argument('--epsilon', type=float, default=0.1, help='Exploration rate (epsilon-greedy) (MPO).')
     parser.add_argument('--learning_starts', type=int, default=10000, help='Number of steps before learning starts.')
@@ -248,6 +247,11 @@ if __name__ == "__main__":
     elif training_algorithm == "DDPG":
         agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
                      noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number, replay_buffer_size=replay_buffer_size)
+
+    elif training_algorithm == "D4PG":
+        agent = D4PG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
+                     noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number,
+                     replay_buffer_size=replay_buffer_size)
     elif training_algorithm == "ARS":
         env = Adaptive_RL.Gym(env_name)
         if cpg_flag:
