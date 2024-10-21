@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument('--E', action='store_true', default=False, help='Whether to enable experimentation mode.')
     parser.add_argument('--V', action='store_true', default=False, help='Whether to record video.')
     parser.add_argument('--R', action='store_true', default=False, help='Run random actions.')
+    parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
 
     return parser.parse_args()
 
@@ -39,15 +40,15 @@ def main_running():
     video_record = args.V
     experiment = args.E
     cpg_flag = args.cpg
+    hh = args.hh
     random = args.R
     algorithm = args.algorithm.upper()
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm,
                                                                  experiment_number=0, external_folder=args.f)
 
-    if experiment:
-        num_episodes = num_episodes
-        env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
+    if experiment or video_record:
+        env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
     else:
         env = Adaptive_RL.Gym(env_name, render_mode="human")
 
@@ -56,7 +57,7 @@ def main_running():
         cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
                                                       da=env.action_space.shape[0],
                                                       neuron_number=2, tau_r=2,
-                                                      tau_a=12)
+                                                      tau_a=12, hh=hh)
     env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
     path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir)
@@ -68,7 +69,6 @@ def main_running():
             agent, _ = Adaptive_RL.load_agent(config, path, env)
 
             print("Video Recording with loaded weights from {} algorithm, path: {}".format(algorithm, path))
-            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
 
             Adaptive_RL.record_video(env, video_folder, algorithm, agent, env_name)
             print("Video Recorded")
@@ -78,9 +78,18 @@ def main_running():
             trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
             results = {}
 
+            cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
+                                              da=env.action_space.shape[0],
+                                              neuron_number=2, tau_r=2,
+                                              tau_a=12, hh=hh)
+
             # Iterate over the found algorithms and run evaluations
             for algo, algo_folder in trained_algorithms:
                 logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
+                env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
+                if 'CPG' in algo:
+                    env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+                save_folder = f"{env_name}/{algo}"
 
                 # Get the last checkpoint path and config for the algorithm
                 path = os.path.join(algo_folder, 'logs')

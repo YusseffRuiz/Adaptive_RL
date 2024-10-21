@@ -357,7 +357,7 @@ class MatsuokaNetworkWithNN:
                                                   neuron_number=neuron_number, tau_r=tau_r,
                                                   tau_a=tau_a, dt=dt)
             return oscillators, None
-        if action_dim == 70: # Creation of different size oscillators
+        if action_dim == 70:  # Creation of different size oscillators
             # Define the frequencies for different muscle groups (example values, can be tuned)
             frequency_right = {
                 'quadriceps': 1.0,
@@ -433,7 +433,7 @@ class MatsuokaNetworkWithNN:
             }
 
             return right_oscillators, left_oscillators
-        else: # Regular same size oscillator
+        else:  # Regular same size oscillator
             frequency_right = 1.0
             frequency_left = 1.5
             right_oscillator = OscillatorClass(num_oscillators=1,
@@ -467,7 +467,7 @@ class HHMatsuokaOscillator(MatsuokaOscillator):
         m = 0.05
         h = 0.6
         n = 0.32
-        if self.num_oscillators==1:
+        if self.num_oscillators == 1:
             for i, neuron in enumerate(self.neurons):
                 # Each neuron updates its membrane potential and other variables
                 total_input = self.u[i] + torch.sum(self.weights[i] + self.y[i])  # Neurons influence each other
@@ -478,9 +478,9 @@ class HHMatsuokaOscillator(MatsuokaOscillator):
                     self.y[i] = torch.sin(self.y[i] + dVdt*self.dt)
                 else:
                     self.y[i] = torch.sin(-(self.y[i] + dVdt*self.dt))
-                m = dmdt
-                h = dhdt
-                n = dndt
+                m += dmdt
+                h += dhdt
+                n += dndt
         else:
             for i in range(self.num_oscillators):
                 for j in range(self.neuron_number):

@@ -28,12 +28,18 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
         env_name = env_name + "-CPG"
 
     if external_folder:
-        if os.path.exists(f"training/{external_folder}"):
-            print(f"Using existing folder: {external_folder}")
-        if experiment_number > 0:
-            save_folder = f"training/{external_folder}/{experiment_number}"
+        if create:
+            if os.path.exists(f"training/{external_folder}"):
+                print(f"Using existing folder: {external_folder}")
+            if experiment_number > 0:
+                save_folder = f"training/{external_folder}/{experiment_number}"
+            else:
+                save_folder = f"training/{external_folder}"
         else:
-            save_folder = f"training/{external_folder}"
+            if experiment_number > 0:
+                save_folder = f"{external_folder}/{experiment_number}"
+            else:
+                save_folder = f"{external_folder}"
     else:
         if experiment_number > 0:
             save_folder = f"training/{env_name}-{algorithm}/{experiment_number}"
@@ -203,7 +209,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     # plot_data(data=joints[0], data2=joints[2], data1_name="right hip", data2_name="left hip", y_axis_name="Angle (°/s)", title="Hip Joint movement")
     # statistical_analysis(total_velocity, y_axis_name="Velocity(m/s", title=f"Velocity (m/s) {velocity_total:.2f} m/s", save_folder=save_folder, figure_name="Total_Velocity")
     # cross_fourier_transform(joints[0], joints[2], joint="Hip", save_folder=save_folder)
-    # perform_autocorrelation(joints[0], joints[2], joint="Hip", save_folder=save_folder)
+    perform_autocorrelation(joints[0], joints[2], joint="Hip", save_folder=save_folder)
     jerk = get_jerk(total_accelerations, dt)
     # statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="Acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
     # statistical_analysis(jerk, x_axis_name="Time", y_axis_name="Jerk (m/s^3)", title="jerk (m/s^3)", save_folder=save_folder, figure_name="Jerk")
@@ -211,9 +217,9 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
 
     results_dict = {
         'velocity': total_velocity,
-        'energy' : energy_consumption,
+        'energy': energy_consumption,
         'reward': total_rewards,
-        'distance' : total_distance,
+        'distance': total_distance,
         'steps': total_steps,
         'jerk': jerk,
     }
@@ -322,7 +328,10 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
         # Define the path where the image will be saved
         image_path = os.path.join(save_folder, "CrossCorrelation.png")
         plt.savefig(image_path)
-    plt.show()
+        plt.show(block=False)
+        plt.close()
+    else:
+        plt.show()
 
 
 def get_data(info):
@@ -368,7 +377,7 @@ def get_data(info):
 
 def separate_joints(joint_list, action_dim):
     # Split the joints for each step across all episodes
-    if action_dim == 6:
+    if action_dim == 6:  # Walker2d-v4
         right_hip = joint_list[:, :, 0]  # Extract right hip
         right_knee = joint_list[:, :, 1]  # Extract right knee
         right_ankle = joint_list[:, :, 2]  # Extract right ankle
@@ -376,7 +385,16 @@ def separate_joints(joint_list, action_dim):
         left_knee = joint_list[:, :, 4]  # Extract left knee
         left_ankle = joint_list[:, :, 5]  # Extract left ankle
 
-        return np.array(right_hip), np.array(right_knee), np.array(right_ankle), np.array(left_hip), np.array(left_knee), np.array(left_ankle)
+        return np.array(right_hip), np.array(right_knee), np.array(left_hip), np.array(left_knee)
+    elif action_dim == 17:  #Humanoid-v4
+        right_hip = joint_list[:, :, 2]  # Extract right hip
+        right_knee = joint_list[:, :, 3]  # Extract right knee
+        left_hip = joint_list[:, :, 6]  # Extract left hip
+        left_knee = joint_list[:, :, 7]  # Extract left knee
+
+        return np.array(right_hip), np.array(right_knee), np.array(left_hip), np.array(left_knee)
+    elif action_dim == 70:
+        pass
     else:
         right_hip = joint_list[:, :, 0]  # Extract right hip
         right_knee = joint_list[:, :, 1]  # Extract right knee
@@ -494,8 +512,8 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None):
         :param save_folder:
     """
     time = np.arange(0, len(velocities[0][0]) * dt, dt)
-
-    colors = plt.cm.get_cmap("tab10", len(velocities)).colors  # Default color cycle
+    print(len(velocities))
+    colors = plt.colormaps.get_cmap("tab10").colors  # Default color cycle
 
     for i, velocity in enumerate(velocities):
         mean_velocity = np.mean(velocity, axis=0)
@@ -527,7 +545,9 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None):
         # Define the path where the image will be saved
         image_path = os.path.join(save_folder, f"velocities_comparison.png")
         plt.savefig(image_path)
-    plt.show()
+    plt.show(block=False)
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 def compare_jerk(jerk1, jerk2, dt):
@@ -545,7 +565,7 @@ def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_f
     total_values= [np.mean(dat) for dat in data]
 
     plt.figure(figsize=(8, 5))
-    plt.bar(algos, total_values, color=plt.cm.get_cmap("tab10", len(data)).colors)
+    plt.bar(algos, total_values, color=plt.colormaps.get_cmap("tab10").colors)
     plt.xlabel('Algorithm')
     plt.ylabel(f'Total {data_name} ({units})')
     plt.title(f'Total {data_name} Comparison')
@@ -553,7 +573,9 @@ def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_f
         # Define the path where the image will be saved
         image_path = os.path.join(save_folder, f"{data_name}.png")
         plt.savefig(image_path)
-    plt.show()
+    plt.show(block=False)
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save_folder=None):
@@ -568,7 +590,7 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
         """
     # Calculate the mean distance for each model
     mean_data = [np.mean(dat) for dat in data]
-    colors = plt.cm.get_cmap("tab10", len(data)).colors  # Default color cycle
+    colors = plt.colormaps.get_cmap("tab10").colors  # Default color cycle
 
     # Create a horizontal bar chart
     plt.figure(figsize=(10, 6))
@@ -589,7 +611,9 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
         image_path = os.path.join(save_folder, f"{data_name}.png")
         plt.savefig(image_path)
 
-    plt.show()
+    plt.show(block=False)
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 def savitzky_golay_smoothing(data, window_length=100, polyorder=3):
