@@ -1,0 +1,30 @@
+agent:
+  agent: PPO
+  batch_size: 512
+  clip_range: 0.3
+  decay_lr: 0.98
+  discount_factor: null
+  entropy_coeff: 0.0238306
+  gamma: 0.99
+  hidden_layers: 2
+  hidden_size:
+  - 256
+  - 256
+  learning_rate: 0.0003569
+  normalizer: false
+  replay_buffer_size: 4096
+checkpoint: last
+cpg_amplitude: 1.75
+cpg_flag: true
+cpg_neurons: 2
+cpg_oscillators: 2
+cpg_tau_a: 12.0
+cpg_tau_r: 1.0
+device: NVIDIA GeForce RTX 3070 Ti Laptop GPU
+environment: Humanoid-v4
+hh: false
+log_dir: training/Humanoid-v4-CPG-PPO/logs/
+parallel: 1
+path: training/Humanoid-v4-CPG-PPO/logs/
+seed: 0
+sequential: 1

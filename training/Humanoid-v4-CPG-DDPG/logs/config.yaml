@@ -1,0 +1,30 @@
+agent:
+  agent: DDPG
+  batch_size: 265
+  decay_factor: 0.98
+  discount_factor: 0.99
+  hidden_layers: 2
+  hidden_size:
+  - 400
+  - 300
+  learning_rate: 0.00034
+  learning_starts: 10000
+  noise_std: 0.0
+  replay_buffer_size: 8192
+  return_step: 5
+  steps_between_batches: 20
+checkpoint: last
+cpg_amplitude: 1.75
+cpg_flag: true
+cpg_neurons: 2
+cpg_oscillators: 2
+cpg_tau_a: 12.0
+cpg_tau_r: 1.0
+device: NVIDIA GeForce RTX 3070 Ti Laptop GPU
+environment: Humanoid-v4
+hh: false
+log_dir: training/Humanoid-v4-CPG-DDPG/logs/
+parallel: 1
+path: training/Humanoid-v4-CPG-DDPG/logs/
+seed: 0
+sequential: 1

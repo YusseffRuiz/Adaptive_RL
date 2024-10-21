@@ -1,0 +1,30 @@
+agent:
+  agent: SAC
+  batch_size: 265
+  discount_factor: 0.95
+  hidden_layers: 2
+  hidden_size:
+  - 256
+  - 256
+  learning_rate: 0.00034
+  learning_starts: 10000
+  noise_std: 0.1
+  replay_buffer_size: 100000
+  return_step: 5
+  steps_between_batches: 20
+  tau: 0.005
+checkpoint: last
+cpg_amplitude: 1.75
+cpg_flag: true
+cpg_neurons: 2
+cpg_oscillators: 2
+cpg_tau_a: 12.0
+cpg_tau_r: 1.0
+device: NVIDIA GeForce RTX 3070 Ti Laptop GPU
+early_stopping: false
+environment: Humanoid-v4
+log_dir: training/Humanoid-v4-CPG-SAC/logs/
+parallel: 1
+path: training/Humanoid-v4-CPG-SAC/logs/
+seed: 0
+sequential: 1

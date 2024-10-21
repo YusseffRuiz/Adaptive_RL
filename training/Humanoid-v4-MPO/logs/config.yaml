@@ -1,0 +1,22 @@
+agent:
+  agent: MPO
+  batch_size: 128
+  discount_factor: 0.95
+  gamma: 0.95
+  hidden_layers: 2
+  hidden_size:
+  - 256
+  lr_actor: 3.56987e-05
+  lr_critic: 0.0003
+  lr_dual: 0.000356987
+  replay_buffer_size: 1000000
+checkpoint: last
+cpg_flag: false
+device: NVIDIA GeForce RTX 3070 Ti Laptop GPU
+early_stopping: false
+environment: Humanoid-v4
+log_dir: training/Humanoid-v4-MPO/logs/
+parallel: 1
+path: training/Humanoid-v4-MPO/logs/
+seed: 0
+sequential: 1
