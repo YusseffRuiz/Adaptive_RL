@@ -59,8 +59,7 @@ def main_running():
                                                       tau_a=12)
     env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
-    path = log_dir
-    path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
+    path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir)
 
     if not random:
 

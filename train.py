@@ -2,7 +2,7 @@ import torch
 
 from MatsuokaOscillator import MatsuokaNetworkWithNN, HHMatsuokaNetwork
 import Adaptive_RL
-from Adaptive_RL import SAC, DDPG, MPO, PPO, plot
+from Adaptive_RL import SAC, DDPG, MPO, PPO
 import Experiments.experiments_utils as trials
 import argparse
 
@@ -56,7 +56,7 @@ def parse_args():
 
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
-        checkpoint="last", path=None, log_dir=None, cpg_flag=False, hh=False, cpg_oscillators=2,
+        checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
         cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=12.0, cpg_amplitude=1.75):
     """
     :param agent: Agent and algorithm to be trained.
@@ -75,7 +75,6 @@ def train_agent(
         print(f"Runing with {device}")
     else:
         print("Running with CPU")
-    path = log_dir
     args = dict(locals())
     # Create a new dictionary excluding 'agent' and 'trainer'
     args = {k: v for k, v in args.items() if k not in ['agent', 'trainer']}
@@ -128,7 +127,7 @@ def train_agent(
 
     agent.get_config(print_conf=True)
     # Initialize the logger to save data to the path
-    Adaptive_RL.logger.initialize(path=log_dir, config=args)
+    Adaptive_RL.logger.initialize(path=path, config=args)
 
     # Build the trainer.
     trainer.initialize(
@@ -248,7 +247,7 @@ if __name__ == "__main__":
                     environment=env_name,
                     sequential=1, parallel=1,
                     trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps, early_stopping=early_stopping),
-                    log_dir=log_dir, cpg_flag=cpg_flag, hh=hh)
+                    path=log_dir, cpg_flag=cpg_flag, hh=hh)
 
         env = Adaptive_RL.Gym(env_name, render_mode="human", max_episode_steps=1500)
         cpg_model = None

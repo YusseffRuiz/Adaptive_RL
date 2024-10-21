@@ -28,18 +28,12 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
         env_name = env_name + "-CPG"
 
     if external_folder:
-        if not os.path.exists(external_folder):
-            os.makedirs(external_folder)
-            print(f"Folder {external_folder} created.")
-        else:
+        if os.path.exists(f"training/{external_folder}"):
             print(f"Using existing folder: {external_folder}")
-            save_folder = external_folder
-            log_dir = external_folder
-            return env_name, save_folder, log_dir
         if experiment_number > 0:
-            save_folder = f"training/{external_folder}/{env_name}-{algorithm}/{experiment_number}"
+            save_folder = f"training/{external_folder}/{experiment_number}"
         else:
-            save_folder = f"training/{external_folder}/{env_name}-{algorithm}"
+            save_folder = f"training/{external_folder}"
     else:
         if experiment_number > 0:
             save_folder = f"training/{env_name}-{algorithm}/{experiment_number}"

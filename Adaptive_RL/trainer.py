@@ -28,7 +28,7 @@ class Trainer:
 
         # Early Stop Parameters
         self.best_reward = -float('inf')
-        self.patience = 500 # 500 episodes limit if there is no improvement
+        self.patience = 500  # 500 episodes limit if there is no improvement
         self.no_improvement_counter = 0
         self.early_stopping = early_stopping
         self.decay_counter = 0
@@ -69,7 +69,6 @@ class Trainer:
             epoch_steps += num_workers
             steps_since_save += num_workers
 
-
             # Show the progress bar.
             if self.show_progress:
                 logger.show_progress(self.steps, self.epoch_steps, self.max_steps)
@@ -93,7 +92,7 @@ class Trainer:
                 epochs += 1
                 current_time = time.time()
                 epoch_time = current_time - last_epoch_time
-                sps = epoch_steps / epoch_time
+                # sps = epoch_steps / epoch_time
                 logger.store('train/episodes', episodes)
                 # logger.store('train/epochs', epochs)
                 logger.store('train/seconds', current_time - start_time)
@@ -112,7 +111,6 @@ class Trainer:
             if self.no_improvement_counter >= self.patience and self.early_stopping:
                 print(f"Early stopping at epoch {epochs}")
                 stop_training = True
-
 
             # Save a checkpoint.
             if stop_training or steps_since_save >= self.save_steps:
@@ -134,18 +132,18 @@ class Trainer:
                     self.no_improvement_counter = 0  # Reset counter if there's an improvement
 
                     # Save the best model.
-                    best_model_path = os.path.join(logger.get_path(), 'best_model.pth')
-                    self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay_buffer,
-                                    best_model_path)
+                    best_model_path = os.path.join(path, 'best_model')
+                    self.agent.save(best_model_path)
                     logger.log(f"Best model saved with reward {self.best_reward} at epoch {epochs}")
                 else:
                     self.no_improvement_counter += 1
 
-                self.save_cycles+=1
-                if self.save_cycles%10==0: # Saving everything only every 10% of the total training
-                    self.save_cycles=1
+                self.save_cycles += 1
+                if self.save_cycles % 10 == 0:  # Saving everything only every 10% of the total training
+                    self.save_cycles = 1
                     save_model_path = os.path.join(path, "model_checkpoint.pth")
-                    self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay_buffer, save_model_path)
+                    self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay_buffer,
+                                    save_model_path)
 
                 if self.no_improvement_counter >= self.patience * 0.6:
                     self.agent.decay_flag = True  # start decaying the noise
@@ -188,7 +186,8 @@ class Trainer:
             logger.store('test/episode_length', length, stats=True)
             return score
 
-    def save_model(self, agent, optimizer, replay_buffer, save_path):
+    @staticmethod
+    def save_model(agent, optimizer, replay_buffer, save_path):
         save_data = {
             'model_state_dict': agent.state_dict(),  # Save model weights
             'optimizer_state_dict': optimizer.state_dict(),  # Save optimizer state
@@ -198,8 +197,8 @@ class Trainer:
         torch.save(save_data, save_path)
         logger.log(f"Model, optimizer, and replay buffer saved at {save_path}")
 
-
-    def load_model(self, agent, actor_updater, replay_buffer, save_path):
+    @staticmethod
+    def load_model(agent, actor_updater, replay_buffer, save_path):
         try:
             # Load the saved data from the file
             save_path = save_path + '/model_checkpoint.pth'
@@ -216,8 +215,8 @@ class Trainer:
             if 'replay_buffer' in checkpoint:
                 replay_buffer = checkpoint['replay_buffer']
 
-
             logger.log(f"Model, optimizer, and replay buffer loaded from {save_path}")
+            return replay_buffer
         except FileNotFoundError:
             print(f"Checkpoint not found at {save_path}")
         except KeyError as e:
