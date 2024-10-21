@@ -17,7 +17,7 @@ class MPO(base_agent.BaseAgent):
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
             action_penalization=True, gradient_clip=0.1, batch_size=128, return_step=5, steps_between_batches=20,
-            replay_buffer_size=10e5):
+            replay_buffer_size=10e5, decay_lr=0.98):
         self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
@@ -32,12 +32,14 @@ class MPO(base_agent.BaseAgent):
                                                                   action_penalization=action_penalization,
                                                                   gradient_clip=gradient_clip)
         self.critic_updater = neural_networks.ExpectedSARSA(lr_critic=lr_critic)
+        self.decay_lr = decay_lr
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.config = {
             "agent": "MPO",
             "lr_actor": lr_actor,
             "lr_critic": lr_critic,
             "lr_dual": lr_dual,
+            "decay_lr": decay_lr,
             "hidden_size": hidden_size,
             "hidden_layers": hidden_layers,
             "discount_factor": discount_factor,
@@ -50,6 +52,7 @@ class MPO(base_agent.BaseAgent):
         self.model.initialize(observation_space, action_space)
         self.actor_updater.initialize(self.model, action_space)
         self.critic_updater.initialize(self.model)
+        self.decay_flag = False
 
     def step(self, observations, steps=None):
         actions = self._step(observations)
@@ -82,6 +85,11 @@ class MPO(base_agent.BaseAgent):
         # Update the model if the replay is ready.
         if self.replay_buffer.ready(steps):
             self._update(steps)
+
+        if self.decay_flag: # Reducing noise to stabilize training
+            self.actor_updater.lr_actor *= self.decay_lr
+            self.critic_updater.lr_critic *= self.decay_lr
+            self.actor_updater.lr_actor *= self.decay_lr
 
     def _step(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)

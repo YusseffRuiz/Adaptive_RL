@@ -8,17 +8,17 @@ from MatsuokaOscillator.matsuokaOscillator import HHMatsuokaNetwork, HHMatsuokaO
 # Basic Matsuoka Oscillator Implementation
 def matsuoka_main():
     # Parameters
-    neural_net = True
+    neural_net = False
     hh_neuron = True  # Running with hudgkin huxley neurons if True
-    num_oscillators = 2
+    num_oscillators = 1
     neuron_number = 2
     tau_r = 1
     tau_a = 6
     amplitude = 1.5
     w12 = 2.5
     beta = 2.5
-    dt = 0.01
-    steps = 20
+    dt = 0.0001
+    steps = 50
     weights = np.full(neuron_number, w12)
     time = np.linspace(0, steps * dt, steps)
 
