@@ -4,33 +4,33 @@ import torch
 
 
 class HHNeuron(torch.nn.Module):
-    def __init__(self, C_m=1.0, g_Na=120.0, g_K=36.0, g_L=0.3, E_Na=50.0, E_K=-77.0, E_L=-54.387, dt=1):
+    def __init__(self, C_m=1e-6, g_Na=40.0, g_K=35.0, g_L=0.3, E_Na=55.0, E_K=-77.0, E_L=-65.0):
         super(HHNeuron, self).__init__()
-        self.C_m = C_m  # membrane capacitance
-        self.g_Na = g_Na  # sodium conductance
-        self.g_K = g_K  # potassium conductance
-        self.g_L = g_L  # leak conductance
-        self.E_Na = E_Na  # sodium equilibrium potential
-        self.E_K = E_K  # potassium equilibrium potential
-        self.E_L = E_L  # leak equilibrium potential
+        self.C_m = C_m  # membrane capacitance [F/cm2]
+        self.g_Na = g_Na  # sodium conductance [mS/cm2]
+        self.g_K = g_K  # potassium conductance [mS/cm2]
+        self.g_L = g_L  # leak conductance [mS/cm2]
+        self.E_Na = E_Na  # sodium equilibrium potential [mV]
+        self.E_K = E_K  # potassium equilibrium potential [mV]
+        self.E_L = E_L  # leak equilibrium potential [mV]
 
     def alpha_m(self, V):
-        return (0.1 * (V + 40)) / (1 - torch.exp(-(V + 40) / 10))
+        return (0.182 * (V + 35)) / (1 - torch.exp(-(V + 35) / 9))
 
     def beta_m(self, V):
-        return 4.0 * torch.exp(-(V + 65) / 18)
+        return (-0.124 * (V + 35)) / (1 - torch.exp((V + 35) / 9))
 
     def alpha_h(self, V):
-        return 0.07 * torch.exp(-(V + 65) / 20)
+        return 0.25 * torch.exp(-(V + 90) / 12)
 
     def beta_h(self, V):
-        return 1 / (1 + torch.exp(-(V + 35) / 10))
+        return 0.25 * torch.exp((V + 62) / 12)
 
     def alpha_n(self, V):
-        return (0.01 * (V + 55)) / (1 - torch.exp(-(V + 55) / 10))
+        return (0.02 * (V - 25)) / (1 - torch.exp(-(V -25) / 9))
 
     def beta_n(self, V):
-        return 0.125 * torch.exp(-(V + 65) / 80)
+        return (-0.02 * (V - 25)) / (1 - torch.exp((V -25) / 9))
 
     def compute_currents(self, V, m, h, n, I_ext):
         # Calculate the ionic currents
@@ -39,7 +39,7 @@ class HHNeuron(torch.nn.Module):
         I_L = self.g_L * (V - self.E_L)
 
         # Total current derivative (dV/dt)
-        dVdt = (I_ext - I_Na - I_K - I_L) / self.C_m
+        dVdt = (I_ext + I_Na + I_K + I_L) * (-1/self.C_m)
 
         # Gating variable derivatives
         dmdt = self.alpha_m(V) * (1 - m) - self.beta_m(V) * m

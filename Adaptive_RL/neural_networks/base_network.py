@@ -358,11 +358,15 @@ class ActorTwinCriticsModelNetwork(BaseModel):
 
 
 class ActorCriticModelNetwork(BaseModel):
-    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.Tanh):
+    def __init__(self, hidden_size=(64, 64), hidden_layers=1, activation_fn=torch.nn.Tanh, return_normalizer=False,
+                 discount_factor=0.95):
         super().__init__(hidden_size, hidden_layers, activation_fn)
+        self.return_normalizer = return_normalizer
+        self.discount_factor = discount_factor
 
     def get_model(self):
-        return ActorCritic(
+        if self.return_normalizer:
+            return ActorCritic(
             actor=Actor(
                 encoder=ObservationEncoder(),
                 torso=MLP(self.neuron_shape, self.activation_fn),
@@ -371,5 +375,17 @@ class ActorCriticModelNetwork(BaseModel):
                 encoder=ObservationEncoder(),
                 torso=MLP(self.neuron_shape, self.activation_fn),
                 head=ValueHead()),
-            observation_normalizer=normalizers.MeanStd()
+            observation_normalizer=normalizers.MeanStd(),
+            return_normalizer=normalizers.Return(self.discount_factor)
         )
+        else:
+            return ActorCritic(
+            actor=Actor(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.neuron_shape, self.activation_fn),
+                head=DetachedScaleGaussianPolicyHead()),
+            critic=Critic(
+                encoder=ObservationEncoder(),
+                torso=MLP(self.neuron_shape, self.activation_fn),
+                head=ValueHead()),
+            observation_normalizer=normalizers.MeanStd())

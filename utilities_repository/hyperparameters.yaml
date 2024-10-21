@@ -12,9 +12,10 @@ Humanoid-v4:
   DDPG:
     training:
       batch_size: 265
-      replay_buffer_size : 100000
-      learning_rate: 0.001
-      gamma: 0.99
+      replay_buffer_size : 8192
+      learning_rate: 0.00034
+      decay_lr : 0.98
+      gamma: 0.97
       steps: 4000000
       learning_starts: 10000
       noise : 0.1
@@ -27,7 +28,7 @@ Humanoid-v4:
   MPO:
     training:
       batch_size: 256
-      replay_buffer_size : 1000000
+      replay_buffer_size : 16384
       learning_rate: 3.56987e-05
       gamma: 0.95
       steps: 5000000
@@ -44,7 +45,7 @@ Humanoid-v4:
   SAC:
     training:
       batch_size: 265
-      replay_buffer_size : 100000
+      replay_buffer_size : 8192
       learning_rate: 0.00034
       gamma: 0.95
       steps: 2000000
@@ -59,13 +60,15 @@ Humanoid-v4:
 
   PPO:
     training:
-      batch_size: 256
-      replay_buffer_size : 100000
-      learning_rate: 3.56987e-05
-      gamma: 0.95
+      batch_size: 512
+      replay_buffer_size : 4096
+      learning_rate: 3.569e-4
+      gamma: 0.99
+      decay_lr: 0.98
+      decay_factor : 0.98
+      normalizer: True
       steps: 5000000
-      learning_starts: 10000
-      ent_coeff : 0.00238306
+      ent_coeff : 0.0238306
       clip_range : 0.3
 
 
@@ -102,7 +105,7 @@ Walker2d-v4:
   MPO:
     training:
       batch_size: 265
-      replay_buffer_size: 4096
+      replay_buffer_size: 8192
       learning_rate: 3e-04
       gamma: 0.95
       steps: 10000000
@@ -159,7 +162,7 @@ MyoOSl-v0:
   SAC:
     training:
       batch_size: 256
-      replay_buffer_size: 4096
+      replay_buffer_size: 65536
       learning_rate: 0.001
       gamma: 0.99
       steps: 1000000
@@ -175,7 +178,7 @@ MyoOSl-v0:
   PPO:
     training:
       batch_size: 32
-      replay_buffer_size: 4096
+      replay_buffer_size: 32768
       learning_rate: 3.56987e-05
       gamma: 0.99
       steps: 1000000

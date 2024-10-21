@@ -13,12 +13,14 @@ class DDPG(base_agent.BaseAgent):
     """
 
     def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, batch_size=512, return_step=5,
-                 discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e5, noise_std=0.1, learning_starts=20000):
+                 discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e5, noise_std=0.1,
+                 decay_lr=0.98, learning_starts=20000):
         # Store all the inputs in a dictionary
         self.config = {
             "agent" : "DDPG",
             "learning_rate": learning_rate,
             "noise_std": noise_std,
+            "decay_lr": decay_lr,
             "learning_starts": learning_starts,
             "hidden_size": hidden_size,
             "hidden_layers": hidden_layers,
@@ -36,12 +38,14 @@ class DDPG(base_agent.BaseAgent):
         self.actor_updater = DeterministicPolicyGradient(lr_actor=learning_rate)
         self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.decay_lr = decay_lr
 
     def initialize(self, observation_space, action_space, seed=None):
         self.model.initialize(observation_space, action_space)
         self.exploration.initialize(self._policy, action_space, seed)
         self.actor_updater.initialize(self.model)
         self.critic_updater.initialize(self.model)
+        self.decay_flag = False
 
     def step(self, observations, steps):
         # Get actions from the actor and exploration method.
@@ -70,6 +74,10 @@ class DDPG(base_agent.BaseAgent):
             self._update(steps)
 
         self.exploration.update(resets)
+        if self.decay_flag: # Reducing noise to stabilize training
+            self.exploration.scale *= self.decay_lr
+            self.actor_updater.lr_actor *= self.decay_lr
+            self.critic_updater.lr_critic *= self.decay_lr
 
 
     def test_step(self, observations):

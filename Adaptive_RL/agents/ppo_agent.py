@@ -13,23 +13,28 @@ class PPO(base_agent.BaseAgent):
     https://arxiv.org/pdf/1707.06347.pdf
     """
 
-    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, discount_factor=0.99,
-                 batch_size=None, trace_decay=0.97,
-                 batch_iterations=80, replay_buffer_size=4096, clip_range=0, entropy_coeff=0.01):
+    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, gamma=0.99,
+                 batch_size=None, trace_decay=0.97, discount_factor=0.99, normalizer=False,
+                 batch_iterations=80, replay_buffer_size=4096, clip_range=0, entropy_coeff=0.01, decay_lr=0.98):
         # Store all the inputs in a dictionary
-        self.model = neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
+        self.model = neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers,
+                                                             return_normalizer=normalizer, discount_factor=discount_factor).get_model()
         self.replay_buffer = Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
-                                                      batch_size=batch_size, discount_factor=discount_factor,
+                                                      batch_size=batch_size, discount_factor=gamma,
                                                       trace_decay=trace_decay)
         self.actor_updater = neural_networks.ClippedRatio(learning_rate=learning_rate, ratio_clip=clip_range,
                                                                            entropy_coeff=entropy_coeff)
         self.critic_updater = neural_networks.VRegression(lr_critic=learning_rate, gradient_clip=clip_range)
+        self.decay_lr = decay_lr
         self.config = {
             "agent" : "PPO",
             "learning_rate": learning_rate,
             "hidden_size": hidden_size,
             "hidden_layers": hidden_layers,
+            "gamma" : gamma,
+            "normalizer" : normalizer,
             "discount_factor": discount_factor,
+            "decay_lr": decay_lr,
             "batch_size": batch_size,
             "replay_buffer_size": replay_buffer_size,
             "clip_range": clip_range,
@@ -41,6 +46,7 @@ class PPO(base_agent.BaseAgent):
         self.replay_buffer.initialize(seed)
         self.actor_updater.initialize(self.model)
         self.critic_updater.initialize(self.model)
+        self.decay_flag = False
 
     def step(self, observations, steps=None):
         # Sample actions and get their log-probabilities for training.
@@ -70,6 +76,10 @@ class PPO(base_agent.BaseAgent):
         # Update the model if the replay is ready.
         if self.replay_buffer.ready():
             self._update()
+
+        if self.decay_flag: # Reducing noise to stabilize training
+            self.actor_updater.learning_rate *= self.decay_lr
+            self.critic_updater.lr_critic *= self.decay_lr
 
     def test_step(self, observations):
         # Sample actions for testing.

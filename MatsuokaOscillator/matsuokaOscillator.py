@@ -455,9 +455,9 @@ class HHMatsuokaOscillator(MatsuokaOscillator):
                                                          neuron_number, tau_r, tau_a, weights, u, beta, dt)
         # Create an array of HH Neurons for each oscillator
         if num_oscillators==1:
-            self.neurons = torch.nn.ModuleList([HHNeuron(dt=dt) for _ in range(neuron_number)])
+            self.neurons = torch.nn.ModuleList([HHNeuron() for _ in range(neuron_number)])
         else:
-            self.neurons = [[HHNeuron(dt=dt) for _ in range(neuron_number)] for _ in range(num_oscillators)]
+            self.neurons = [[HHNeuron() for _ in range(neuron_number)] for _ in range(num_oscillators)]
 
 
     def step(self, weights=None):
