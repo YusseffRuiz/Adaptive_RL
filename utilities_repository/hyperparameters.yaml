@@ -108,7 +108,7 @@ Walker2d-v4:
       replay_buffer_size: 8192
       learning_rate: 3e-04
       gamma: 0.95
-      steps: 10000000
+      steps: 1000000
       lr_critic: 1.5e-4
       lr_dual: 0.000156987
       clip_range: 0.1
@@ -143,6 +143,7 @@ Walker2d-v4:
       gamma: 0.99
       steps: 1000000
       learning_starts: 10000
+      decay_lr: 0.98
       ent_coeff: 0.000585045
       clip_range: 0.1
 

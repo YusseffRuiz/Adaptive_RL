@@ -116,38 +116,47 @@ class Logger:
 
         # Save the data to the log file
         vals = [self.epoch_dict.get(key) for key in self.final_keys]
-        if new_keys:
-            if first_row:
-                log(f'Logging data to {self.log_file_path}')
-                try:
-                    os.makedirs(self.path, exist_ok=True)
-                except Exception:
-                    pass
-                with open(self.log_file_path, 'w') as file:
-                    file.write(','.join(self.final_keys) + '\n')
-                    file.write(','.join(map(str, vals)) + '\n')
-            else:
-                with open(self.log_file_path, 'r') as file:
-                    lines = file.read().splitlines()
-                old_keys = lines[0].split(',')
-                old_lines = [line.split(',') for line in lines[1:]]
-                new_indices = []
-                j = 0
-                for i, key in enumerate(self.final_keys):
-                    if key == old_keys[j]:
-                        j += 1
-                    else:
-                        new_indices.append(i)
-                assert j == len(old_keys)
-                for line in old_lines:
-                    for i in new_indices:
-                        line.insert(i, 'None')
-                with open(self.log_file_path, 'w') as file:
-                    file.write(','.join(self.final_keys) + '\n')
+
+        log_file_exists = os.path.exists(self.log_file_path)
+
+        if not log_file_exists:
+            if new_keys:
+                if first_row:
+                    log(f'Logging data to {self.log_file_path}')
+                    try:
+                        os.makedirs(self.path, exist_ok=True)
+                    except Exception:
+                        pass
+                    with open(self.log_file_path, 'w') as file:
+                        file.write(','.join(self.final_keys) + '\n')
+                        file.write(','.join(map(str, vals)) + '\n')
+                else:
+                    with open(self.log_file_path, 'r') as file:
+                        lines = file.read().splitlines()
+                    old_keys = lines[0].split(',')
+                    old_lines = [line.split(',') for line in lines[1:]]
+                    new_indices = []
+                    j = 0
+                    for i, key in enumerate(self.final_keys):
+                        if key == old_keys[j]:
+                            j += 1
+                        else:
+                            new_indices.append(i)
+                    assert j == len(old_keys)
                     for line in old_lines:
-                        file.write(','.join(line) + '\n')
+                        for i in new_indices:
+                            line.insert(i, 'None')
+                    with open(self.log_file_path, 'w') as file:
+                        file.write(','.join(self.final_keys) + '\n')
+                        for line in old_lines:
+                            file.write(','.join(line) + '\n')
+                        file.write(','.join(map(str, vals)) + '\n')
+            else:
+                with open(self.log_file_path, 'a') as file:
                     file.write(','.join(map(str, vals)) + '\n')
+
         else:
+            # Append the new row of data
             with open(self.log_file_path, 'a') as file:
                 file.write(','.join(map(str, vals)) + '\n')
 

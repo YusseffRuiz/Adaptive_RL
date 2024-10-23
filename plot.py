@@ -3,6 +3,7 @@ import itertools
 import os
 import pathlib
 import time
+import glob
 
 import matplotlib as mpl
 from matplotlib import gridspec
@@ -72,12 +73,20 @@ def get_data(
     data = {}
 
     # List the log files in paths.
+    paths_tmp = paths.copy()
+    paths = []
+    for pattern in paths_tmp:
+        paths.extend(glob.glob(pattern))
+
     log_paths = []
     for path in paths:
         if os.path.isdir(path):
             log_paths.extend(pathlib.Path(path).rglob('log.*'))
-        elif path[-7:-3] == 'log.':
-            log_paths.append(path)
+        else:
+            # Use pathlib to handle paths and check if the file name starts with 'log.'
+            path_obj = pathlib.Path(path)
+            if path_obj.name.startswith('log.'):
+                log_paths.append(path_obj)
 
     # Load the data from the log files.
     for path in log_paths:
@@ -93,7 +102,7 @@ def get_data(
             x = df_seed[x_axis].values
             # The x axis should be sorted.
             if not np.all(np.diff(x) > 0):
-                logger.warning(f'Skipping unsorted {env} {agent} {seed}')
+                logger.warning(f'Skipping unsorted {env} {agent} {seed}, try removing last row or verify NaN data')
                 continue
             if x_min and x[-1] < x_min:
                 logger.warning(
@@ -271,7 +280,7 @@ def plot(
     envs = sorted(data.keys(), key=str.casefold)
     num_envs = len(envs)
     if num_envs == 0:
-        logger.error('No logs found.')
+        logger.error(f'No logs found in {paths}.')
         return
 
     # List the agents.

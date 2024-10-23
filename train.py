@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--lr_critic', type=float, default=3e-4, help='Learning rate for the critic.')
     parser.add_argument('--ent_coeff', type=float, default=0.00238306, help='Entropy coefficient for PPO or SAC.')
     parser.add_argument('--gamma', type=float, default=0.98, help='Discount factor for replay buffer')
-    parser.add_argument('--discount_normalizer', type=float, default=None, help='Discount factor for normalizer')
+    parser.add_argument('--decay_lr', type=float, default=None, help='Discount factor for normalizer')
     parser.add_argument('--clip_range', type=float, default=0.3, help='Clip range for PPO and MPO.')
     parser.add_argument('--lr_dual', type=float, default=3.56987e-04, help='Learning rate for dual variables (MPO).')
     parser.add_argument('--neuron_number', type=int, nargs='+', default=[256],
@@ -167,7 +167,7 @@ if __name__ == "__main__":
         clip_range = args['training'].get('clip_range', 0.0)
         lr_dual = args['training'].get('lr_dual', 0.0)
         gamma = args['training']['gamma']
-        discount_factor = args['training'].get('discount_factor', None)
+        decay_lr = args['training'].get('decay_lr', None)
         neuron_number = args['model']['neuron_number']
         layers_number = args['model']['layers_number']
         batch_size = args['training']['batch_size']
@@ -196,7 +196,7 @@ if __name__ == "__main__":
         clip_range = args.clip_range
         lr_dual = args.lr_dual
         gamma = args.gamma
-        discount_factor = args.discount_factor
+        decay_lr = args.decay_lr
         neuron_number = args.neuron_number
         layers_number = args.layers_number
         batch_size = args.batch_size
@@ -216,7 +216,7 @@ if __name__ == "__main__":
     save_steps = int(max_steps / 500)
 
     normalizer_flag = False
-    if discount_factor is not None:
+    if decay_lr is not None:
         normalizer_flag = True
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag,
@@ -234,11 +234,12 @@ if __name__ == "__main__":
                     learning_starts=learning_starts)
     elif training_algorithm == "PPO":
         agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number,
-                    gamma=gamma, discount_factor=discount_factor, normalizer=normalizer_flag,
+                    gamma=gamma, decay_lr=decay_lr, normalizer=normalizer_flag,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     elif training_algorithm == "DDPG":
         agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
-                     noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number, replay_buffer_size=replay_buffer_size)
+                     noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number,
+                     replay_buffer_size=replay_buffer_size)
     else:
         agent = None
 

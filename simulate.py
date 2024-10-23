@@ -74,7 +74,12 @@ def main_running():
             print("Video Recorded")
 
         elif experiment:
-            algos_compare = ['PPO', 'CPG-PPO', 'MPO', 'CPG-MPO', 'DDPG', 'CPG-DDPG', 'SAC', 'CPG-SAC']
+            algos = ['PPO', 'MPO', 'DDPG', 'SAC']
+            algos_compare = []  # Adding CPG and HH neurons
+            for algo in algos:
+                algos_compare.append(algo)
+                algos_compare.append(f'CPG-{algo}')
+                algos_compare.append(f'CPG-{algo}-HH')
             trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
             results = {}
 
