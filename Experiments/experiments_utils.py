@@ -616,5 +616,16 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
     plt.close()
 
 
+def retrieve_cpg(config):
+    # Loading CPG configuration
+    cpg_oscillators = config.cpg_oscillators
+    cpg_neurons = config.cpg_neurons
+    cpg_tau_r = config.cpg_tau_r
+    cpg_tau_a = config.cpg_tau_a
+    cpg_amplitude = config.cpg_amplitude
+
+    return cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, cpg_amplitude
+
+
 def savitzky_golay_smoothing(data, window_length=100, polyorder=3):
     return savgol_filter(data, window_length, polyorder)

@@ -59,4 +59,8 @@ class CPGWrapper(gym.Wrapper):
         if use_cpg:
             self.cpg_model = cpg_model  # The CPG model should be passed in as an argument
 
+    def reset(self, **kwargs):
+        # Pass seed and other arguments down to the wrapped environment
+        return self.env.reset(**kwargs)
+
 

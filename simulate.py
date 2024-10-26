@@ -48,19 +48,26 @@ def main_running():
                                                                  experiment_number=0, external_folder=args.f)
 
     if experiment or video_record:
-        env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
+        if 'myo' in env_name:
+            env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array")
+        else:
+            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
     else:
-        env = Adaptive_RL.Gym(env_name, render_mode="human")
+        if 'myo' in env_name:
+            env = Adaptive_RL.MyoSuite(env_name, render_mode="human")
+        else:
+            env = Adaptive_RL.Gym(env_name, render_mode="human")
+
+    path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir)
 
     cpg_model = None
     if cpg_flag:
-        cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
-                                                      da=env.action_space.shape[0],
-                                                      neuron_number=2, tau_r=2,
-                                                      tau_a=12, hh=hh)
+        cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, cpg_amplitude = trials.retrieve_cpg(config)
+        cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                          da=env.action_space.shape[0],
+                                          neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                          tau_a=cpg_tau_a, hh=hh, amplitude=cpg_amplitude)
     env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
-
-    path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir)
 
     if not random:
 
@@ -83,22 +90,27 @@ def main_running():
             trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
             results = {}
 
-            cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
-                                              da=env.action_space.shape[0],
-                                              neuron_number=2, tau_r=2,
-                                              tau_a=12, hh=hh)
-
-            # Iterate over the found algorithms and run evaluations
             for algo, algo_folder in trained_algorithms:
                 logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
-                env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
-                if 'CPG' in algo:
-                    env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+
+                if 'myo' in env_name:
+                    env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array", max_episode_steps=1000)
+                else:
+                    env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
                 save_folder = f"{env_name}/{algo}"
 
                 # Get the best checkpoint path and config for the algorithm
                 path = os.path.join(algo_folder, 'logs')
                 checkpoint_path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
+                cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, cpg_amplitude = trials.retrieve_cpg(config)
+
+                cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                                  da=env.action_space.shape[0],
+                                                  neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                                  tau_a=cpg_tau_a, hh=hh, amplitude=cpg_amplitude)
+
+                if 'CPG' in algo:
+                    env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
                 if checkpoint_path and config:
                     # Load the agent using the config and checkpoint path

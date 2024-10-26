@@ -95,7 +95,7 @@ def train_agent(
             # Load the experiment configuration.
             trainer_config = config.trainer
             # Loading trainer config
-            trainer.max_steps = trainer_config['max_steps'] or trainer.max_steps
+            trainer.max_steps = int(float(trainer_config['max_steps'])) or trainer.max_steps
             trainer.epoch_steps = trainer_config['epoch_steps'] or trainer.epoch_steps
             trainer.save_steps = trainer_config['save_steps']  or trainer.save_steps
             trainer.early_stopping = trainer_config['early_stopping'] or trainer.early_stopping
@@ -110,7 +110,10 @@ def train_agent(
             print("Loaded Config")
 
     # Build the training environment.
-    _environment = Adaptive_RL.Gym(environment)
+    if 'myo' in env_name:
+        _environment = Adaptive_RL.MyoSuite(environment)
+    else:
+        _environment = Adaptive_RL.Gym(environment)
     cpg_model = None
     if cpg_flag:
         cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
@@ -161,6 +164,10 @@ if __name__ == "__main__":
     training_algorithm = args.algorithm.upper()
 
     env_name = args.env
+
+    if 'myo' in env_name:  # Register environments if using myosuite environment
+        import myosuite
+
     cpg_flag = args.cpg
     hh = args.hh
     experiment_number = args.experiment_number
@@ -197,7 +204,7 @@ if __name__ == "__main__":
         cpg_tau_a = cpg_args['tau_a']
         cpg_amplitude = cpg_args['amplitude']
 
-        max_steps = args['training']['steps']
+        max_steps = int(float(args['training']['steps']))
 
     else:
         # Steps to train

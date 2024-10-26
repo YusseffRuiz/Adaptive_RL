@@ -4,6 +4,7 @@ import numpy as np
 class NoNoiseExploration:
     def __init__(self, start_steps=20000):
         self.start_steps = start_steps
+        self.scale = 0.0  # Compatibility
 
     def initialize(self, policy, action_space, seed=None):
         self.policy = policy

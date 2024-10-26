@@ -19,7 +19,7 @@ def myosuite_environment(*args, **kwargs):
     def _builder(*args, **kwargs):
         return gym.make(*args, **kwargs)
 
-    return build_environment(_builder, *args, **kwargs)
+    return build_environment(_builder, *args, **kwargs, scaled_actions=False)
 
 
 def build_environment(
