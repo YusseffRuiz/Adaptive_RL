@@ -48,8 +48,10 @@ class BaseAgent(abc.ABC):
         if not path[-3:] == '.pt':
             path = path + '.pt'
         logger.log(f'\nLoading weights and from {path}')
-        match = re.search(r'step_(\d+)\.pt', path) # With regex catch the step saved
-        step_number = int(match.group(1))
+        match = re.search(r'step_(\d+)\.pt', path)  # With regex catch the step saved
+        step_number = 0
+        if match is not None:
+            step_number = int(match.group(1))
 
         self.model.load_state_dict(torch.load(path, weights_only=True))
 

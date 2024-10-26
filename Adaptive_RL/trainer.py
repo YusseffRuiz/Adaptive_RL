@@ -18,7 +18,7 @@ class Trainer:
         self.save_steps = save_steps
         self.test_episodes = test_episodes
         self.show_progress = show_progress
-        self.replace_checkpoint = replace_checkpoint
+        self.replace_checkpoint = replace_checkpoint # If we want to start from scratch all checkpoints
 
         self.steps = 0
         self.save_cycles = 1
@@ -39,6 +39,16 @@ class Trainer:
         self.test_environment = test_environment
         if step_saved is not None:
             self.steps = step_saved
+
+    def dump_trainer(self):
+        trainer_data = {
+            'max_steps': self.max_steps,
+            'epoch_steps': self.epoch_steps,
+            'save_steps': self.save_steps,
+            'test_episodes': self.test_episodes,
+            'early_stopping': self.early_stopping,
+        }
+        return trainer_data
 
     def run(self):
         """Runs the main training loop."""

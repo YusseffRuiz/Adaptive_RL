@@ -22,7 +22,7 @@ def parse_args():
 
     # General Paramenters
     parser.add_argument('--experiment_number', type=int, default=0, help='Experiment number for logging.')
-    parser.add_argument('--steps', type=int, default=int(1e7), help='Maximum steps for training.')
+    parser.add_argument('--steps', type=int, default=int(1e6), help='Maximum steps for training.')
     parser.add_argument('--seq', type=int, default=1, help='Number of sequential environments.')
     parser.add_argument('--parallel', type=int, default=1, help='Number of parallel environments.')
     parser.add_argument('--early', action='store_true', help='Early stopping if we do not have rewards improvement')
@@ -59,6 +59,13 @@ def train_agent(
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
         cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=12.0, cpg_amplitude=1.75):
     """
+    :param cpg_amplitude: Amplitud for the Matsuoka Calculations
+    :param cpg_tau_a: object learning component of the CPGs
+    :param cpg_tau_r: learning component of the CPGs
+    :param cpg_neurons: Number of neurons to control actuators on the model
+    :param cpg_oscillators: number of oscillators to be in synchrony
+    :param hh: If we want to use Hudkin-Huxley Experimental Neurons
+    :param cpg_flag: The use of oscillators in the training
     :param agent: Agent and algorithm to be trained.
     :param environment: Environment name
     :param trainer: Trainer to be used, at this moment, the default from tonic
@@ -67,7 +74,6 @@ def train_agent(
     :param seed: random seed
     :param checkpoint: checkpoint to verify existence.
     :param path: Path where the experiment to check for checkpoints
-    :param log_dir:: Path to add the logs of the experiment
     """
     if torch.cuda.is_available():
         device = torch.cuda.get_device_name(torch.cuda.current_device())
@@ -76,16 +82,34 @@ def train_agent(
     else:
         print("Running with CPU")
     args = dict(locals())
-    # Create a new dictionary excluding 'agent' and 'trainer'
-    args = {k: v for k, v in args.items() if k not in ['agent', 'trainer']}
-
+    # Create a new dictionary excluding 'agent'
 
     checkpoint_path = None
     checkpoint_folder = None
-    config = None
+    config = {}
+
+    if path:
+        # Load last checkpoint, not best
+        checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path, best=False)
+        if config is not None:
+            # Load the experiment configuration.
+            trainer_config = config.trainer
+            # Loading trainer config
+            trainer.max_steps = trainer_config['max_steps'] or trainer.max_steps
+            trainer.epoch_steps = trainer_config['epoch_steps'] or trainer.epoch_steps
+            trainer.save_steps = trainer_config['save_steps']  or trainer.save_steps
+            trainer.early_stopping = trainer_config['early_stopping'] or trainer.early_stopping
+            trainer.test_episodes = trainer_config['test_episodes'] or trainer.test_episodes
+            # Loading CPG configuration
+            cpg_oscillators = config.cpg_oscillators or cpg_oscillators
+            cpg_neurons = config.cpg_neurons or cpg_neurons
+            cpg_tau_r = config.cpg_tau_r or cpg_tau_r
+            cpg_tau_a = config.cpg_tau_a or cpg_tau_a
+            cpg_amplitude = config.cpg_amplitude or cpg_amplitude
+
+            print("Loaded Config")
 
     # Build the training environment.
-
     _environment = Adaptive_RL.Gym(environment)
     cpg_model = None
     if cpg_flag:
@@ -102,18 +126,9 @@ def train_agent(
     test_environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment)
 
-    # Process the checkpoint path same way as in tonic.play
-    if path:
-        checkpoint_path, config, checkpoint_folder = Adaptive_RL.get_last_checkpoint(path)
-        if config is not None:
-            # Load the experiment configuration.
-            trainer = trainer or config.trainer
-            print("Loaded Config")
-
     # Build the agent.
     if not agent:
         raise ValueError('No agent specified.')
-
 
     # Load the weights of the agent form a checkpoint.
     step_number = 0
@@ -123,9 +138,8 @@ def train_agent(
     else:
         agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                          seed=seed)
-    args['agent'] = agent.get_config()
-
-    agent.get_config(print_conf=True)
+    args['agent'] = agent.get_config(print_conf=True)
+    args['trainer'] = trainer.dump_trainer()
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=path, config=args)
 
@@ -133,7 +147,8 @@ def train_agent(
     trainer.initialize(
         agent=agent, environment=environment,
         test_environment=test_environment, step_saved=step_number)
-    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay_buffer, save_path=checkpoint_folder)
+    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay_buffer,
+                       save_path=checkpoint_folder)
     # Train.
     trainer.run()
     return agent
@@ -156,7 +171,6 @@ if __name__ == "__main__":
     sequential = args.seq
     parallel = args.parallel
     early_stopping = args.early
-
 
     if args.params is not None:
         args, cpg_args = Adaptive_RL.file_to_hyperparameters(args.params, env_name, training_algorithm)
@@ -245,10 +259,11 @@ if __name__ == "__main__":
 
     if agent is not None:
         agent = train_agent(agent=agent,
-                    environment=env_name,
-                    sequential=1, parallel=1,
-                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps, early_stopping=early_stopping),
-                    path=log_dir, cpg_flag=cpg_flag, hh=hh)
+                            environment=env_name,
+                            sequential=1, parallel=1,
+                            trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
+                                                        early_stopping=early_stopping),
+                            path=log_dir, cpg_flag=cpg_flag, hh=hh)
 
         env = Adaptive_RL.Gym(env_name, render_mode="human", max_episode_steps=1500)
         cpg_model = None

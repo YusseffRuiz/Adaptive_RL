@@ -96,7 +96,7 @@ def main_running():
                     env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
                 save_folder = f"{env_name}/{algo}"
 
-                # Get the last checkpoint path and config for the algorithm
+                # Get the best checkpoint path and config for the algorithm
                 path = os.path.join(algo_folder, 'logs')
                 checkpoint_path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
 

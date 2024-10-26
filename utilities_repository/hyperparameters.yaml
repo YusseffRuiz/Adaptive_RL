@@ -139,8 +139,8 @@ Walker2d-v4:
     training:
       batch_size: 32
       replay_buffer_size: 4096
-      learning_rate: 3.56987e-05
-      gamma: 0.99
+      learning_rate: 3.4e-04
+      gamma: 0.97
       steps: 1000000
       learning_starts: 10000
       decay_lr: 0.98

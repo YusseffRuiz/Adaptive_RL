@@ -8,7 +8,7 @@ from gymnasium.wrappers import RecordVideo
 import torch
 
 
-def get_last_checkpoint(path):
+def get_last_checkpoint(path, best=True):
     arguments_path = os.path.join(path, 'config.yaml')
     path = os.path.join(path, 'checkpoints')
     print(arguments_path)
@@ -16,17 +16,20 @@ def get_last_checkpoint(path):
     # List all the checkpoints.
     checkpoint_ids = []
     if os.path.exists(path):
-        for file in os.listdir(path):
-            if file[:5] == 'step_':
-                checkpoint_id = file.split('.')[0]
-                checkpoint_ids.append(int(checkpoint_id[5:]))
-
-        if checkpoint_ids:
-            checkpoint_id = max(checkpoint_ids)
-            checkpoint_path = os.path.join(path, f'step_{checkpoint_id}')
+        if best:
+            checkpoint_path = os.path.join(path, "best_model")
         else:
-            checkpoint_path = None
-            print('No checkpoint found')
+            for file in os.listdir(path):
+                if file[:5] == 'step_':
+                    checkpoint_id = file.split('.')[0]
+                    checkpoint_ids.append(int(checkpoint_id[5:]))
+
+            if checkpoint_ids:
+                checkpoint_id = max(checkpoint_ids)
+                checkpoint_path = os.path.join(path, f'step_{checkpoint_id}')
+            else:
+                checkpoint_path = None
+                print('No checkpoint found')
     else:
         checkpoint_path = None
         print("No checkpoint Found")
@@ -77,7 +80,7 @@ def load_checkpoint(checkpoint, path):
                             checkpoint_path, f'step_{checkpoint_id}')
                     else:
                         logger.error(f'Checkpoint {checkpoint_id} '
-                                           f'not found in {checkpoint_path}')
+                                     f'not found in {checkpoint_path}')
                         checkpoint_path = None
 
             else:
@@ -91,16 +94,18 @@ def load_agent(config, path, env):
         agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
                      learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
                      hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                     replay_buffer_size=config.agent["replay_buffer_size"],)
+                     replay_buffer_size=config.agent["replay_buffer_size"], )
     elif config.agent["agent"] == "MPO":
-        agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"], lr_dual=config.agent["lr_dual"],
+        agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
+                    lr_dual=config.agent["lr_dual"],
                     hidden_size=config.agent["hidden_size"], discount_factor=config.agent["gamma"],
                     replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["hidden_layers"])
     elif config.agent["agent"] == "SAC":
         agent = SAC(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
-                     learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
-                     hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                     replay_buffer_size=config.agent["replay_buffer_size"], discount_factor=config.agent["discount_factor"],)
+                    learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                    hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
+                    replay_buffer_size=config.agent["replay_buffer_size"],
+                    discount_factor=config.agent["discount_factor"], )
     elif config.agent["agent"] == "PPO":
         agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
                     hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
@@ -113,16 +118,17 @@ def load_agent(config, path, env):
     agent.get_config(print_conf=True)
     return agent, step
 
+
 def record_video(env, video_folder, alg, agent, env_name):
     video_length = 1000
     # Record the video starting at the first step
     env.reset()
     env_v = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: x % 2 == 0,
-                      video_length=video_length, name_prefix=f"{alg}-agent-{env_name}")
+                        video_length=video_length, name_prefix=f"{alg}-agent-{env_name}")
 
     obs, *_ = env_v.reset()
     env_v.start_video_recorder()
-    for _ in range(video_length+1):
+    for _ in range(video_length + 1):
         if alg != "random":
             action = agent.test_step(obs)
         else:
@@ -157,7 +163,7 @@ def file_to_hyperparameters(file_path, env, algorithm):
     Loads the hyperparameters from a YAML file.
     """
     if not os.path.isfile(file_path):
-        print("Failed to get configs")
+        logger.error("Failed to find file in {}".format(file_path))
         return None
     with open(file_path, 'r') as file:
         hyperparameters = yaml.safe_load(file)
@@ -169,7 +175,7 @@ def file_to_hyperparameters(file_path, env, algorithm):
         hyperparams = hyperparameters[env][algorithm]
     else:
         hyperparams = None
-        print("No algorithm found")
+        logger.error(f"Hyperparameters not found in {file_path}")
     return hyperparams, cpg
 
 
