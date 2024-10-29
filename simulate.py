@@ -36,6 +36,8 @@ def main_running():
 
     # env_name = "Ant-v4"
     env_name = args.env
+    if 'myo' in env_name:  # Register environments if using myosuite environment
+        import myosuite
 
     video_record = args.V
     experiment = args.E
