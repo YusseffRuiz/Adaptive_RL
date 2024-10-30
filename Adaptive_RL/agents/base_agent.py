@@ -4,6 +4,7 @@ import os
 from Adaptive_RL import logger
 import re
 
+
 class BaseAgent(abc.ABC):
     """
     Abstract base class used to build agents.

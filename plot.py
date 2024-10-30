@@ -97,13 +97,22 @@ def get_data(
             # Extract the environment, agent and seed from the paths.
             env, agent, seed = sub_path.split(os.sep)[-3:]
 
+            # Specify the known column names you want to assign
+            # Read the first row of the file to get the total number of columns
+            known_columns = pd.read_csv(path, sep=',', engine='python', nrows=1)
+            # Generate numbered column names for any additional columns beyond the known ones
+            additional_columns = [f"extra_{i}" for i in range(20)]
+            # Combine the known column names with the dynamically generated ones
+
+            final_column_names = known_columns.columns.tolist() + additional_columns
+
             # Load the data.
-            df_seed = pd.read_csv(path, sep=',', engine='python')
+            df_seed = pd.read_csv(path, sep=',', engine='python', skiprows=1, names=final_column_names)
             x = df_seed[x_axis].values
-            # The x axis should be sorted.
+            # The x_axis should be sorted.
             if not np.all(np.diff(x) > 0):
                 logger.warning(f'Skipping unsorted {env} {agent} {seed}, try removing last row or verify NaN data')
-                continue
+                # continue
             if x_min and x[-1] < x_min:
                 logger.warning(
                     f'Skipping {env} {agent} {seed} ({x[-1]} steps)')
@@ -121,7 +130,7 @@ def get_data(
                 # The x axis should be sorted.
                 if not np.all(np.diff(x) > 0):
                     logger.warning(f'Skipping unsorted {env} {agent} {seed}')
-                    continue
+                    # continue
                 if x_min and x[-1] < x_min:
                     logger.warning(
                         f'Skipping {env} {agent} {seed} ({x[-1]} steps)')
@@ -265,7 +274,7 @@ def get_data(
 
 
 def plot(
-        paths, x_axis="train_steps", y_axis="test/episode_score", x_label="steps", y_label="score", window=1,
+        paths, x_axis="train/steps", y_axis="test/episode_score", x_label="steps", y_label="score", window=1,
         interval="std", show_seeds=False, columns=None, x_min=None, x_max=None, y_min=None, y_max=None,baselines="+",
         baselines_source="torch", name="None", save_formats=['pdf', 'png'], cmap=None, legend_columns=None,
         legend_marker_size=0, dpi=150, title="Training Score", fig=None
@@ -436,7 +445,7 @@ if __name__ == '__main__':
     parser.add_argument('--x_label')
     parser.add_argument('--y_label')
     parser.add_argument('--interval', default='std')
-    parser.add_argument('--window', type=int, default=1)
+    parser.add_argument('--window', type=int, default=50)
     parser.add_argument('--show_seeds', type=bool, default=False)
     parser.add_argument('--columns', type=int)
     parser.add_argument('--x_min', type=int)

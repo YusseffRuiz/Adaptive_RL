@@ -110,7 +110,8 @@ def load_agent(config, path, env):
         agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
                     hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
                     batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
-                    clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"])
+                    clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"],
+                    normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
     else:
         agent = None
     agent.initialize(observation_space=env.observation_space, action_space=env.action_space)

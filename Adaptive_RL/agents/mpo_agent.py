@@ -86,10 +86,9 @@ class MPO(base_agent.BaseAgent):
         if self.replay_buffer.ready(steps):
             self._update(steps)
 
-        if self.decay_flag: # Reducing noise to stabilize training
+        if self.decay_flag:  # Reducing noise to stabilize training
             self.actor_updater.lr_actor *= self.decay_lr
             self.critic_updater.lr_critic *= self.decay_lr
-            self.actor_updater.lr_actor *= self.decay_lr
 
     def _step(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)

@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
     parser.add_argument('--params', type=str, default=None, help='Parameters to load from a file.')
     parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
+    parser.add_argument('--P', action='store_true', help='Whether to show complete progress bar.')
 
     # General Paramenters
     parser.add_argument('--experiment_number', type=int, default=0, help='Experiment number for logging.')
@@ -57,8 +58,9 @@ def parse_args():
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
-        cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=12.0, cpg_amplitude=1.75):
+        cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=12.0, cpg_amplitude=1.75, progress=False):
     """
+    :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
     :param cpg_tau_a: object learning component of the CPGs
     :param cpg_tau_r: learning component of the CPGs
@@ -97,9 +99,10 @@ def train_agent(
             # Loading trainer config
             trainer.max_steps = int(float(trainer_config['max_steps'])) or trainer.max_steps
             trainer.epoch_steps = trainer_config['epoch_steps'] or trainer.epoch_steps
-            trainer.save_steps = trainer_config['save_steps']  or trainer.save_steps
+            trainer.save_steps = trainer_config['save_steps'] or trainer.save_steps
             trainer.early_stopping = trainer_config['early_stopping'] or trainer.early_stopping
             trainer.test_episodes = trainer_config['test_episodes'] or trainer.test_episodes
+
             # Loading CPG configuration
             cpg_oscillators = config.cpg_oscillators or cpg_oscillators
             cpg_neurons = config.cpg_neurons or cpg_neurons
@@ -144,7 +147,7 @@ def train_agent(
     args['agent'] = agent.get_config(print_conf=True)
     args['trainer'] = trainer.dump_trainer()
     # Initialize the logger to save data to the path
-    Adaptive_RL.logger.initialize(path=path, config=args)
+    Adaptive_RL.logger.initialize(path=path, config=args, progress=progress)
 
     # Build the trainer.
     trainer.initialize(
@@ -171,6 +174,7 @@ if __name__ == "__main__":
     cpg_flag = args.cpg
     hh = args.hh
     experiment_number = args.experiment_number
+    progress = args.P
 
     save_folder = args.f
 
@@ -243,7 +247,7 @@ if __name__ == "__main__":
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag,
                                                                  algorithm=training_algorithm, create=True,
                                                                  experiment_number=experiment_number,
-                                                                 external_folder=save_folder)
+                                                                 external_folder=save_folder, hh_neuron=hh)
 
     if training_algorithm == "MPO":
         agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
@@ -270,7 +274,7 @@ if __name__ == "__main__":
                             sequential=1, parallel=1,
                             trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
                                                         early_stopping=early_stopping),
-                            path=log_dir, cpg_flag=cpg_flag, hh=hh)
+                            path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress)
 
         env = Adaptive_RL.Gym(env_name, render_mode="human", max_episode_steps=1500)
         cpg_model = None

@@ -2,6 +2,7 @@ import torch
 import copy
 from Adaptive_RL.neural_networks.utils import local_optimizer, trainable_variables, tile, merge_first_two_dims
 
+
 class ActorCriticWithTargets(torch.nn.Module):
     """
     Actor-Critic Model with Target Networks
@@ -679,4 +680,5 @@ class MaximumAPosterioriPolicyOptimization:
             alpha_mean_loss=alpha_mean_loss.detach(),
             alpha_std_loss=alpha_std_loss.detach(),
             temperature_loss=temperature_loss.detach(),
-            **dual_variables)
+            **dual_variables
+        )

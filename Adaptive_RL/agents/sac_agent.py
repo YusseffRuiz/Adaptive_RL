@@ -1,6 +1,6 @@
 import torch
-from Adaptive_RL import neural_networks, logger
-from Adaptive_RL.agents import base_agent, DDPG
+from Adaptive_RL import neural_networks
+from Adaptive_RL.agents import DDPG
 from Adaptive_RL.neural_networks import TwinCriticSoftDeterministicPolicyGradient, TwinCriticSoftQLearning
 from Adaptive_RL.utils import explorations, ReplayBuffer
 

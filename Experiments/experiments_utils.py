@@ -12,8 +12,11 @@ from scipy.signal import savgol_filter
 import seaborn as sns
 
 
-def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False, external_folder=None):
+def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False, external_folder=None,
+                         hh_neuron=False):
     """
+    :param hh_neuron:
+    :param external_folder: external folder where data will be saved
     :param algorithm: algorithm being used to create the required folder
     :param name: of the environment
     :param cpg_flag: either we are looking for the cpg env or not
@@ -25,16 +28,18 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
     cpg = cpg_flag
 
     if cpg:
-        env_name = env_name + "-CPG"
+        algorithm = algorithm + '-CPG'
+        if hh_neuron:
+            algorithm = algorithm + '-HH'
 
     if external_folder:
         if create:
-            if os.path.exists(f"training/{external_folder}"):
+            if os.path.exists(f"{external_folder}"):
                 print(f"Using existing folder: {external_folder}")
             if experiment_number > 0:
-                save_folder = f"training/{external_folder}/{experiment_number}"
+                save_folder = f"{external_folder}/{experiment_number}"
             else:
-                save_folder = f"training/{external_folder}"
+                save_folder = f"{external_folder}"
         else:
             if experiment_number > 0:
                 save_folder = f"{external_folder}/{experiment_number}"
@@ -123,12 +128,12 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_torques = []
     total_energy = []
     total_velocity = []
+    ending_steps = []
     dt = 5  # how many steps per dt
     previous_vel = 0
     if alg == "random":
         episode_start = np.ones((env.num_envs,), dtype=bool)
     total_distance = []
-    total_steps = []
     for episode in range(episodes_num):
         if alg == "random":
             obs = env.reset()
@@ -143,9 +148,10 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
         ep_joints = []
         ep_joint_velocities = []
         position = 0
-        step_position = 0
+        ending_step = 0
+        fall = False
+        assistance_value = 1  # Value to normalize when the agent fell down.
         for step in range(duration):
-            step_position = step
             if alg != "random":
                 action = agent.test_step(obs)
             else:
@@ -162,20 +168,24 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 obs, rw, done, info, extras = env.step(action)
                 position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras)
             episode_start = done
+            if done and not fall:
+                ending_step = step
+                fall = True
+                assistance_value = 0
             if step % dt == 0:
                 acceleration = get_acceleration(previous_vel, velocity, dt)
-                ep_acceleration.append(acceleration)
+                ep_acceleration.append(acceleration * assistance_value)
                 previous_vel = velocity
-            ep_joints.append(joint_angles)
-            ep_joint_velocities.append(joint_velocity)
-            ep_velocity.append(velocity)
-            ep_torques.append(torques)
-            reward += rw
-            ep_energy.append(step_energy)
+            ep_joints.append(joint_angles * assistance_value)
+            ep_joint_velocities.append(joint_velocity * assistance_value)
+            ep_velocity.append(velocity * assistance_value)
+            ep_torques.append(torques * assistance_value)
+            reward += rw * assistance_value
+            ep_energy.append(step_energy * assistance_value)
         if reward < 0:
             print("Episode failed")
         total_distance.append(position)
-        total_steps.append(step_position)
+        ending_steps.append(ending_step)
         total_rewards.append(reward)
         total_energy.append(np.sum(ep_energy, axis=1))
         total_velocity_angles.append(np.array(ep_joint_velocities))
@@ -196,11 +206,11 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
 
     average_reward = np.mean(total_rewards)
     velocity_total = np.mean(total_velocity)
-    average_energy = (np.sum(np.trapz(total_energy, dx=1)/np.mean(total_steps))/episodes_num)
+    average_energy = (np.sum(np.trapz(total_energy, dx=1)/np.mean(total_distance))/episodes_num)
     average_distance = np.mean(total_distance)
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
     print(f"Average Speed and Distance over {episodes_num} episodes: {velocity_total:.2f} m/s with "
-          f"total energy: {average_energy:.2f} Joules per second, travelled {average_distance:.2f} meters")
+          f"total energy: {average_energy:.2f} Joules per meter, travelled {average_distance:.2f} meters")
     joints = separate_joints(total_joint_angles, action_dim)
     joints_vel = separate_joints(total_velocity_angles, action_dim)
     joints_torque = separate_joints(total_torques, action_dim)
@@ -213,14 +223,13 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     jerk = get_jerk(total_accelerations, dt)
     # statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="Acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
     # statistical_analysis(jerk, x_axis_name="Time", y_axis_name="Jerk (m/s^3)", title="jerk (m/s^3)", save_folder=save_folder, figure_name="Jerk")
-    energy_consumption = get_energy_per_meter(total_energy, np.mean(total_steps), average_energy, save_folder=save_folder)
+    energy_consumption = get_energy_per_meter(total_energy, np.mean(total_distance), average_energy, save_folder=save_folder)
 
     results_dict = {
         'velocity': total_velocity,
         'energy': energy_consumption,
         'reward': total_rewards,
         'distance': total_distance,
-        'steps': total_steps,
         'jerk': jerk,
     }
 
@@ -303,6 +312,8 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
     - lags: Time lags used in the cross-correlation.
     - cross_corr: Cross-correlation values.
     """
+    data1 = cut_values_at_zero(data1)
+    data2 = cut_values_at_zero(data2)
     data1 = np.mean(data1, axis=0)
     data2 = np.mean(data2, axis=0)
     cross_corr = np.correlate(data1 - np.mean(data1), data2 - np.mean(data2), mode='full')
@@ -511,18 +522,28 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None):
         :param dt: Time step between velocity measurements.
         :param save_folder:
     """
-    time = np.arange(0, len(velocities[0][0]) * dt, dt)
-    print(len(velocities))
-    colors = plt.colormaps.get_cmap("tab10").colors  # Default color cycle
+    colors = plt.colormaps.get_cmap("tab20").colors  # Default color cycle
 
     for i, velocity in enumerate(velocities):
         mean_velocity = np.mean(velocity, axis=0)
         mean_velocity = savitzky_golay_smoothing(mean_velocity)
-        std_dev = np.std(mean_velocity, axis=0)
-        var = np.var(mean_velocity, axis=0)
+        std_dev = np.std(velocity, axis=0)
+        var = np.var(velocity, axis=0)
 
+        # Find where mean_velocity starts having 0s and cut values from there
+        first_zero_index = np.argmax(mean_velocity == 0) if np.any(mean_velocity == 0) else len(mean_velocity)
+
+        # Cut the arrays after the first occurrence of zero
+        mean_velocity = mean_velocity[:first_zero_index]
+        std_dev = std_dev[:first_zero_index]
+        var = var[:first_zero_index]
+
+        # Get the max values for the deviations
         max_std = np.max(std_dev)
         max_var = np.max(var)
+
+        # Adjust time array to match the length of the truncated velocities
+        time = np.arange(0, len(mean_velocity) * dt, dt)
 
         # Plot velocities
         label_tmp = algos[i]
@@ -565,7 +586,7 @@ def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_f
     total_values= [np.mean(dat) for dat in data]
 
     plt.figure(figsize=(8, 5))
-    plt.bar(algos, total_values, color=plt.colormaps.get_cmap("tab10").colors)
+    plt.bar(algos, total_values, color=plt.colormaps.get_cmap("tab20").colors)
     plt.xlabel('Algorithm')
     plt.ylabel(f'Total {data_name} ({units})')
     plt.title(f'Total {data_name} Comparison')
@@ -590,7 +611,7 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
         """
     # Calculate the mean distance for each model
     mean_data = [np.mean(dat) for dat in data]
-    colors = plt.colormaps.get_cmap("tab10").colors  # Default color cycle
+    colors = plt.colormaps.get_cmap("tab20").colors  # Default color cycle
 
     # Create a horizontal bar chart
     plt.figure(figsize=(10, 6))
@@ -629,3 +650,9 @@ def retrieve_cpg(config):
 
 def savitzky_golay_smoothing(data, window_length=100, polyorder=3):
     return savgol_filter(data, window_length, polyorder)
+
+
+def cut_values_at_zero(data):
+    # Return the array already cut with only valid values
+    first_zero_index = np.argmax(data == 0) if np.any(data == 0) else len(data)
+    return data[:first_zero_index]

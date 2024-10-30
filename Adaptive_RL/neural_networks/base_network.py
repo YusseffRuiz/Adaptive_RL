@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
 from .critics import Critic, ValueHead

@@ -14,12 +14,13 @@ current_logger = None
 class Logger:
     """Logger used to display and save logs, and save experiment configs."""
 
-    def __init__(self, path=None, width=60, config=None):
+    def __init__(self, path=None, width=60, config=None, progress=False):
         self.last_epoch_time = None
         self.console_formats = None
         self.final_keys = None
         self.path = path or str(time.time())
         self.log_file_path = os.path.join(self.path, 'log.csv')
+        self.progress=progress
 
         # Save the configuration.
         if config:
@@ -183,21 +184,23 @@ class Logger:
             total_rem_secs = datetime.timedelta(seconds=total_rem_secs)
             total_rem_secs = str(total_rem_secs)[:-7]
             step_percentage = int(steps * 100 / num_steps)
-            # msg = f'Time left:  epoch {epoch_rem_secs}  total {total_rem_secs}'
-            # msg = msg.center(self.width)
-            # print(termcolor.colored('\r' + msg[:epoch_progress], color=color, on_color="on_blue"), end='')
-            # print(msg[epoch_progress:], sep='', end='')
-            complete_msg = (f'Completion Percentage: {step_percentage} %, step: {steps}/{num_steps}, '
-                            f'Time left:  {total_rem_secs}')
-            complete_msg = complete_msg.center(self.complete_width)
-            print(termcolor.colored('\r' + complete_msg[:complete_progress], color=color, on_color="on_green"), end='')
-            print(complete_msg[complete_progress:], sep='', end='')
+            msg = f'Time left:  epoch {epoch_rem_secs}  total {total_rem_secs}'
+            msg = msg.center(self.width)
+            print('\r' + termcolor.colored(msg[:epoch_progress], color=color, on_color="on_blue"), end='')
+            if not self.progress:
+                print(msg[epoch_progress:], sep='', end='')
+            else:
+                complete_msg = (f'Completion Percentage: {step_percentage} %, step: {steps}/{num_steps}, '
+                                f'Time left:  {total_rem_secs}')
+                complete_msg = complete_msg.center(self.complete_width)
+                print(termcolor.colored('\r' + complete_msg[:complete_progress], color=color, on_color="on_green"), end='')
+                print(complete_msg[complete_progress:], sep='', end='')
             self.last_epoch_progress = epoch_progress
 
 
-def initialize(path=None, config=None):
+def initialize(path=None, config=None, progress=False):
     global current_logger
-    current_logger = Logger(path=path, config=config)
+    current_logger = Logger(path=path, config=config, progress=progress)
     return current_logger
 
 

@@ -47,7 +47,8 @@ def main_running():
     algorithm = args.algorithm.upper()
 
     env_name, save_folder, log_dir = trials.get_name_environment(env_name, cpg_flag=cpg_flag, algorithm=algorithm,
-                                                                 experiment_number=0, external_folder=args.f)
+                                                                 experiment_number=0, external_folder=args.f,
+                                                                 hh_neuron=hh)
 
     if experiment or video_record:
         if 'myo' in env_name:
@@ -87,8 +88,8 @@ def main_running():
             algos_compare = []  # Adding CPG and HH neurons
             for algo in algos:
                 algos_compare.append(algo)
-                algos_compare.append(f'CPG-{algo}')
-                algos_compare.append(f'CPG-{algo}-HH')
+                algos_compare.append(f'{algo}-CPG')
+                algos_compare.append(f'{algo}-CPG-HH')
             trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare)
             results = {}
 

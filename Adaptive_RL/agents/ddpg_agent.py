@@ -5,7 +5,6 @@ from Adaptive_RL.neural_networks import DeterministicPolicyGradient, Determinist
 from Adaptive_RL.utils import explorations, ReplayBuffer, utils
 
 
-
 class DDPG(base_agent.BaseAgent):
     """
     Deep Deterministic Policy Gradient.
