@@ -50,7 +50,6 @@ def parse_args():
     parser.add_argument('--cpg_neurons', type=int, default=2, help='Number of CPG neurons.')
     parser.add_argument('--cpg_tau_r', type=float, default=1.0, help='tau r for CPG')
     parser.add_argument('--cpg_tau_a', type=float, default=12.0, help='tau a for CPG')
-    parser.add_argument('--cpg_amplitude', type=float, default=1.5, help='amplitude for CPG')
 
     return parser.parse_args()
 
@@ -58,7 +57,7 @@ def parse_args():
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
-        cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=12.0, cpg_amplitude=1.75, progress=False):
+        cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=6.0, progress=False):
     """
     :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
@@ -106,9 +105,8 @@ def train_agent(
             # Loading CPG configuration
             cpg_oscillators = config.cpg_oscillators or cpg_oscillators
             cpg_neurons = config.cpg_neurons or cpg_neurons
-            cpg_tau_r = config.cpg_tau_r or cpg_tau_r
-            cpg_tau_a = config.cpg_tau_a or cpg_tau_a
-            cpg_amplitude = config.cpg_amplitude or cpg_amplitude
+            # cpg_tau_r = config.cpg_tau_r or cpg_tau_r
+            # cpg_tau_a = config.cpg_tau_a or cpg_tau_a
 
             print("Loaded Config")
 
@@ -119,10 +117,12 @@ def train_agent(
         _environment = Adaptive_RL.Gym(environment)
     cpg_model = None
     if cpg_flag:
+        amplitude = _environment.action_space.high
+        min_value = _environment.action_space.low
         cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
                                           da=_environment.action_space.shape[0],
-                                          neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                          tau_a=cpg_tau_a, hh=hh)
+                                          neuron_number=cpg_neurons, hh=hh, max_value=amplitude, min_value=min_value)
+        print(cpg_model.print_characteristics())
     _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
     environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment, parallel, sequential)
@@ -204,9 +204,8 @@ if __name__ == "__main__":
         # CPG params
         cpg_oscillator = cpg_args['num_oscillators']
         cpg_neurons = cpg_args['neuron_number']
-        cpg_tau_r = cpg_args['tau_r']
-        cpg_tau_a = cpg_args['tau_a']
-        cpg_amplitude = cpg_args['amplitude']
+        # cpg_tau_r = cpg_args['tau_r'] or 1.0
+        # cpg_tau_a = cpg_args['tau_a'] or 6.0
 
         max_steps = int(float(args['training']['steps']))
 
@@ -233,10 +232,8 @@ if __name__ == "__main__":
         # cpg
         cpg_oscillator = args.cpg_oscillators
         cpg_neurons = args.cpg_neurons
-        cpg_tau_r = args.cpg_tau_r
-        cpg_tau_a = args.cpg_tau_a
-        cpg_amplitude = args.cpg_amplitude
-
+        # cpg_tau_r = args.cpg_tau_r
+        # cpg_tau_a = args.cpg_tau_a
     epochs = int(max_steps / 1000)
     save_steps = int(max_steps / 500)
 
@@ -274,15 +271,22 @@ if __name__ == "__main__":
                             sequential=1, parallel=1,
                             trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
                                                         early_stopping=early_stopping),
-                            path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress)
+                            path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
+                            cpg_neurons=cpg_neurons, cpg_tau_a=96.0, cpg_tau_r=32.0)
 
-        env = Adaptive_RL.Gym(env_name, render_mode="human", max_episode_steps=1500)
+
+        if 'myo' in env_name:
+            env = Adaptive_RL.MyoSuite(env_name)
+        else:
+            env = Adaptive_RL.Gym(env_name, render_mode="human")
+
         cpg_model = None
         if cpg_flag:
+            max_value = env.action_space.high
+            min_value = env.action_space.low
             cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillator,
                                               da=env.action_space.shape[0],
-                                              neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                              tau_a=cpg_tau_a, amplitude=cpg_amplitude, hh=hh)
+                                              neuron_number=cpg_neurons, max_value=max_value, min_value=min_value, hh=hh)
         env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
         print("Starting Evaluation")

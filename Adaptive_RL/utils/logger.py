@@ -186,8 +186,8 @@ class Logger:
             step_percentage = int(steps * 100 / num_steps)
             msg = f'Time left:  epoch {epoch_rem_secs}  total {total_rem_secs}'
             msg = msg.center(self.width)
-            print('\r' + termcolor.colored(msg[:epoch_progress], color=color, on_color="on_blue"), end='')
             if not self.progress:
+                print('\r' + termcolor.colored(msg[:epoch_progress], color=color, on_color="on_blue"), end='')
                 print(msg[epoch_progress:], sep='', end='')
             else:
                 complete_msg = (f'Completion Percentage: {step_percentage} %, step: {steps}/{num_steps}, '

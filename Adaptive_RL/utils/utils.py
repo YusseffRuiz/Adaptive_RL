@@ -6,6 +6,7 @@ import yaml
 import argparse
 from gymnasium.wrappers import RecordVideo
 import torch
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 
 def get_last_checkpoint(path, best=True):
@@ -29,10 +30,8 @@ def get_last_checkpoint(path, best=True):
                 checkpoint_path = os.path.join(path, f'step_{checkpoint_id}')
             else:
                 checkpoint_path = None
-                print('No checkpoint found')
     else:
         checkpoint_path = None
-        print("No checkpoint Found")
 
     # Load the experiment configuration.
     if os.path.exists(arguments_path):
@@ -42,6 +41,8 @@ def get_last_checkpoint(path, best=True):
         print(f"Load from {arguments_path}")
     else:
         config = None
+    if checkpoint_path is None:
+        logger.error("No checkpoints found")
     return checkpoint_path, config, checkpoint_folder
 
 
@@ -121,29 +122,57 @@ def load_agent(config, path, env):
 
 
 def record_video(env, video_folder, alg, agent, env_name):
-    video_length = 1000
+    video_length = 1500
     # Record the video starting at the first step
     env.reset()
     env_v = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: x % 2 == 0,
-                        video_length=video_length, name_prefix=f"{alg}-agent-{env_name}")
+                        video_length=0, name_prefix=f"{alg}-agent-{env_name}")
 
     obs, *_ = env_v.reset()
     env_v.start_video_recorder()
-    for _ in range(video_length + 1):
+
+    for _ in range(video_length):
         if alg != "random":
             action = agent.test_step(obs)
         else:
             action = env.action_space.sample()
+
+        # Take a step in the environment and record it
         obs, reward, terminated, truncated, *_ = env_v.step(action)
         env_v.render()
+
+        # If episode ends, reset but keep recording
         if terminated or truncated:
+            obs, *_ = env_v.reset()
             terminated = False
             truncated = False
-            obs, *_ = env_v.reset()
 
     # Save the video
     env_v.close_video_recorder()
     env_v.close()
+
+    output_path = os.path.join(video_folder, f"{alg}-agent-{env_name}.mp4")
+    # List all video files in the folder and sort by name or creation time if needed
+    video_files = sorted([os.path.join(video_folder, f) for f in os.listdir(video_folder) if f.endswith(".mp4")])
+    extra_files = sorted([os.path.join(video_folder, f) for f in os.listdir(video_folder) if f.endswith(".json")])
+    print(video_files)
+    # Load each video file with moviepy
+    clips = [VideoFileClip(f) for f in video_files]
+    # Concatenate all video clips
+    final_clip = concatenate_videoclips(clips, method="compose")
+
+    # Write the output to a single file
+    final_clip.write_videofile(output_path, codec="libx264", fps=24)
+
+    # Close each clip to free memory
+    for clip in clips:
+        clip.close()
+
+    # Delete the individual video files after concatenation
+    for video_file in video_files:
+        os.remove(video_file)
+    for extra_file in extra_files:
+        os.remove(extra_file)
 
 
 def to_tensor(data, device):

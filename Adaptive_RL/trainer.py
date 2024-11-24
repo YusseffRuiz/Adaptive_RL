@@ -2,6 +2,8 @@ import os
 import time
 import numpy as np
 import torch
+import platform
+from playsound import playsound
 
 from Adaptive_RL import logger
 
@@ -140,7 +142,7 @@ class Trainer:
                 if tmp_score > self.best_reward:
                     self.best_reward = tmp_score
                     self.no_improvement_counter = 0  # Reset counter if there's an improvement
-
+                    play_system_sound() # Play system sound when a best reward was found
                     # Save the best model.
                     best_model_path = os.path.join(path, 'best_model')
                     self.agent.save(best_model_path)
@@ -231,3 +233,18 @@ class Trainer:
             print(f"Checkpoint not found at {save_path}")
         except KeyError as e:
             print(f"Key missing in the saved checkpoint: {e}")
+
+
+
+# Function to play system notification sound
+def play_system_sound():
+    system = platform.system()
+    if system == "Windows":
+        import winsound
+        winsound.MessageBeep(winsound.MB_ICONASTERISK)  # Windows notification sound
+    elif system == "Linux":
+        playsound('/usr/share/sounds/freedesktop/stereo/bell.oga')  # Common system notification sound
+    elif system == "Darwin":  # macOS
+        playsound('/System/Library/Sounds/Glass.aiff')  # macOS system sound
+    else:
+        print("Unsupported platform for system sound.")

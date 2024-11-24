@@ -87,7 +87,7 @@ class MPO(base_agent.BaseAgent):
             self._update(steps)
 
         if self.decay_flag:  # Reducing noise to stabilize training
-            self.actor_updater.lr_actor *= self.decay_lr
+            # self.actor_updater.lr_actor *= self.decay_lr
             self.critic_updater.lr_critic *= self.decay_lr
 
     def _step(self, observations):

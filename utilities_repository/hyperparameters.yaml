@@ -3,11 +3,10 @@ Humanoid-v4:
   name: "Humanoid-v4"
 
   cpg:
-    num_oscillators: 2
+    num_oscillators: 1
     neuron_number: 2
-    tau_r: 1.0
+    tau_r: 2.0
     tau_a: 12.0
-    amplitude: 2.5
 
   DDPG:
     training:
@@ -48,7 +47,7 @@ Humanoid-v4:
       replay_buffer_size : 8192
       learning_rate: 0.00034
       gamma: 0.95
-      steps: 2000000
+      steps: 6000000
       learning_starts: 10000
       noise : 0.15
 
@@ -83,9 +82,6 @@ Walker2d-v4:
   cpg:
     num_oscillators: 2
     neuron_number: 2
-    tau_r: 1.0
-    tau_a: 6.0
-    amplitude: 1.5
 
   DDPG:
     training:
@@ -125,7 +121,7 @@ Walker2d-v4:
       replay_buffer_size: 4096
       learning_rate: 0.001
       gamma: 0.99
-      steps: 1000000
+      steps: 2000000
       learning_starts: 10000
       noise: 0.1
 
@@ -156,36 +152,41 @@ myoAmp1DoFWalk-v0:
   cpg:
     num_oscillators: 11
     neuron_number: 6
-    tau_r: 2.0
-    tau_a: 12.0
-    amplitude: 1.5
+    tau_r: 8.0
+    tau_a: 48.0
 
   SAC:
     training:
       batch_size: 256
-      replay_buffer_size: 65536
-      learning_rate: 0.001
-      gamma: 0.99
-      steps: 1000000
+      replay_buffer_size: 32768
+      learning_rate: 2.54e-05
+      gamma: 0.95
+      steps: 1e8
       learning_starts: 10000
-      noise: 0.1
+      noise: 0.15
 
 
     model:
-      neuron_number: [400, 300]
+      neuron_number: [1024, 512]
       layers_number: 2
 
 
   PPO:
     training:
-      batch_size: 32
-      replay_buffer_size: 32768
+      batch_size: 256
+      replay_buffer_size: 16384
       learning_rate: 3.56987e-05
-      gamma: 0.99
-      steps: 1000000
+      gamma: 0.98
+      steps: 1e8
       learning_starts: 10000
       ent_coeff: 0.000585045
       clip_range: 0.1
+      decay_lr: 0.98
+      normalization: true
+
+
+      neuron_number: [ 1024 512 256 ]
+      layers_number: 3
 
   MPO:
     training:
@@ -198,7 +199,7 @@ myoAmp1DoFWalk-v0:
       discount_factor: 0.95
       gamma: 0.95
       batch_size: 256
-      replay_buffer_size: 16384
+      replay_buffer_size: 32768
       steps: 1e7
 
     model:

@@ -56,8 +56,44 @@ class TimeFeature(gym.Wrapper):
 class CPGWrapper(gym.Wrapper):
     def __init__(self, env, cpg_model=None, use_cpg=False):
         super(CPGWrapper, self).__init__(env)
+        self.use_cpg = use_cpg
         if use_cpg:
             self.cpg_model = cpg_model  # The CPG model should be passed in as an argument
+            self.original_action_space = env.action_space  # Store the original action space
+            oscillators = cpg_model.num_oscillators
+            self.oscillators = oscillators
+            neurons = cpg_model.neuron_number
+            self.params = self.oscillators*neurons
+            # Extend the action space
+            # low = np.concatenate([env.action_space.low[:self.params], np.full((oscillators,), -1)])
+            # high = np.concatenate([env.action_space.low[:self.params], np.full((oscillators,), 1)])
+            low = np.concatenate([env.action_space.low, np.full((self.params,), -1)])
+            high = np.concatenate([env.action_space.high, np.full((self.params,), 1)])
+            self.action_space = gym.spaces.Box(low=low, high=high, dtype=np.float32)
+            # self.phase_error = cpg_model.phase_error
+            # self.control_signal = cpg_model.control_signal
+            # self.phase_1 = cpg_model.phase_1
+            # self.phase_2 = cpg_model.phase_2
+
+
+    def step(self, action):
+        if self.use_cpg:
+            tau_modifiers = action[-self.params:]
+            # tau_modifiers = action[self.params:]
+            tau_modifiers = np.clip(tau_modifiers, -1, 1)
+            # action = action[:self.params]
+            action = action[:-self.params]
+            action = self.cpg_model.step(action, tau_modifiers)
+        return self.env.step(action)
+
+    def get_error_data(self):
+        if self.use_cpg:
+            pass
+            # self.phase_error = self.cpg_model.phase_error.cpu().numpy()
+            # self.control_signal = self.cpg_model.control_signal.cpu().numpy()
+            # self.phase_1 = self.observation[2]
+            # self.phase_2 = self.observation[5]
+            # return self.phase_1, self.phase_2
 
     def reset(self, **kwargs):
         # Pass seed and other arguments down to the wrapped environment

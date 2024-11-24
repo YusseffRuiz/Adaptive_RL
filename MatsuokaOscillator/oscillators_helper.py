@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class PIDController:
@@ -29,9 +30,22 @@ class PIDController:
         Returns:
         - control_signal: The computed control signal to minimize phase error.
         """
+        # Ensure error is either a tensor or a scalar
+        is_tensor = torch.is_tensor(error)
+
+        # If prev_error and integral aren't tensors but error is, convert them
+        if is_tensor:
+            self.prev_error = torch.tensor(self.prev_error, dtype=error.dtype, device=error.device)
+            self.integral = torch.tensor(self.integral, dtype=error.dtype, device=error.device)
+            self.margin = torch.tensor(self.margin, dtype=error.dtype, device=error.device)
+            zero = torch.tensor(0.0, dtype=error.dtype, device=error.device)
+        else:
+            margin = self.margin
+            zero = 0.0
+
         # Check if the error is within the margin
-        if abs(error) <= self.margin:
-            return 0.0  # No correction needed within margin
+        if (torch.abs(error) if is_tensor else abs(error)) <= self.margin:
+            return zero  # No correction needed within margin
 
         # Proportional term
         P = self.Kp * error
@@ -96,18 +110,32 @@ def weight_conversion_walker(weights, device, output=None):
         weights_tmp = torch.tensor([weights[0], weights[1], weights[3], weights[4]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
-        output_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
-        output_tensor[0] = output[0, 0]
-        output_tensor[1] = output[0, 1]
-        output_tensor[3] = output[1, 0]
-        output_tensor[4] = output[1, 1]
+        # output_tensor = torch.zeros(6, dtype=torch.float32, device=device)
+        w = 0.7
+        o = 0.3
+        # first = w * weights[0] + o * output[0].item()
+        # second = w * weights[1] + o * output[1].item()
+        # third = w * weights[2] + o * output[2].item()
+        # output_tensor = torch.tensor(
+        #     [first, second, third,
+        #      weights[3], weights[4], weights[5]],
+        #     dtype=torch.float32, device=device)
+
+        first = w*weights[0] + o*output[0,0].item()
+        second = w*weights[1] + o*output[0,1].item()
+        third = w*weights[3] + o*output[1,0].item()
+        fourth = w*weights[4] + o*output[1,1].item()
+        output_tensor = torch.tensor(
+            [first,second, weights[2],
+             third, fourth, weights[5]],
+            dtype=torch.float32, device=device)
 
         return output_tensor
 
 
 def weight_conversion_humanoid(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[5], weights[6], weights[9], weights[10]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[5], weights[9], weights[6], weights[10]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
         output_tensor = weights
@@ -118,7 +146,23 @@ def weight_conversion_humanoid(weights, device, output=None):
         return output_tensor
 
 
-def weight_conversion_myoleg(weights, device, output=None):
+# Define muscle groups and their corresponding neurons/oscillators
+MUSCLE_GROUP_MYOSIM = {
+    'quadriceps_right': [21, 36, 27, 28],  # recfem_r, vasint_r, vaslat_r, vasmed_r
+    'hamstrings_right': [23, 24],  # semimem_r, semiten_r
+    'hip_flexors_right': [18, 20, 22],  # iliacus_r, psoas_r, sart_r
+    'hip_extensors_right': [0, 1, 8, 9, 10],  # addbrev_r, addlong_r, glmax1_r, glmax2_r, glmax3_r
+    'ankle_motor_right': [69],  #
+
+    'quadriceps_left': [58, 66, 67, 68],  # recfem_l, vasint_l, vaslat_l, vasmed_l
+    'hamstrings_left': [35, 36, 60, 61],  # bflh_l, bfsh_l, semimem_l, semiten_l
+    'hip_flexors_left': [53, 57, 59],  # iliacus_l, psoas_l, sart_l
+    'hip_extensors_left': [29, 30, 43, 44, 45],  # addbrev_l, addlong_l, glmax1_l, glmax2_l, glmax3_l
+    'ankle_dorsiflexors_left': [37, 38, 64],  # edl_l, ehl_l, fdl_l (right dorsiflexors)
+    'ankle_plantarflexors_left': [39, 40, 41, 42, 62, 65],  # fhl_r, soleus_r (right plantarflexors)
+}
+
+def weight_conversion_myoleg(weights, output=None):
     """
     Map the weights or CPG output to specific muscle groups in the MyoLeg model.
 
@@ -130,67 +174,68 @@ def weight_conversion_myoleg(weights, device, output=None):
     Returns:
     - Mapped values for the muscles in the model.
     """
-    # Define muscle groups and their corresponding neurons/oscillators
-    muscle_groups = {
-        'quadriceps_right': [21, 36, 27, 28],  # recfem_r, vasint_r, vaslat_r, vasmed_r
-        'hamstrings_right': [23, 24],  # semimem_r, semiten_r
-        'hip_flexors_right': [18, 20, 22],  # iliacus_r, psoas_r, sart_r
-        'hip_extensors_right': [0, 1, 8, 9, 10],  # addbrev_r, addlong_r, glmax1_r, glmax2_r, glmax3_r
-        'ankle_motor_right': [69],  #
-
-        'quadriceps_left': [58, 66, 67, 68],  # recfem_l, vasint_l, vaslat_l, vasmed_l
-        'hamstrings_left': [35, 36, 60, 61],  # bflh_l, bfsh_l, semimem_l, semiten_l
-        'hip_flexors_left': [53, 57, 59],  # iliacus_l, psoas_l, sart_l
-        'hip_extensors_left': [29, 30, 43, 44, 45],  # addbrev_l, addlong_l, glmax1_l, glmax2_l, glmax3_l
-        'ankle_dorsiflexors_left': [37, 38, 64],  # edl_l, ehl_l, fdl_l (right dorsiflexors)
-        'ankle_plantarflexors_left': [39, 40, 41, 42, 62, 65],  # fhl_r, soleus_r (right plantarflexors)
-    }
 
     # We assume weights or output has dimension 71 (for 70 muscles + 1 motor)
     if output is None:
         # Map weights to muscle groups
-        quadriceps_weights_right = weights[muscle_groups['quadriceps_right']]
-        hamstrings_weights_right = weights[muscle_groups['hamstrings_right']]
-        hip_flexors_weights_right = weights[muscle_groups['hip_flexors_right']]
-        hip_extensors_weights_right = weights[muscle_groups['hip_extensors_right']]
-        motor_weight_right = weights[muscle_groups['ankle_motor_right']]
+        quadriceps_weights_right = weights[MUSCLE_GROUP_MYOSIM['quadriceps_right']]
+        hamstrings_weights_right = weights[MUSCLE_GROUP_MYOSIM['hamstrings_right']]
+        hip_flexors_weights_right = weights[MUSCLE_GROUP_MYOSIM['hip_flexors_right']]
+        hip_extensors_weights_right = weights[MUSCLE_GROUP_MYOSIM['hip_extensors_right']]
+        motor_weight_right = weights[MUSCLE_GROUP_MYOSIM['ankle_motor_right']]
 
-        quadriceps_weights_left = weights[muscle_groups['quadriceps_left']]
-        hamstrings_weights_left = weights[muscle_groups['hamstrings_left']]
-        hip_flexors_weights_left = weights[muscle_groups['hip_flexors_left']]
-        hip_extensors_weights_left = weights[muscle_groups['hip_extensors_left']]
-        dorsiflexors_weights_left = weights[muscle_groups['ankle_dorsiflexors_left']]
-        plantarflexors_weights_left = weights[muscle_groups['ankle_plantarflexors_left']]
+        quadriceps_weights_left = weights[MUSCLE_GROUP_MYOSIM['quadriceps_left']]
+        hamstrings_weights_left = weights[MUSCLE_GROUP_MYOSIM['hamstrings_left']]
+        hip_flexors_weights_left = weights[MUSCLE_GROUP_MYOSIM['hip_flexors_left']]
+        hip_extensors_weights_left = weights[MUSCLE_GROUP_MYOSIM['hip_extensors_left']]
+        dorsiflexors_weights_left = weights[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']]
+        plantarflexors_weights_left = weights[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']]
 
         # Combine all weights into one tensor (or split them for separate control)
-        combined_weights = torch.cat([
+        combined_weights = [
             quadriceps_weights_right, hamstrings_weights_right, hip_flexors_weights_right,
             hip_extensors_weights_right, motor_weight_right,
             quadriceps_weights_left, hamstrings_weights_left, hip_flexors_weights_left,
             hip_extensors_weights_left, dorsiflexors_weights_left, plantarflexors_weights_left
-        ]).to(device)
+        ]
 
         return combined_weights
 
     else:
         # Map CPG output to muscle groups (for when the CPG outputs the control signals)
         output_tensor = weights  # Assuming weights is preallocated
+        output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_right']] = output[0]
+        output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']] = output[1]
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']] = output[2]
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']] = output[3]
+        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']] = output[4]
 
-        output_tensor[muscle_groups['quadriceps_right']] = output[muscle_groups['quadriceps_right']]
-        output_tensor[muscle_groups['hamstrings_right']] = output[muscle_groups['hamstrings_right']]
-        output_tensor[muscle_groups['hip_flexors_right']] = output[muscle_groups['hip_flexors_right']]
-        output_tensor[muscle_groups['hip_extensors_right']] = output[muscle_groups['hip_extensors_right']]
-        output_tensor[muscle_groups['ankle_motor_right']] = output[muscle_groups['ankle_motor_right']]
-
-        output_tensor[muscle_groups['quadriceps_left']] = output[muscle_groups['quadriceps_left']]
-        output_tensor[muscle_groups['hamstrings_left']] = output[muscle_groups['hamstrings_left']]
-        output_tensor[muscle_groups['hip_flexors_left']] = output[muscle_groups['hip_flexors_left']]
-        output_tensor[muscle_groups['hip_extensors_left']] = output[muscle_groups['hip_extensors_left']]
-        output_tensor[muscle_groups['ankle_dorsiflexors_left']] = output[muscle_groups['ankle_dorsiflexors_left']]
-        output_tensor[muscle_groups['ankle_plantarflexors_left']] = output[muscle_groups['ankle_plantarflexors_left']]
+        output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_left']] = output[5]
+        output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']] = output[6]
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']] = output[7]
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']] = output[8]
+        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']] = output[9]
+        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']] = output[10]
 
     return output_tensor
 
 
 def leg_synchronize(data_left, data_right):
     pass
+
+
+def scale_osc_weights(weights, old_min=-1.0, old_max=1.0, new_min=1.1, new_max=4.0):
+    """
+    Scale weights from one range to another.
+
+    Parameters:
+    - weights: Tensor or array of weights to scale.
+    - old_min: Minimum value of the original range.
+    - old_max: Maximum value of the original range.
+    - new_min: Minimum value of the target range.
+    - new_max: Maximum value of the target range.
+
+    Returns:
+    - scaled_weights: Tensor or array of scaled weights.
+    """
+    return new_min + (weights - old_min) * (new_max - new_min) / (old_max - old_min)
