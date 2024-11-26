@@ -109,9 +109,9 @@ class MPO(base_agent.BaseAgent):
             # Batch data is already in tensor form, so no need to convert again
             infos = self._update_actor_critic(**batch)
 
-            for key in infos:
-                for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.cpu().numpy())  # Convert back to numpy for logging
+            # for key in infos:
+            #     for k, v in infos[key].items():
+            #         logger.store(key + '/' + k, v.cpu().numpy())  # Convert back to numpy for logging
 
         # Update the normalizers.
         if self.model.observation_normalizer:

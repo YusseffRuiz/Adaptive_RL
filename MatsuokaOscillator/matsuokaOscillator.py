@@ -1,6 +1,8 @@
 import math
 import numpy as np
 import torch
+from torch.nn.functional import sigmoid
+
 from MatsuokaOscillator import oscillators_helper
 from MatsuokaOscillator.hudgkin_huxley import HHNeuron
 from concurrent.futures import ThreadPoolExecutor
@@ -102,41 +104,41 @@ class MatsuokaOscillator:
         self.or_tau_a = tau_a
         self.beta = beta
         self.dt = dt
-        excitation_signal = 2.5
-        escalated_number = 0.1
+        self.excitation_signal = 2.5
+        self.escalated_number = 0.1
+        self.w = 0.7 # Relevance of direct weights
+        self.o = 0.3 # Relevance of Oscillator
         self.x = torch.arange(-self.param_dim/2, self.param_dim/2, 1, dtype=torch.float32).to(self.device)
 
         if num_oscillators > 1:
             self.x = self.x.view(num_oscillators, neuron_number)
             # Neuron initial membrane potential
-            oscillator_numbers = torch.arange(1, num_oscillators + 1, dtype=torch.float32,
-                                              device=self.device).unsqueeze(1)
             self.y = torch.randn((num_oscillators, neuron_number), dtype=torch.float32,
                                  device=self.device)* frequency
             # Output, it is the neurons update, which is mapped via NN to the action space.
             self.z = torch.ones((num_oscillators, neuron_number), dtype=torch.float32,
-                                 device=self.device)*escalated_number  # Correction value
+                                 device=self.device)*self.escalated_number  # Correction value
             signs = [1 if i % 2 == 0 else -1 for i in range(neuron_number)]
             self.sign_tensor = torch.tensor([signs] * self.num_oscillators,
                                             device=self.device)
             self.y *= self.sign_tensor
             if weights is None:
                 self.weights = torch.ones((num_oscillators,neuron_number), dtype=torch.float32, device=self.device)
-                self.weights *= excitation_signal
+                self.weights *= self.excitation_signal
             else:
                 assert len(self.weights) == self.param_dim, \
                     f"Weights must be a matrix with size equal to the number of neurons, right now is {self.weights.shape}."
                 self.weights = torch.tensor(weights, dtype=torch.float32, device=self.device)
         else:
-            self.y = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * frequency * escalated_number
-            self.z = torch.ones(neuron_number, dtype=torch.float32, device=self.device)*escalated_number
+            self.y = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * frequency * self.escalated_number
+            self.z = torch.ones(neuron_number, dtype=torch.float32, device=self.device)*self.escalated_number
             signs = [1 if i % 2 == 0 else -1 for i in range(neuron_number)]
             self.sign_tensor = torch.tensor(signs, dtype=torch.float32, device=self.device)
             self.y *= self.sign_tensor
 
             if weights is None:
                 self.weights = torch.ones(neuron_number, dtype=torch.float32, device=self.device)
-                self.weights *= excitation_signal
+                self.weights *= self.excitation_signal
             else:
                 assert len(weights) == neuron_number, \
                     "Weights must be a square matrix with size equal to the number of neurons."
@@ -146,14 +148,14 @@ class MatsuokaOscillator:
         if u is None:
             if num_oscillators > 1:
                 self.u = torch.ones((num_oscillators,neuron_number), dtype=torch.float32, device=self.device)
-                self.u *= excitation_signal
+                self.u *= self.excitation_signal
             else:
-                self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * excitation_signal
+                self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * self.excitation_signal
         else:
             assert len(u) == neuron_number, "Input array u - (fire rate) must match the number of neurons."
             self.u = torch.tensor(u, dtype=torch.float32, device=self.device)
 
-    def step(self, weights=None):
+    def step(self, weights=None, weights_origin=None):
         """
           Perform a single update step for the Matsuoka oscillator network.
 
@@ -173,11 +175,16 @@ class MatsuokaOscillator:
         weights_tmp = weights
         if weights_tmp.device != self.device:
             weights_tmp = weights_tmp.to(dtype=torch.float32, device=self.device)
+        if weights_origin is not None:
+            if not torch.is_tensor(weights_origin):
+                weights_origin = torch.tensor(weights_origin, dtype=torch.float32, device=self.device)
+            weights_origin = weights_origin
+        else:
+            weights_origin = torch.zeros_like(weights_tmp)
 
         if self.num_oscillators > 1:
-            assert weights_tmp.shape[0]*weights_tmp.shape[1] == self.param_dim, \
-                f"Weights must be a matrix with size equal to the number of neurons, right now is {len(weights_tmp)}."
             weights_tmp = weights_tmp.reshape(self.num_oscillators, self.neuron_number)
+            weights_origin = weights_origin.reshape(self.num_oscillators, self.neuron_number)
             y_prev = torch.roll(self.y, shifts=1, dims=1)
         else:
             assert len(weights_tmp) == self.param_dim, \
@@ -193,8 +200,9 @@ class MatsuokaOscillator:
         self.z += dz
         torch.clamp(self.z, min=-10, max=10)
 
-        self.y = torch.tanh(self.x- torch.mean(self.x))
-        # self.phase = self.value_to_phase(self.y)
+        self.y = self.o * torch.tanh(self.x - torch.mean(self.x)) + self.w * weights_origin
+        # self.y = torch.tanh(self.x - torch.mean(self.x))
+        self.phase = self.value_to_phase(self.y)
         return self.amplitude*self.y
 
     def run(self, steps=1000, weights_seq=None, tau_seq=None):
@@ -227,14 +235,29 @@ class MatsuokaOscillator:
         self.tau_r = self.tau_a // 6
         self.tau_a = self.or_tau_a * scaling_factor
 
+    def reset_oscillator(self):
+        self.x = torch.arange(-self.param_dim / 2, self.param_dim / 2, 1, dtype=torch.float32).to(self.device)
+        self.phase *= 0
+        self.z = self.z*0 + self.escalated_number
+        self.weights  = self.weights*0 + self.excitation_signal
+        self.u = self.u*0 + self.excitation_signal
+        if self.num_oscillators > 1:
+            self.x = self.x.view(self.num_oscillators, self.neuron_number)
+            self.y = torch.randn((self.num_oscillators, self.neuron_number), dtype=torch.float32,
+                                 device=self.device) * self.frequency
+            self.y *= self.sign_tensor
+        else:
+            self.y = torch.ones(self.neuron_number, dtype=torch.float32, device=self.device) * self.frequency * self.escalated_number
+            self.y *= self.sign_tensor
+
 
     @staticmethod
     def value_to_phase(output):
         # Define target range in radians
-        min_angle = -math.pi / 4  # -π/4
-        max_angle = math.pi / 2  # π/2
+        min_angle = -20  # -π/4
+        max_angle = 90  # π/2
         # Map `output` from [-1, 1] to [-45, 90]
-        return output * ((max_angle - min_angle) / 2) + ((max_angle + min_angle) / 2)
+        return -output * ((max_angle - min_angle) / 2) + ((max_angle + min_angle) / 2)
 
 
 class MatsuokaNetworkWithNN:
@@ -308,7 +331,7 @@ class MatsuokaNetworkWithNN:
         self.pid_controller = oscillators_helper.PIDController(Kp=1.0, Ki=0.05, Kd=0.01, dt=0.01, margin=error_margin)
         """ You can create similar characteristics oscillators or different"""
 
-        self.oscillator_right, self.oscillator_left = self.initialize_oscillator(
+        self.oscillator, self.oscillator_2 = self.initialize_oscillator(
             action_dim=self.action_dim,neuron_number=neuron_number, num_oscillators=num_oscillators,
             amplitude=amplitude, tau_r=tau_r, tau_a=tau_a, hh=hh)
         self.characteristics = {
@@ -326,7 +349,7 @@ class MatsuokaNetworkWithNN:
     def print_characteristics(self):
         return self.characteristics
 
-    def step(self, params_input, modifiers):
+    def step(self, params_input, modifiers, feed_u=None):
         """
                 Takes a single step in the simulation, updating the state of each oscillator based on the sensory input and
                 the neural network output.
@@ -346,7 +369,7 @@ class MatsuokaNetworkWithNN:
 
         oscillators_input = oscillators_helper.scale_osc_weights(modifiers)
         if self.action_dim is None:
-            output_actions = self.oscillator_right.step(weights=oscillators_input)
+            output_actions = self.oscillator.step(weights=oscillators_input)
             return output_actions.cpu().numpy()
 
         if self.isMuscular:
@@ -384,25 +407,19 @@ class MatsuokaNetworkWithNN:
 
 
         else:
-            oscillator_right = self.oscillator_right.step(weights=oscillators_input[0:self.neuron_number])
-            feedback = self.oscillators_feedback(oscillator_right)
-            # print(feedback)
-            self.oscillator_left.u = 5 * torch.sigmoid(self.oscillator_left.u + feedback)
-            self.oscillator_left.y += feedback
-            oscillator_left = self.oscillator_left.step(weights=oscillators_input[self.neuron_number:])
-            feedback = self.oscillators_feedback(oscillator_left)
-            self.oscillator_right.u = 5 * torch.sigmoid(self.oscillator_right.u + feedback)
-            self.oscillator_right.y += feedback
-            # oscillator_right = self.oscillator_right.step(oscillators_input)
-            # oscillators_output = oscillator_right
-            # oscillator_left = self.oscillator_left.step()
-            oscillators_output = torch.stack([oscillator_right, oscillator_left], dim=0)
-            # self.hip_oscillator.step(weights=[params_input[0], params_input[3]])
+            weights_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
+            feedback_y = self.oscillators_feedback(self.oscillator.y)
+            self.oscillator.u = self.update_u(feed_u, feedback_y)
+            # self.oscillator.u = 5*torch.sigmoid(self.oscillator.u + feedback_y)
+            self.oscillator.y += feedback_y
+            oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
         # Outputs assignation
-        # print("hip: ", hip_output)
-        # [self.phase_1, self.phase_2] = hip_output
-        # print("knees: ", knee_output)
+        # right = params_input[0:2]*(self.oscillator.y[0,:].cpu().numpy())
+        # left = params_input[3:5]*self.oscillator.y[1,:].cpu().numpy()
+        right = self.oscillator.phase[0,0].cpu().numpy()
+        left = self.oscillator.phase[1,0].cpu().numpy()
+        [self.phase_1, self.phase_2] = right, left
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
         output_actions = torch.clamp(output_actions, min=self.min_value, max=self.max_value)
@@ -550,19 +567,14 @@ class MatsuokaNetworkWithNN:
         else:  # Regular same size oscillator
             frequency_right = 0.5
             frequency_left = 1.5
-            hip_frequency = frequency_right
 
-            right_oscillator = OscillatorClass(num_oscillators=1,
+            oscillators = OscillatorClass(num_oscillators=num_oscillators,
                                                   initial_phase=initial_phase, frequency=frequency_right,
                                                   amplitude=amplitude,
                                                   neuron_number=neuron_number, tau_r=tau_r,
                                                   tau_a=tau_a)
-            left_oscillator = OscillatorClass(num_oscillators=1,
-                                                 initial_phase=initial_phase+math.pi, frequency=frequency_left, amplitude=amplitude,
-                                                 neuron_number=neuron_number, tau_r=tau_r,
-                                                 tau_a=tau_a)
 
-            return right_oscillator, left_oscillator
+            return oscillators, None
 
     def oscillators_feedback(self,outputs_prev):
         """
@@ -576,6 +588,16 @@ class MatsuokaNetworkWithNN:
         feedback = adaptive_feedback_strength * torch.sum(outputs, dim=0,
                                                           keepdim=True) - adaptive_feedback_strength * outputs
         return feedback
+
+    def update_u(self, u_value, feed_y):
+        if self.num_oscillators>1:
+            return (torch.tensor(u_value.reshape(self.num_oscillators, self.neuron_number), device=self.device) +
+                    feed_y)
+        else:
+            return torch.tensor(u_value, device=self.device) + feed_y
+
+    def reset(self):
+        self.oscillator.reset_oscillator()
 
 
 class HHMatsuokaOscillator(MatsuokaOscillator):

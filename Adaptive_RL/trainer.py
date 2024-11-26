@@ -70,7 +70,7 @@ class Trainer:
             # Select actions.
             actions = self.agent.step(observations, self.steps)
             assert not np.isnan(actions.sum())
-            logger.store('train/action', actions, stats=False)
+            logger.store('train/action', actions, stats=True)
 
             # Take a step in the environments.
             observations, infos = self.environment.step(actions)
@@ -89,7 +89,7 @@ class Trainer:
             for i in range(num_workers):
                 if infos['resets'][i]:
                     logger.store('train/episode_score', scores[i], stats=True)
-                    logger.store('train/episode_length', lengths[i], stats=False)
+                    logger.store('train/episode_length', lengths[i], stats=True)
                     scores[i] = 0
                     lengths[i] = 0
                     episodes += 1
@@ -142,11 +142,11 @@ class Trainer:
                 if tmp_score > self.best_reward:
                     self.best_reward = tmp_score
                     self.no_improvement_counter = 0  # Reset counter if there's an improvement
-                    play_system_sound() # Play system sound when a best reward was found
+                    play_system_sound(time="best") # Play system sound when a best reward was found
                     # Save the best model.
                     best_model_path = os.path.join(path, 'best_model')
                     self.agent.save(best_model_path)
-                    logger.log(f"Best model saved with reward {self.best_reward} at epoch {epochs}")
+                    logger.log(f"Best model saved with mean reward {self.best_reward} at epoch {epochs}")
                 else:
                     self.no_improvement_counter += 1
 
@@ -164,6 +164,7 @@ class Trainer:
                     if self.decay_counter >= self.patience * 0.1:
                         self.agent.decay_flag = False
                         self.decay_counter = 0
+        play_system_sound(time="end")
 
     def _test(self):
         """Tests the agent on the test environment."""
@@ -237,13 +238,17 @@ class Trainer:
 
 
 # Function to play system notification sound
-def play_system_sound():
+def play_system_sound(time="best"):
     system = platform.system()
+    if time == "best":
+        sound = "bell"
+    else:
+        sound = "complete"
     if system == "Windows":
         import winsound
         winsound.MessageBeep(winsound.MB_ICONASTERISK)  # Windows notification sound
     elif system == "Linux":
-        playsound('/usr/share/sounds/freedesktop/stereo/bell.oga')  # Common system notification sound
+        playsound(f'/usr/share/sounds/freedesktop/stereo/{sound}.oga')  # Common system notification sound
     elif system == "Darwin":  # macOS
         playsound('/System/Library/Sounds/Glass.aiff')  # macOS system sound
     else:

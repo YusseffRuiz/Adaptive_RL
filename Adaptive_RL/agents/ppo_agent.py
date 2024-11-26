@@ -100,8 +100,9 @@ class PPO(base_agent.BaseAgent):
     def _test_step(self, observations):
         observations = torch.as_tensor(observations, dtype=torch.float32)
         with torch.no_grad():
-            action_distributions = self.model.actor(observations)
-            actions = action_distributions.sample()[0]
+            actions = self.model.actor(observations).sample()
+            if actions.shape[0] > 1:  # We still need to figure out, why
+                actions = actions[0]
             return actions
 
     def _evaluate(self, observations, next_observations):
@@ -140,12 +141,12 @@ class PPO(base_agent.BaseAgent):
             if train_actor:
                 train_actor = not infos['actor']['stop'].cpu().numpy()
 
-            for key in infos:
-                for k, v in infos[key].items():
-                    logger.store(key + '/' + k, v.cpu().numpy())
+            # for key in infos:
+            #     for k, v in infos[key].items():
+            #         logger.store(key + '/' + k, v.cpu().numpy())
 
-        logger.store('actor/iterations', actor_iterations)
-        logger.store('critic/iterations', critic_iterations)
+        # logger.store('actor/iterations', actor_iterations)
+        # logger.store('critic/iterations', critic_iterations)
 
         # Update the normalizers.
         if self.model.observation_normalizer:

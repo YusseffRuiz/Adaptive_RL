@@ -6,6 +6,8 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+
+from fontTools.unicodedata import block
 from sklearn.metrics import mean_squared_error
 import os
 from scipy.signal import savgol_filter
@@ -60,11 +62,11 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
 
 
 # Define function to search for trained algorithms in specified folders
-def search_trained_algorithms(env_name, algorithms_list, save_folder=None, experiment_number=0):
+def search_trained_algorithms(env_name, algorithms_list, save_folder="training", experiment_number=0):
+    if save_folder is None:
+        save_folder = "training"
     # List of algorithms to look for
     algorithms_found = []
-
-    save_folder = "training" or save_folder
 
     for algo in algorithms_list:
         # Check both the regular and CPG environment names
@@ -82,6 +84,7 @@ def search_trained_algorithms(env_name, algorithms_list, save_folder=None, exper
                 algorithms_found.append((algo, folder))
                 print(f"Found folder for {algo} at {folder}")
 
+
     return algorithms_found
 
 
@@ -94,6 +97,10 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
         done = False
         episode_reward = 0
         cnt = 0
+        error = []
+        cntrl = []
+        phases_1 = []
+        phases_2 = []
         while not done:
             cnt += 1
             with torch.no_grad():
@@ -102,6 +109,12 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
                 else:
                     action = env.action_space.sample()
             obs, reward, done, info, *_ = env.step(action)
+            phase_1 = obs[1]
+            phase_2 = obs[4]
+            # phase_1, phase_2 = env.get_error_data()
+            phases_1.append(phase_1)
+            phases_2.append(phase_2)
+            # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
                 env.sim.renderer.render_to_window()
@@ -111,6 +124,9 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
+        # plot_phase(np.array(error), algorithm)
+        plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
+        # plot_phase(np.array(cntrl), algorithm)
         total_rewards.append(episode_reward)
         print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
@@ -118,9 +134,10 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
 
 
 def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, duration=1500, env_name=None, deterministic=False):
-
     save_folder = f"Experiments/{env_name}/images"
     action_dim = len(env.action_space.sample())
+    successful_episodes = 0
+    max_attempts_per_episode = 10  # Maximum retries per episode
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -129,70 +146,90 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_energy = []
     total_velocity = []
     ending_steps = []
-    dt = 5  # how many steps per dt
-    previous_vel = 0
-    if alg == "random":
-        episode_start = np.ones((env.num_envs,), dtype=bool)
+    total_error = []
     total_distance = []
-    for episode in range(episodes_num):
-        if alg == "random":
-            obs = env.reset()
-        else:
-            obs, *_ = env.reset()
-        lstm_states = None
-        reward = 0
-        ep_energy = []
-        ep_velocity = []
-        ep_acceleration = []
-        ep_torques = []
-        ep_joints = []
-        ep_joint_velocities = []
-        position = 0
-        ending_step = 0
-        fall = False
-        assistance_value = 1  # Value to normalize when the agent fell down.
-        for step in range(duration):
-            if alg != "random":
-                action = agent.test_step(obs)
-            else:
-                action, lstm_states = agent.predict(
-                        obs,  # type: ignore[arg-type]
-                        state=lstm_states,
-                        episode_start=episode_start,
-                        deterministic=deterministic,
-                )
+    dt = 5  # Steps per dt
+
+    while successful_episodes < episodes_num:
+        attempts = 0
+        success = False
+        while not success and attempts < max_attempts_per_episode:
+            attempts += 1
+            print(f"Starting episode {successful_episodes + 1}, attempt {attempts}")
             if alg == "random":
-                obs, rw, done, info = env.step(action)
-                position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
+                obs = env.reset()
             else:
-                obs, rw, done, info, extras = env.step(action)
-                position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras)
-            episode_start = done
-            if done and not fall:
-                ending_step = step
-                fall = True
-                assistance_value = 0
-            if step % dt == 0:
-                acceleration = get_acceleration(previous_vel, velocity, dt)
-                ep_acceleration.append(acceleration * assistance_value)
-                previous_vel = velocity
-            ep_joints.append(joint_angles * assistance_value)
-            ep_joint_velocities.append(joint_velocity * assistance_value)
-            ep_velocity.append(velocity * assistance_value)
-            ep_torques.append(torques * assistance_value)
-            reward += rw * assistance_value
-            ep_energy.append(step_energy * assistance_value)
-        if reward < 0:
-            print("Episode failed")
-        total_distance.append(position)
-        ending_steps.append(ending_step)
-        total_rewards.append(reward)
-        total_energy.append(np.sum(ep_energy, axis=1))
-        total_velocity_angles.append(np.array(ep_joint_velocities))
-        total_torques.append(np.array(ep_torques))
-        total_joint_angles.append(np.array(ep_joints))
-        total_velocity.append(np.array(ep_velocity))
-        total_accelerations.append(np.array(ep_acceleration))
+                obs, *_ = env.reset()
+            lstm_states = None
+            reward = 0
+            ep_energy = []
+            ep_velocity = []
+            ep_acceleration = []
+            ep_torques = []
+            ep_joints = []
+            ep_joint_velocities = []
+            position = 0
+            ending_step = 0
+            fall = False
+            assistance_value = 1  # Normalize when agent falls
+            ep_error = []
+            previous_vel = 0
+
+            for step in range(duration):
+                if alg != "random":
+                    action = agent.test_step(obs)
+                else:
+                    action, lstm_states = agent.predict(
+                        obs,
+                        state=lstm_states,
+                        episode_start=np.ones((env.num_envs,), dtype=bool),
+                        deterministic=deterministic,
+                    )
+                if alg == "random":
+                    obs, rw, done, info = env.step(action)
+                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
+                else:
+                    obs, rw, done, info, extras = env.step(action)
+                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras)
+
+                if done and not fall:
+                    ending_step = step
+                    fall = True
+                    assistance_value = 0
+
+                if step % dt == 0:
+                    acceleration = get_acceleration(previous_vel, velocity, dt)
+                    ep_acceleration.append(acceleration * assistance_value)
+                    previous_vel = velocity
+
+                ep_joints.append(joint_angles * assistance_value)
+                ep_joint_velocities.append(joint_velocity * assistance_value)
+                ep_velocity.append(velocity * assistance_value)
+                ep_torques.append(torques * assistance_value)
+                reward += rw * assistance_value
+                ep_energy.append(step_energy * assistance_value)
+
+            # Check success criteria
+            if reward >= 200:  # Successful episode
+                success = True
+                successful_episodes += 1
+                total_distance.append(position)
+                ending_steps.append(ending_step)
+                total_rewards.append(reward)
+                total_energy.append(np.sum(ep_energy, axis=1))
+                total_velocity_angles.append(np.array(ep_joint_velocities))
+                total_torques.append(np.array(ep_torques))
+                total_joint_angles.append(np.array(ep_joints))
+                total_velocity.append(np.array(ep_velocity))
+                total_accelerations.append(np.array(ep_acceleration))
+                total_error.append(np.array(ep_error))
+                print(f"Episode {successful_episodes} successful with reward {reward:.2f}")
+            else:
+                print(f"Episode failed with reward {reward:.2f}")
+
+        if not success:
+            print(f"Failed to achieve success for episode {successful_episodes + 1} after {attempts} attempts.")
+            break  # Avoid infinite loops if the agent cannot succeed
 
     # Convert all arrays to numpy for analysis
     total_distance = np.array(total_distance)
@@ -203,34 +240,28 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_energy = np.array(total_energy)
     total_velocity = np.array(total_velocity)
     total_accelerations = np.array(total_accelerations)
+    total_error = np.array(total_error)
 
     average_reward = np.mean(total_rewards)
     velocity_total = np.mean(total_velocity)
-    average_energy = (np.sum(np.trapz(total_energy, dx=1)/np.mean(total_distance))/episodes_num)
+    average_energy = (np.sum(np.trapz(total_energy, dx=1) / np.mean(total_distance)) / episodes_num)
     average_distance = np.mean(total_distance)
+    if average_energy < 0: average_energy=0
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
     print(f"Average Speed and Distance over {episodes_num} episodes: {velocity_total:.2f} m/s with "
           f"total energy: {average_energy:.2f} Joules per meter, travelled {average_distance:.2f} meters")
-    joints = separate_joints(total_joint_angles, action_dim)
-    joints_vel = separate_joints(total_velocity_angles, action_dim)
-    joints_torque = separate_joints(total_torques, action_dim)
+    # joints = separate_joints(total_joint_angles, action_dim)
+    # joints_vel = separate_joints(total_velocity_angles, action_dim)
+    # joints_torque = separate_joints(total_torques, action_dim)
 
     os.makedirs(save_folder, exist_ok=True)
-    # plot_data(data=joints[0], data2=joints[2], data1_name="right hip", data2_name="left hip", y_axis_name="Angle (°/s)", title="Hip Joint movement")
-    # statistical_analysis(total_velocity, y_axis_name="Velocity(m/s", title=f"Velocity (m/s) {velocity_total:.2f} m/s", save_folder=save_folder, figure_name="Total_Velocity")
-    # cross_fourier_transform(joints[0], joints[2], joint="Hip", save_folder=save_folder)
-    perform_autocorrelation(joints[0], joints[2], joint="Hip", save_folder=save_folder)
-    jerk = get_jerk(total_accelerations, dt)
-    # statistical_analysis(total_accelerations, x_axis_name="Time", y_axis_name="Acceleration (m/s^2)", title="Acceleration (m/s^2)", save_folder=save_folder, figure_name="Acceleration")
-    # statistical_analysis(jerk, x_axis_name="Time", y_axis_name="Jerk (m/s^3)", title="jerk (m/s^3)", save_folder=save_folder, figure_name="Jerk")
-    energy_consumption = get_energy_per_meter(total_energy, np.mean(total_distance), average_energy, save_folder=save_folder)
 
     results_dict = {
         'velocity': total_velocity,
-        'energy': energy_consumption,
         'reward': total_rewards,
         'distance': total_distance,
-        'jerk': jerk,
+        'phase_error': total_error,
+        'energy': average_energy,
     }
 
     return results_dict
@@ -298,6 +329,59 @@ def perform_fourier_transform(data, sampling_rate=1, plot=False, save_folder=Non
             plt.savefig(image_path)
         plt.show()
     return freqs, magnitudes
+
+
+def compute_frequency(signal, dt):
+    """
+    Compute the dominant frequency of a signal using FFT.
+
+    Parameters:
+    - signal: numpy array, the signal to analyze (1D array for a single neuron).
+    - dt: float, time step between samples.
+
+    Returns:
+    - freq: float, the dominant frequency in Hz.
+    """
+    n = len(signal)  # Number of samples
+    sample_rate = 1 / dt  # Sampling rate in Hz
+
+    # Detrend the signal (remove mean)
+    signal = signal - np.mean(signal)
+
+    # Perform FFT
+    fft_result = np.fft.fft(signal)
+    fft_freq = np.fft.fftfreq(n, dt)  # Frequency bins
+
+    # Take the magnitude of the FFT and ignore the negative frequencies
+    fft_magnitude = np.abs(fft_result[:n // 2])
+    fft_freq = fft_freq[:n // 2]
+
+    # Find the dominant frequency
+    dominant_index = np.argmax(fft_magnitude)
+    dominant_frequency = fft_freq[dominant_index]
+
+    return dominant_frequency
+
+
+def analyze_neurons_frequencies(output_signals, dt):
+    """
+    Analyze the dominant frequencies of multiple neurons.
+
+    Parameters:
+    - output_signals: numpy array of shape (steps, neuron_number), signals for all neurons.
+    - dt: float, time step between samples.
+
+    Returns:
+    - frequencies: list of dominant frequencies for each neuron.
+    """
+    neuron_number = output_signals.shape[1]
+    frequencies = []
+    period = []
+    for i in range(neuron_number):
+        freq = compute_frequency(output_signals[:, i], dt)
+        frequencies.append(freq)
+        period.append(1/freq)
+    return frequencies, period
 
 
 def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
@@ -375,7 +459,6 @@ def get_data(info):
     "total_energy": np.sum(action) in N/m
     :return: specific values
     """
-
     position = info["distance_from_origin"]
     velocity = info["x_velocity"]
     joint_angles = info["joint_angles"] * 180/math.pi
@@ -415,7 +498,7 @@ def separate_joints(joint_list, action_dim):
 
 
 def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None,  x_data=None, y_axis_name="data", x_axis_name="time", title="data plot over time", save_folder=None, figure_name="figure"):
-    data = np.mean(data, axis=0)
+    # data = np.mean(data, axis=0)
     plt.figure()
     plt.title(title)
     plt.xlabel(x_axis_name)
@@ -423,7 +506,7 @@ def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None
     if y_min_max is not None:
         plt.ylim(y_min_max[0], y_min_max[1])
     if data2 is not None:
-        data2 = np.mean(data2, axis=0)
+        # data2 = np.mean(data2, axis=0)
         if x_data is not None:
             plt.plot(x_data, data, label=data1_name)
             plt.plot(x_data, data2, label=data2_name)
@@ -440,7 +523,9 @@ def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None
         # Define the path where the image will be saved
         image_path = os.path.join(save_folder, f"{figure_name}.png")
         plt.savefig(image_path)
-    plt.show()
+    plt.show(block=False)
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="Data", mean_calc=True, save_folder=None, figure_name="figure"):
@@ -571,8 +656,20 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None):
     plt.close()
 
 
-def compare_jerk(jerk1, jerk2, dt):
-    pass
+def plot_phase(data, data2=None, algo=None, save_folder=None, name="Phase Error"):
+    plt.plot(data)
+    if data2 is not None:
+        plt.plot(data2)
+    plt.xlabel('Steps')
+    plt.ylabel(name)
+    plt.title(f'{name} for PID in {algo} algorithm')
+    if save_folder is not None:
+        # Define the path where the image will be saved
+        image_path = os.path.join(save_folder, f"{name}_{algo}.png")
+        plt.savefig(image_path)
+    plt.show(block=False)
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 def compare_motion(action_list):
@@ -643,9 +740,8 @@ def retrieve_cpg(config):
     cpg_neurons = config.cpg_neurons
     cpg_tau_r = config.cpg_tau_r
     cpg_tau_a = config.cpg_tau_a
-    cpg_amplitude = config.cpg_amplitude
 
-    return cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, cpg_amplitude
+    return cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a
 
 
 def savitzky_golay_smoothing(data, window_length=100, polyorder=3):

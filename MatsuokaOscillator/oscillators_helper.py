@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from triton.language import dtype
 
 
 class PIDController:
@@ -111,38 +112,38 @@ def weight_conversion_walker(weights, device, output=None):
         return weights_tmp
     else:
         # output_tensor = torch.zeros(6, dtype=torch.float32, device=device)
-        w = 0.7
-        o = 0.3
-        # first = w * weights[0] + o * output[0].item()
-        # second = w * weights[1] + o * output[1].item()
-        # third = w * weights[2] + o * output[2].item()
+        first = output[0,0].item()
+        second = output[0,1].item()
+        third = output[1,0].item()
+        fourth = output[1,1].item()
         # output_tensor = torch.tensor(
         #     [first, second, third,
         #      weights[3], weights[4], weights[5]],
         #     dtype=torch.float32, device=device)
 
-        first = w*weights[0] + o*output[0,0].item()
-        second = w*weights[1] + o*output[0,1].item()
-        third = w*weights[3] + o*output[1,0].item()
-        fourth = w*weights[4] + o*output[1,1].item()
+        # first = weights[0]*output[0,0].item()
+        # second = weights[1]*output[0,1].item()
+        # third = weights[3]*output[1,0].item()
+        # fourth = weights[4]*output[1,1].item()
         output_tensor = torch.tensor(
-            [first,second, weights[2],
+            [first, second, weights[2],
              third, fourth, weights[5]],
             dtype=torch.float32, device=device)
+
 
         return output_tensor
 
 
 def weight_conversion_humanoid(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[5], weights[9], weights[6], weights[10]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[5], weights[6], weights[9], weights[10]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
-        output_tensor = weights
-        output_tensor[5] = output[0, 0]
-        output_tensor[6] = output[0, 1]
-        output_tensor[9] = output[1, 0]
-        output_tensor[10] = output[1, 1]
+        output_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
+        output_tensor[5] = output[0, 0].item()
+        output_tensor[6] = output[0, 1].item()
+        output_tensor[9] = output[1, 0].item()
+        output_tensor[10] = output[1, 1].item()
         return output_tensor
 
 

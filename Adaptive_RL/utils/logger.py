@@ -15,9 +15,6 @@ class Logger:
     """Logger used to display and save logs, and save experiment configs."""
 
     def __init__(self, path=None, width=60, config=None, progress=False):
-        self.last_epoch_time = None
-        self.console_formats = None
-        self.final_keys = None
         self.path = path or str(time.time())
         self.log_file_path = os.path.join(self.path, 'log.csv')
         self.progress=progress

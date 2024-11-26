@@ -48,8 +48,8 @@ def parse_args():
     # CPG Hyperparameters
     parser.add_argument('--cpg_oscillators', type=int, default=2, help='Number of CPG oscillators.')
     parser.add_argument('--cpg_neurons', type=int, default=2, help='Number of CPG neurons.')
-    parser.add_argument('--cpg_tau_r', type=float, default=1.0, help='tau r for CPG')
-    parser.add_argument('--cpg_tau_a', type=float, default=12.0, help='tau a for CPG')
+    parser.add_argument('--cpg_tau_r', type=float, default=32.0, help='tau r for CPG')
+    parser.add_argument('--cpg_tau_a', type=float, default=96.0, help='tau a for CPG')
 
     return parser.parse_args()
 
@@ -57,7 +57,7 @@ def parse_args():
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
-        cpg_neurons=2, cpg_tau_r=1.0, cpg_tau_a=6.0, progress=False):
+        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False):
     """
     :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
@@ -117,13 +117,14 @@ def train_agent(
         _environment = Adaptive_RL.Gym(environment)
     cpg_model = None
     if cpg_flag:
-        amplitude = _environment.action_space.high
-        min_value = _environment.action_space.low
+        amplitude = max(_environment.action_space.high)
+        min_value = min(_environment.action_space.low)
         cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
                                           da=_environment.action_space.shape[0],
-                                          neuron_number=cpg_neurons, hh=hh, max_value=amplitude, min_value=min_value)
+                                          neuron_number=cpg_neurons, hh=hh, max_value=amplitude, min_value=min_value,
+                                          tau_a=cpg_tau_a, tau_r=cpg_tau_r)
         print(cpg_model.print_characteristics())
-    _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
+        _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
     environment = Adaptive_RL.parallelize.distribute(
         lambda: _environment, parallel, sequential)
     environment.initialize() if parallel > 1 else 0
@@ -157,6 +158,7 @@ def train_agent(
                        save_path=checkpoint_folder)
     # Train.
     trainer.run()
+    agent = trainer.agent
     return agent
 
 
@@ -282,8 +284,8 @@ if __name__ == "__main__":
 
         cpg_model = None
         if cpg_flag:
-            max_value = env.action_space.high
-            min_value = env.action_space.low
+            max_value = env.action_space.high + cpg_oscillator*cpg_neurons
+            min_value = env.action_space.low + cpg_oscillator*cpg_neurons
             cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillator,
                                               da=env.action_space.shape[0],
                                               neuron_number=cpg_neurons, max_value=max_value, min_value=min_value, hh=hh)
