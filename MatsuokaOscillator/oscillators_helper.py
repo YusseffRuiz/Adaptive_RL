@@ -111,20 +111,10 @@ def weight_conversion_walker(weights, device, output=None):
         weights_tmp = torch.tensor([weights[0], weights[1], weights[3], weights[4]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
-        # output_tensor = torch.zeros(6, dtype=torch.float32, device=device)
         first = output[0,0].item()
         second = output[0,1].item()
         third = output[1,0].item()
         fourth = output[1,1].item()
-        # output_tensor = torch.tensor(
-        #     [first, second, third,
-        #      weights[3], weights[4], weights[5]],
-        #     dtype=torch.float32, device=device)
-
-        # first = weights[0]*output[0,0].item()
-        # second = weights[1]*output[0,1].item()
-        # third = weights[3]*output[1,0].item()
-        # fourth = weights[4]*output[1,1].item()
         output_tensor = torch.tensor(
             [first, second, weights[2],
              third, fourth, weights[5]],

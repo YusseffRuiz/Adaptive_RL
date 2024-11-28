@@ -12,7 +12,6 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 def get_last_checkpoint(path, best=True):
     arguments_path = os.path.join(path, 'config.yaml')
     path = os.path.join(path, 'checkpoints')
-    print(arguments_path)
     checkpoint_folder = path
     # List all the checkpoints.
     checkpoint_ids = []

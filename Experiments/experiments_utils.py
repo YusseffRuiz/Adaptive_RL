@@ -6,8 +6,6 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-
-from fontTools.unicodedata import block
 from sklearn.metrics import mean_squared_error
 import os
 from scipy.signal import savgol_filter
@@ -97,8 +95,6 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
         done = False
         episode_reward = 0
         cnt = 0
-        error = []
-        cntrl = []
         phases_1 = []
         phases_2 = []
         while not done:
@@ -109,8 +105,8 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
                 else:
                     action = env.action_space.sample()
             obs, reward, done, info, *_ = env.step(action)
-            phase_1 = obs[1]
-            phase_2 = obs[4]
+            phase_1 = obs[0]
+            phase_2 = obs[3]
             # phase_1, phase_2 = env.get_error_data()
             phases_1.append(phase_1)
             phases_2.append(phase_2)
@@ -124,20 +120,23 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        # plot_phase(np.array(error), algorithm)
         plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
-        # plot_phase(np.array(cntrl), algorithm)
         total_rewards.append(episode_reward)
         print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
 
 
-def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, duration=1500, env_name=None, deterministic=False):
+def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, duration=1500, env_name=None, deterministic=False, cpg=False):
     save_folder = f"Experiments/{env_name}/images"
     action_dim = len(env.action_space.sample())
+    if cpg:
+        action_dim = env.da
     successful_episodes = 0
-    max_attempts_per_episode = 10  # Maximum retries per episode
+    max_attempts_per_episode = 50  # Maximum retries per episode
+    min_reward = 400
+    if alg == "PPO" or alg == "PPO-CPG":
+        min_reward = 100
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -155,7 +154,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
         success = False
         while not success and attempts < max_attempts_per_episode:
             attempts += 1
-            print(f"Starting episode {successful_episodes + 1}, attempt {attempts}")
+            # print(f"Starting episode {successful_episodes + 1}, attempt {attempts}")
             if alg == "random":
                 obs = env.reset()
             else:
@@ -210,7 +209,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 ep_energy.append(step_energy * assistance_value)
 
             # Check success criteria
-            if reward >= 200:  # Successful episode
+            if reward >= min_reward:  # Successful episode
                 success = True
                 successful_episodes += 1
                 total_distance.append(position)
@@ -224,8 +223,6 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 total_accelerations.append(np.array(ep_acceleration))
                 total_error.append(np.array(ep_error))
                 print(f"Episode {successful_episodes} successful with reward {reward:.2f}")
-            else:
-                print(f"Episode failed with reward {reward:.2f}")
 
         if not success:
             print(f"Failed to achieve success for episode {successful_episodes + 1} after {attempts} attempts.")
@@ -250,18 +247,17 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
     print(f"Average Speed and Distance over {episodes_num} episodes: {velocity_total:.2f} m/s with "
           f"total energy: {average_energy:.2f} Joules per meter, travelled {average_distance:.2f} meters")
-    # joints = separate_joints(total_joint_angles, action_dim)
+    joints = np.array(separate_joints(total_joint_angles, action_dim))
     # joints_vel = separate_joints(total_velocity_angles, action_dim)
     # joints_torque = separate_joints(total_torques, action_dim)
-
-    os.makedirs(save_folder, exist_ok=True)
-
     results_dict = {
         'velocity': total_velocity,
         'reward': total_rewards,
         'distance': total_distance,
         'phase_error': total_error,
+        'total_energy': total_energy,
         'energy': average_energy,
+        'joints': joints,
     }
 
     return results_dict
@@ -396,10 +392,10 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
     - lags: Time lags used in the cross-correlation.
     - cross_corr: Cross-correlation values.
     """
-    data1 = cut_values_at_zero(data1)
-    data2 = cut_values_at_zero(data2)
     data1 = np.mean(data1, axis=0)
     data2 = np.mean(data2, axis=0)
+    data1 = cut_values_at_zero(data1)
+    data2 = cut_values_at_zero(data2)
     cross_corr = np.correlate(data1 - np.mean(data1), data2 - np.mean(data2), mode='full')
     cross_corr /= np.max(cross_corr)  # Normalize
     lags = np.arange(-len(data1) + 1, len(data1))
@@ -424,9 +420,12 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
         image_path = os.path.join(save_folder, "CrossCorrelation.png")
         plt.savefig(image_path)
         plt.show(block=False)
+        plt.waitforbuttonpress()
         plt.close()
     else:
-        plt.show()
+        plt.show(block=False)
+        plt.waitforbuttonpress()
+        plt.close()
 
 
 def get_data(info):
@@ -479,22 +478,19 @@ def separate_joints(joint_list, action_dim):
         left_knee = joint_list[:, :, 4]  # Extract left knee
         left_ankle = joint_list[:, :, 5]  # Extract left ankle
 
-        return np.array(right_hip), np.array(right_knee), np.array(left_hip), np.array(left_knee)
+        return (np.array(right_hip), np.array(right_knee), np.array(right_ankle), np.array(left_hip),
+                np.array(left_knee), np.array(left_ankle))
     elif action_dim == 17:  #Humanoid-v4
         right_hip = joint_list[:, :, 2]  # Extract right hip
         right_knee = joint_list[:, :, 3]  # Extract right knee
         left_hip = joint_list[:, :, 6]  # Extract left hip
         left_knee = joint_list[:, :, 7]  # Extract left knee
 
-        return np.array(right_hip), np.array(right_knee), np.array(left_hip), np.array(left_knee)
+        return np.array(right_hip), np.array(right_knee), None, np.array(left_hip), np.array(left_knee), None
     elif action_dim == 70:
         pass
     else:
-        right_hip = joint_list[:, :, 0]  # Extract right hip
-        right_knee = joint_list[:, :, 1]  # Extract right knee
-        left_hip = joint_list[:, :, 2]  # Extract left hip
-        left_knee = joint_list[:, :, 3]  # Extract left knee
-        return np.array(right_hip), np.array(right_knee), np.array(left_hip), np.array(left_knee)
+        print("Not implemented Action Space")
 
 
 def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None,  x_data=None, y_axis_name="data", x_axis_name="time", title="data plot over time", save_folder=None, figure_name="figure"):
@@ -563,7 +559,9 @@ def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="D
         image_path = os.path.join(save_folder, f"{figure_name}.png")
         plt.savefig(image_path)
     # Show the plot
-    plt.show()
+    plt.show(block=False)
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 def get_acceleration(previous_velocity, velocity, dt):
@@ -574,32 +572,53 @@ def get_jerk(acceleration, dt):
     return np.diff(acceleration)/dt
 
 
-def get_energy_per_meter(total_energy, total_distance, average, save_folder=None, plot_fig=False):
-    energy_per_episode = np.sum(total_energy, axis=1)  # Sum energy across steps for each episode
-
+def get_energy_per_meter(total_energy, total_distance, average, save_folder=None, plot_fig=False, x_range=(0,40), norm=False):
+    episodes, time_steps = total_energy.shape
+    energy_per_episode = np.sum(total_energy, axis=1)  # Sum energy across steps for each
+    time_steps = total_energy.shape[1]
     # Calculate energy per meter for each episode
     energy_per_meter = energy_per_episode / total_distance  # This gives the energy per meter for each episode
+    # Normalize values for better visualization
+    energy_per_meter_normalized = (energy_per_meter - np.min(energy_per_meter)) / (
+            np.max(energy_per_meter) - np.min(energy_per_meter)
+    )
+    distance_normalized = (total_distance - np.min(total_distance)) / (
+            np.max(total_distance) - np.min(total_distance)
+    )
+    # Create a heatmap-compatible 2D array
+    if norm:
+        data = np.vstack((distance_normalized, energy_per_meter_normalized)).T
+    else:
+        data = np.vstack((total_distance, energy_per_meter)).T
 
     # Now we can plot Joules (y-axis) vs Meters (x-axis)
     if plot_fig:
         plt.figure()
-        sns.kdeplot(x=total_distance, y=energy_per_meter, cmap="Reds", fill=True, thresh=0, levels=100)
-
+        sns.kdeplot(
+            x=data[:, 0],
+            y=data[:, 1],
+            cmap="inferno",
+            fill=True,
+            cbar=True,
+        )
         # Label the axes and add a title
         plt.xlabel('Distance (Meters)')
         plt.ylabel('Energy (Joules)')
-        plt.title(f'Energy Consumption per Meter, Average: {average:.2f} J/m')
+        plt.title(f'Energy Consumption per Meter, Average: {np.mean(energy_per_meter):.2f} J/m')
+        plt.xlim(x_range)
         plt.grid(True)
         if save_folder is not None:
             # Define the path where the image will be saved
             image_path = os.path.join(save_folder, "EnergyPerMeter.png")
             plt.savefig(image_path)
         # Show the plot
-        plt.show()
+        plt.show(block=False)
+        plt.waitforbuttonpress()
+        plt.close()
     return energy_per_meter
 
 
-def compare_velocity(velocities, algos, dt=1, save_folder=None):
+def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False):
     """
         Compare the velocity between two models (RL and RL + CPG) and plot them.
         :param velocities:
@@ -610,29 +629,29 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None):
     colors = plt.colormaps.get_cmap("tab20").colors  # Default color cycle
 
     for i, velocity in enumerate(velocities):
+        # Cut the arrays after the first occurrence of zero
         mean_velocity = np.mean(velocity, axis=0)
         mean_velocity = savitzky_golay_smoothing(mean_velocity)
+        mean_velocity = cut_values_at_zero(mean_velocity)
         std_dev = np.std(velocity, axis=0)
         var = np.var(velocity, axis=0)
 
-        # Find where mean_velocity starts having 0s and cut values from there
-        first_zero_index = np.argmax(mean_velocity == 0) if np.any(mean_velocity == 0) else len(mean_velocity)
-
-        # Cut the arrays after the first occurrence of zero
-        mean_velocity = mean_velocity[:first_zero_index]
-        std_dev = std_dev[:first_zero_index]
-        var = var[:first_zero_index]
+        #Make shape of arrays the same
+        zero_index = len(mean_velocity)
+        std_dev = std_dev[:zero_index]
+        var = var[:zero_index]
 
         # Get the max values for the deviations
         max_std = np.max(std_dev)
         max_var = np.max(var)
+        max_vel = np.max(mean_velocity)
 
         # Adjust time array to match the length of the truncated velocities
         time = np.arange(0, len(mean_velocity) * dt, dt)
 
         # Plot velocities
         label_tmp = algos[i]
-        plt.plot(time, mean_velocity, label=label_tmp, color=colors[i])
+        plt.plot(time, mean_velocity, label=label_tmp + f" max vel: {max_vel:.2f} m/s", color=colors[i])
 
         # Shade the area for standard deviation (mean ± std_dev)
         plt.fill_between(time, mean_velocity - std_dev, mean_velocity + std_dev, color=colors[i], alpha=0.3,
@@ -652,7 +671,8 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None):
         image_path = os.path.join(save_folder, f"velocities_comparison.png")
         plt.savefig(image_path)
     plt.show(block=False)
-    plt.waitforbuttonpress()
+    if not auto_close:
+        plt.waitforbuttonpress()
     plt.close()
 
 
@@ -672,18 +692,107 @@ def plot_phase(data, data2=None, algo=None, save_folder=None, name="Phase Error"
     plt.close()
 
 
-def compare_motion(action_list):
-    pass
+def compare_motion(data):
+    """
+        Perform cross-correlation for multiple algorithms and plot all in the same graph.
+
+        Parameters:
+        - data_algos: List of tuples [(data1_algo1, data2_algo1), (data1_algo2, data2_algo2), ...].
+                      Each tuple contains two arrays: one for the right leg and one for the left leg.
+        - algos: List of algorithm names corresponding to the data_algos.
+        - joint: Name of the joint being analyzed (e.g., "hip").
+        - save_folder: Folder to save the plot (optional).
+
+        Returns:
+        - best_algo: The algorithm name with the lowest RMSE.
+        """
+    plt.figure(figsize=(10, 6))
+    data1 = data[0]
+    data2 = data[1]
+    # Process data
+    data1 = np.mean(data1, axis=0)
+    data2 = np.mean(data2, axis=0)
+    data1 = cut_values_at_zero(data1)
+    data2 = cut_values_at_zero(data2)
+
+    # Calculate cross-correlation
+    cross_corr = np.correlate(data1 - np.mean(data1), data2 - np.mean(data2), mode='full')
+    cross_corr /= np.max(cross_corr)  # Normalize
+    lags = np.arange(-len(data1) + 1, len(data1))
+
+    # Find peak correlation and its lag
+    peak_correlation = np.max(cross_corr)
+    lag_of_peak = lags[np.argmax(cross_corr)]
+
+    # Calculate RMSE
+    rmse = np.sqrt(mean_squared_error(data1, data2))
 
 
-def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_folder=None):
+    return lags, cross_corr, rmse, lag_of_peak
+
+
+def compare_motion_pair(results, algos, save_folder=None, auto_close=False):
+    """
+    Compare autocorrelations between normal and CPG-based algorithms on the same graph,
+    and plot separate graphs for other algorithm comparisons.
+
+    Parameters:
+    - algos_compare: List of algorithm names including CPG variants (e.g., ['PPO', 'PPO-CPG', ...]).
+    - results: Dictionary containing the results for each algorithm.
+    - joint: Joint name for the comparison (default: "Hip").
+    - save_folder: Folder to save plots (optional).
+    """
+    normal_vs_cpg_pairs = []
+    others = []
+
+    # Separate algorithms into "Normal vs CPG" pairs and others
+    for algo in algos:
+        if '-CPG' in algo:
+            base_algo = algo.replace('-CPG', '')
+            if base_algo in algos:
+                normal_vs_cpg_pairs.append((base_algo, algo))
+        else:
+            if not any(f"{algo}-CPG" == a for a in algos):
+                others.append(algo)
+    # Compare "Normal vs CPG" for each algorithm
+    for base_algo, cpg_algo in normal_vs_cpg_pairs:
+        if base_algo in results and cpg_algo in results:
+            # Get joint data
+            base_values = results[base_algo]['joints'][0], results[base_algo]['joints'][3]
+            cpg_values = results[cpg_algo]['joints'][0], results[cpg_algo]['joints'][3]
+
+            # Calculate cross-correlation for each
+            lags_base, cross_corr_base, rmse_base, peak_lag_base = compare_motion(base_values)
+            lags_cpg, cross_corr_cpg, rmse_cpg, peak_lag_cpg = compare_motion(cpg_values)
+
+            # Plot autocorrelation comparison
+            plt.plot(lags_base, cross_corr_base, label=f"{base_algo} (RMSE: {rmse_base:.2f}, Lag: {peak_lag_base})")
+            plt.plot(lags_cpg, cross_corr_cpg, label=f"{cpg_algo} (RMSE: {rmse_cpg:.2f}, Lag: {peak_lag_cpg})")
+            plt.xlabel('Lag')
+            plt.ylabel('Cross-Correlation')
+            plt.title(f"Autocorrelation Comparison: {base_algo} vs {cpg_algo}")
+            plt.legend()
+            if save_folder:
+                plt.savefig(f"{save_folder}/{base_algo}_vs_{cpg_algo}_autocorrelation.png")
+            plt.show(block=False)
+            if not auto_close:
+                plt.waitforbuttonpress()
+            plt.close()
+
+
+def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_folder=None, auto_close=False):
     # Total energy consumption for each algorithm
 
     # Create a bar chart
-    total_values= [np.mean(dat) for dat in data]
+    total_values = [np.mean(dat) for dat in data]
+    std_values = [np.std(dat) for dat in data]
 
     plt.figure(figsize=(8, 5))
-    plt.bar(algos, total_values, color=plt.colormaps.get_cmap("tab20").colors)
+    bars = plt.bar(algos, total_values, yerr=std_values, capsize=5, color=plt.colormaps.get_cmap("tab20").colors, label="Mean ± Std")
+    # Add precise value labels on top of each bar
+    for bar, val in zip(bars, total_values):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+                 f"{val:.2f}", ha='center', va='bottom', fontsize=10)
     plt.xlabel('Algorithm')
     plt.ylabel(f'Total {data_name} ({units})')
     plt.title(f'Total {data_name} Comparison')
@@ -692,11 +801,12 @@ def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_f
         image_path = os.path.join(save_folder, f"{data_name}.png")
         plt.savefig(image_path)
     plt.show(block=False)
-    plt.waitforbuttonpress()
+    if not auto_close:
+        plt.waitforbuttonpress()
     plt.close()
 
 
-def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save_folder=None):
+def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save_folder=None, auto_close=False):
     """
         Compare the distance traveled between multiple models and plot them using horizontal bars.
 
@@ -708,13 +818,14 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
         """
     # Calculate the mean distance for each model
     mean_data = [np.mean(dat) for dat in data]
+    std_data = [np.std(dat) for dat in data]
     colors = plt.colormaps.get_cmap("tab20").colors  # Default color cycle
 
     # Create a horizontal bar chart
     plt.figure(figsize=(10, 6))
     y_positions = np.arange(len(algos))
 
-    plt.barh(y_positions, mean_data, color=colors)
+    plt.barh(y_positions, mean_data, color=colors, xerr=std_data, capsize=5, )
     plt.yticks(y_positions, algos)
     plt.xlabel(f'Total {data_name} ({units})')
     plt.ylabel('Algorithm')
@@ -730,7 +841,8 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
         plt.savefig(image_path)
 
     plt.show(block=False)
-    plt.waitforbuttonpress()
+    if not auto_close:
+        plt.waitforbuttonpress()
     plt.close()
 
 
@@ -750,5 +862,30 @@ def savitzky_golay_smoothing(data, window_length=100, polyorder=3):
 
 def cut_values_at_zero(data):
     # Return the array already cut with only valid values
-    first_zero_index = np.argmax(data == 0) if np.any(data == 0) else len(data)
-    return data[:first_zero_index]
+    def cut_values_single_dim(data):
+        # Find where the values are zero
+        zero_mask = (data == 0)
+        zero_threshold = 10
+        # Find where continuous zeros begin
+        continuous_zero_start = -1
+        for i in range(len(zero_mask) - zero_threshold + 1):
+            if all(zero_mask[i:i + zero_threshold]):
+                continuous_zero_start = i
+                break
+        if continuous_zero_start == -1:
+            # No continuous zeros found; return the original array
+            return data
+        else:
+            return data[:continuous_zero_start]
+
+    if data.ndim == 1:
+        # Single-dimensional input
+        return cut_values_single_dim(data)
+    elif data.ndim > 1:
+        # Multi-dimensional input: Apply truncation to each row
+        output = []
+        for i in range(len(data)):
+            output.append(cut_values_single_dim(data[i]))
+        return np.array(output)
+    else:
+        raise ValueError("Input array must be at least 1-dimensional.")

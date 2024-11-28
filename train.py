@@ -105,8 +105,8 @@ def train_agent(
             # Loading CPG configuration
             cpg_oscillators = config.cpg_oscillators or cpg_oscillators
             cpg_neurons = config.cpg_neurons or cpg_neurons
-            # cpg_tau_r = config.cpg_tau_r or cpg_tau_r
-            # cpg_tau_a = config.cpg_tau_a or cpg_tau_a
+            cpg_tau_r = config.cpg_tau_r or cpg_tau_r
+            cpg_tau_a = config.cpg_tau_a or cpg_tau_a
 
             print("Loaded Config")
 
@@ -206,8 +206,8 @@ if __name__ == "__main__":
         # CPG params
         cpg_oscillator = cpg_args['num_oscillators']
         cpg_neurons = cpg_args['neuron_number']
-        # cpg_tau_r = cpg_args['tau_r'] or 1.0
-        # cpg_tau_a = cpg_args['tau_a'] or 6.0
+        cpg_tau_r = cpg_args['tau_r'] or 32.0
+        cpg_tau_a = cpg_args['tau_a'] or 96.0
 
         max_steps = int(float(args['training']['steps']))
 
@@ -234,8 +234,8 @@ if __name__ == "__main__":
         # cpg
         cpg_oscillator = args.cpg_oscillators
         cpg_neurons = args.cpg_neurons
-        # cpg_tau_r = args.cpg_tau_r
-        # cpg_tau_a = args.cpg_tau_a
+        cpg_tau_r = args.cpg_tau_r
+        cpg_tau_a = args.cpg_tau_a
     epochs = int(max_steps / 1000)
     save_steps = int(max_steps / 500)
 
@@ -290,6 +290,9 @@ if __name__ == "__main__":
                                               da=env.action_space.shape[0],
                                               neuron_number=cpg_neurons, max_value=max_value, min_value=min_value, hh=hh)
         env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+
+        path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=False)
+        agent, _ = Adaptive_RL.load_agent(config, path, env)
 
         print("Starting Evaluation")
         trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)

@@ -3,6 +3,7 @@ import Experiments.experiments_utils as trials
 import warnings
 import argparse
 import os
+import numpy as np
 from Adaptive_RL import logger
 from MatsuokaOscillator import MatsuokaNetworkWithNN
 
@@ -91,93 +92,127 @@ def main_running():
 
         elif experiment:
             print("Initialize Experiment")
-            algos = ['PPO', 'MPO', 'DDPG', 'SAC']
-            algos_compare = []  # Adding CPG and HH neurons
-            for algo in algos:
-                algos_compare.append(algo)
-                algos_compare.append(f'{algo}-CPG')
-                algos_compare.append(f'{algo}-CPG-HH')
-            trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare,
-                                                                  save_folder=args.f)
-            results = {}
+            if algorithm == 'RANDOM':
+                algos = ['PPO', 'MPO', 'DDPG', 'SAC']
+                algos_compare = []  # Adding CPG and HH neurons
+                for algo in algos:
+                    algos_compare.append(algo)
+                    algos_compare.append(f'{algo}-CPG')
+                    algos_compare.append(f'{algo}-CPG-HH')
+                trained_algorithms = trials.search_trained_algorithms(env_name=env_name, algorithms_list=algos_compare,
+                                                                      save_folder=args.f)
+                results = {}
 
-            for algo, algo_folder in trained_algorithms:
-                logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
+                for algo, algo_folder in trained_algorithms:
+                    logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
 
-                if 'myo' in env_name:
-                    env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array", max_episode_steps=1000)
-                else:
-                    env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
-                save_folder = f"{env_name}/{algo}"
-
-                # Get the best checkpoint path and config for the algorithm
-                path = os.path.join(algo_folder, 'logs')
-                checkpoint_path, config, _ = Adaptive_RL.get_last_checkpoint(path=path)
-
-                if 'CPG' in algo:
-                    cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
-
-                    amplitude = max(env.action_space.high)
-                    min_value = min(env.action_space.low)
-                    cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
-                                                      da=env.action_space.shape[0],
-                                                      neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                                      tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
-                    env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
-
-                if checkpoint_path and config:
-                    # Load the agent using the config and checkpoint path
-                    agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
-
-                    result = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
-                                               env_name=save_folder)
-                    results[algo] = result
-
-                else:
-                    logger.log(f"Checking Folder: {checkpoint_path}")
-                    logger.log(f"Folder for {algo} does not exist. Skipping.")
-
-            # Perform comparisons using the collected results
-            if len(results) >= 2:
-                velocities = []
-                energies = []
-                distances = []
-                rewards = []
-
-                algos_found = []
-
-                for algo in algos_compare:
-                    # Collect the velocity, energy, distance, and reward from the results
-                    if algo in results:
-                        algos_found.append(algo)
-                        velocities.append(results[algo]['velocity'])
-                        energies.append(results[algo]['energy'])
-                        distances.append(results[algo]['distance'])
-                        rewards.append(results[algo]['reward'])
+                    if 'myo' in env_name:
+                        env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array", max_episode_steps=1000)
                     else:
-                        # Handle the case where a result does not exist (e.g., missing algorithm folder)
-                        print(f"Results for {algo} not found. Skipping.")
+                        env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
+                    save_folder = f"{env_name}/{algo}"
 
-                # Create the directory to save results if it doesn't exist
-                save_exp = "Experiments/Results_own/"
-                os.makedirs(save_exp, exist_ok=True)
+                    # Get the best checkpoint path and config for the algorithm
+                    path = os.path.join(algo_folder, 'logs')
+                    checkpoint_path, config, _ = Adaptive_RL.get_last_checkpoint(path=path, best=(not last_checkpoint))
+                    cpg_flag=False
+                    if 'CPG' in algo:
+                        cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
 
-                # Perform velocity comparison
-                trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp)
+                        amplitude = max(env.action_space.high)
+                        min_value = min(env.action_space.low)
+                        cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                                          da=env.action_space.shape[0],
+                                                          neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                                          tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
+                        env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
+                        cpg_flag=True
 
-                # Perform energy comparison using vertical bars
-                trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
-                                        units="Joules/s", save_folder=save_exp)
+                    if checkpoint_path and config:
+                        # Load the agent using the config and checkpoint path
+                        agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
 
-                # Perform distance comparison using horizontal bars
-                trials.compare_horizontal(data=distances, algos=algos_found, data_name="Distance Travelled",
-                                          units="Mts", save_folder=save_exp)
+                        result = trials.evaluate_experiment(agent, env, algo, episodes_num=num_episodes,
+                                                   env_name=save_folder, cpg=cpg_flag)
+                        results[algo] = result
 
-                # Perform reward comparison using vertical bars
-                trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp)
+                    else:
+                        logger.log(f"Checking Folder: {checkpoint_path}")
+                        logger.log(f"Folder for {algo} does not exist. Skipping.")
 
+                # Perform comparisons using the collected results
+                if len(results) >= 2:
+                    velocities = []
+                    energies = []
+                    distances = []
+                    rewards = []
+                    joints = []
+
+                    algos_found = []
+
+                    for algo in algos_compare:
+                        # Collect the velocity, energy, distance, and reward from the results
+                        if algo in results:
+                            algos_found.append(algo)
+                            velocities.append(results[algo]['velocity'])
+                            energies.append(results[algo]['energy'])
+                            distances.append(results[algo]['distance'])
+                            rewards.append(results[algo]['reward'])
+                            tmp_joints_r = results[algo]['joints'][0]
+                            tmp_joints_l = results[algo]['joints'][3]
+                            joints.append((tmp_joints_r, tmp_joints_l))
+                        else:
+                            # Handle the case where a result does not exist (e.g., missing algorithm folder)
+                            print(f"Results for {algo} not found. Skipping.")
+
+                    # Create the directory to save results if it doesn't exist
+                    save_exp = "Experiments/Results_own/"
+                    os.makedirs(save_exp, exist_ok=True)
+
+                    # Perform velocity comparison
+                    trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp, auto_close=True)
+
+                    # Perform energy comparison using vertical bars
+                    trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
+                                            units="Joules/s", save_folder=save_exp, auto_close=True)
+
+                    # Perform distance comparison using horizontal bars
+                    trials.compare_horizontal(data=distances, algos=algos_found, data_name="Distance Travelled",
+                                              units="Mts", save_folder=save_exp, auto_close=True)
+
+                    # Perform reward comparison using vertical bars
+                    trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=True)
+
+                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=True)
+
+                else:
+                    print(f"Not enough results found for comparison. Expected at least 2 results.")
             else:
-                print(f"Not enough results found for comparison. Expected at least 2 results.")
+                logger.log(f"\nRunning experiments for algorithm: {algorithm} in folder: {path}")
+                agent, _ = Adaptive_RL.load_agent(config, path, env)
+                results = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
+                                           env_name=save_folder, cpg=cpg_flag)
+                velocities=results['velocity']
+                energies=results['total_energy']
+                avg_energies = results['energy']
+                distances=results['distance']
+                rewards=results['reward']
+                joints=results['joints']
+                right_hip_movement=joints[0]
+                left_hip_movement=joints[3]
+                right_hip_movement_clean = np.mean(right_hip_movement, axis=0)
+                left_hip_movement_clean = np.mean(left_hip_movement, axis=0)
+                right_hip_movement_clean = trials.cut_values_at_zero(right_hip_movement_clean)
+                left_hip_movement_clean = trials.cut_values_at_zero(left_hip_movement_clean)
+
+                trials.get_energy_per_meter(energies, distances, avg_energies, plot_fig=True)
+                trials.statistical_analysis(data=velocities, y_axis_name="Velocity(m/s)", x_axis_name="Time",
+                                            title="Velocity across time", mean_calc=True)
+                trials.plot_phase(right_hip_movement_clean, left_hip_movement_clean, algo=algorithm, name="Joint Motion")
+                trials.perform_autocorrelation(right_hip_movement, left_hip_movement, "Hips")
+                print("Reward: ", np.mean(rewards), "\n Distance: ", np.mean(distances))
+
+
 
         else:
             """ load network weights """

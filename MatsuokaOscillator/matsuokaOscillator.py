@@ -410,16 +410,16 @@ class MatsuokaNetworkWithNN:
             weights_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, device=self.device)
             feedback_y = self.oscillators_feedback(self.oscillator.y)
             self.oscillator.u = self.update_u(feed_u, feedback_y)
-            # self.oscillator.u = 5*torch.sigmoid(self.oscillator.u + feedback_y)
+            # print(self.oscillator.u)
             self.oscillator.y += feedback_y
             oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
         # Outputs assignation
         # right = params_input[0:2]*(self.oscillator.y[0,:].cpu().numpy())
         # left = params_input[3:5]*self.oscillator.y[1,:].cpu().numpy()
-        right = self.oscillator.phase[0,0].cpu().numpy()
-        left = self.oscillator.phase[1,0].cpu().numpy()
-        [self.phase_1, self.phase_2] = right, left
+        # right = self.oscillator.phase[0,0].cpu().numpy()
+        # left = self.oscillator.phase[1,0].cpu().numpy()
+        # [self.phase_1, self.phase_2] = right, left
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
         output_actions = torch.clamp(output_actions, min=self.min_value, max=self.max_value)
@@ -589,7 +589,9 @@ class MatsuokaNetworkWithNN:
                                                           keepdim=True) - adaptive_feedback_strength * outputs
         return feedback
 
-    def update_u(self, u_value, feed_y):
+    def update_u(self, u_value, feed_y=None):
+        if feed_y is None:
+            feed_y = 0
         if self.num_oscillators>1:
             return (torch.tensor(u_value.reshape(self.num_oscillators, self.neuron_number), device=self.device) +
                     feed_y)
