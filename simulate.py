@@ -169,9 +169,6 @@ def main_running():
                     save_exp = "Experiments/Results_own/"
                     os.makedirs(save_exp, exist_ok=True)
 
-                    # Perform velocity comparison
-                    trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp, auto_close=True)
-
                     # Perform energy comparison using vertical bars
                     trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
                                             units="Joules/s", save_folder=save_exp, auto_close=True)
@@ -184,6 +181,10 @@ def main_running():
                     trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=True)
 
                     trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=True)
+
+                    # Perform velocity comparison
+                    trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp,
+                                            auto_close=True)
 
                 else:
                     print(f"Not enough results found for comparison. Expected at least 2 results.")
@@ -219,7 +220,7 @@ def main_running():
             agent, _ = Adaptive_RL.load_agent(config, path, env)
 
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
-            trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=True)
+            trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=False)
     else:
         algorithm = "random"
         if cpg_flag:

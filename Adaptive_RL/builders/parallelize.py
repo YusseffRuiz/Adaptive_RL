@@ -4,19 +4,22 @@ Using MP to parallelize training.
 All methods to start computation
 """
 
-import multiprocess as mp
+import torch.multiprocessing as mp
 import numpy as np
 
 
 class Sequential:
     """Environment Vectorization"""
 
-    def __init__(self, environment_builder, max_episode_steps, workers):
-        self.environments = [environment_builder() for _ in range(workers)]
+    def __init__(self, environment, max_episode_steps, workers):
+        self.environments = [environment for _ in range(workers)]
         self.max_episode_steps = max_episode_steps
         self.observation_space = self.environments[0].observation_space
         self.action_space = self.environments[0].action_space
         self.name = self.environments[0].name
+
+    def initialize(self):
+        pass
 
     def start(self):
         """
@@ -93,11 +96,26 @@ class Sequential:
         if mode != 'human':
             return np.array(outs)
 
+def proc(action_pipe, index, environment, max_episode_steps, workers_per_group, output_queue):
+    """Process holding a sequential group of environments.
+    Parameters:
+    :param action_pipe: actions being processed
+    :param index: number of observation being processed to the queue
+    """
+    envs = Sequential(environment, max_episode_steps, workers_per_group)
+
+    observations = envs.start()
+    output_queue.put((index, observations))
+
+    while True:
+        actions = action_pipe.recv()
+        out = envs.step(actions)
+        output_queue.put((index, out))
 
 class Parallel:
     """A group of sequential environments used in parallel for GPU performance."""
 
-    def __init__(self, environment_builder, worker_groups, workers_per_group, max_episode_steps):
+    def __init__(self, environment, worker_groups, workers_per_group, max_episode_steps):
         """
         Initializes a Parallel group of environments that are executed in parallel.
 
@@ -107,7 +125,7 @@ class Parallel:
         - workers_per_group (int): The number of environments (or workers) per group.
         - max_episode_steps (int): The maximum number of steps allowed per episode.
         """
-        self.environment_builder = environment_builder
+        self.environment = environment
         self.worker_groups = worker_groups
         self.workers_per_group = workers_per_group
         self.max_episode_steps = max_episode_steps
@@ -117,23 +135,8 @@ class Parallel:
         Initializes the parallel environments by creating processes for each group of workers.
         """
         mp.set_start_method('spawn')
-        def proc(action_pipe, index):
-            """Process holding a sequential group of environments.
-            Parameters:
-            :param action_pipe: actions being processed
-            :param index: number of observation being processed to the queue
-            """
-            envs = Sequential(self.environment_builder, self.max_episode_steps, self.workers_per_group)
 
-            observations = envs.start()
-            self.output_queue.put((index, observations))
-
-            while True:
-                actions = action_pipe.recv()
-                out = envs.step(actions)
-                self.output_queue.put((index, out))
-
-        dummy_environment = self.environment_builder()
+        dummy_environment = self.environment
         self.observation_space = dummy_environment.observation_space
         self.action_space = dummy_environment.action_space
         del dummy_environment
@@ -145,7 +148,9 @@ class Parallel:
         for i in range(self.worker_groups):
             pipe, worker_end = mp.Pipe()
             self.action_pipes.append(pipe)
-            process = mp.Process(target=proc, args=(worker_end, i))
+            process = mp.Process(target=proc, args=(worker_end, i, self.environment, self.max_episode_steps,
+                                                    self.workers_per_group, self.output_queue)
+            )
             process.daemon = True
             process.start()
 
@@ -212,7 +217,7 @@ class Parallel:
         return observations, infos
 
 
-def distribute(environment_builder, worker_groups=1, workers_per_group=1):
+def distribute(environment, worker_groups=1, workers_per_group=1):
     """
     Distributes workers over parallel and sequential groups.
 
@@ -224,17 +229,16 @@ def distribute(environment_builder, worker_groups=1, workers_per_group=1):
     Returns:
     - Parallel or Sequential: An instance of either the Parallel or Sequential class based on the number of worker groups.
     """
-    dummy_environment = environment_builder()
+    dummy_environment = environment
     max_episode_steps = dummy_environment.max_episode_steps
     del dummy_environment
-
     if worker_groups < 2:
         return Sequential(
-            environment_builder, max_episode_steps=max_episode_steps,
+            environment, max_episode_steps=max_episode_steps,
             workers=workers_per_group)
 
     return Parallel(
-        environment_builder, worker_groups=worker_groups,
+        environment, worker_groups=worker_groups,
         workers_per_group=workers_per_group,
         max_episode_steps=max_episode_steps)
 

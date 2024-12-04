@@ -71,12 +71,12 @@ python train.py --algorithm SAC --env Humanoid-v4 --steps 1000000
 Plot every algorithm found inside a folder (you can specify only a specific folder):
 
 ```
-python plot.py --path training/ --x_axis "train/seconds" --x_label "Time (s)" --title "Training Progress"
+python plot.py --path training/ --x_axis "train/seconds" --x_label "Time (s)"  --title "Training Progress" --name "DDPG-Training"
 ```
 
 To plot multiple folders:
 ```
-python plot.py --path training/Humanoid-v4-{SAC,CPG-SAC,DDPG,CPG-DDPG} --x_axis "train/seconds" --x_label "Time (s)" --title "Training Progress"
+python plot.py --path training/Walker2d/Walker2d-v4-DDPG training/Walker2d/Walker2d-v4-DDPG-CPG/ --x_axis "train/seconds" --y_axis "test/episode_score/mean" --title "Training Progress DDPG" --name "DDPG-Training"
 ```
 
 Test an Agent:
