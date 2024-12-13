@@ -296,10 +296,10 @@ if __name__ == "__main__":
         env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
         path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=False)
-        agent, _ = Adaptive_RL.load_agent(config, path, env)
+        agent_test, _ = Adaptive_RL.load_agent(config, path, env)
 
-        print("Starting Evaluation")
-        trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
+        # print("Starting Evaluation")
+        trials.evaluate(agent_test, env, algorithm=training_algorithm, num_episodes=3)
 
         env.close()
     else:

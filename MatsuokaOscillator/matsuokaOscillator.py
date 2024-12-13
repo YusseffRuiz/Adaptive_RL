@@ -34,14 +34,13 @@ class MatsuokaNetwork:
         Each oscillator's output is fed as input to the next oscillator.
         """
         outputs = torch.clone(self.oscillators.y)
-        outputs = torch.roll(outputs, shifts=1, dims=1)
+        outputs = torch.roll(outputs, shifts=1, dims=0)
         # Update each oscillator with the output of the previous one
         # Feedback mechanism
-        adaptive_feedback_strength = 0.1*torch.sigmoid(torch.mean(outputs))
-        feedback = adaptive_feedback_strength * torch.sum(outputs, dim=0, keepdim=True) - adaptive_feedback_strength * outputs
-        # print(feedback)
+        adaptive_feedback_strength = self.feedback_strength*torch.sigmoid(torch.mean(outputs))
+        feedback = adaptive_feedback_strength * torch.sum(outputs, dim=1, keepdim=True) - adaptive_feedback_strength * outputs
         self.oscillators.u += outputs*feedback
-        self.oscillators.y += feedback
+        # self.oscillators.y += feedback
         self.oscillators.step(weights=weights)
 
 
@@ -103,11 +102,11 @@ class MatsuokaOscillator:
         self.dt = dt
         self.excitation_signal = 2.5
         self.escalated_number = 0.1
-        self.w = 0.6 # Relevance of direct weights
-        self.o = 0.4 # Relevance of Oscillator
+        self.w = 0.7 # Relevance of direct weights
+        self.o = 0.3 # Relevance of Oscillator
         self.x = torch.arange(-self.param_dim/2, self.param_dim/2, 1, dtype=torch.float32).to(self.device)
         if isMuscular:
-            self.activation_function = torch.sigmoid
+            self.activation_function = torch.tanh
         else:
             self.activation_function = torch.tanh
 
@@ -189,7 +188,7 @@ class MatsuokaOscillator:
         else:
             assert len(weights_tmp) == self.param_dim, \
                 f"Weights must be a matrix with size equal to the number of neurons, right now is {self.weights.shape}."
-            y_prev = torch.roll(self.y, shifts=1)
+            y_prev = torch.roll(self.y, shifts=1, dims=0)
         dx = (-self.x - weights_tmp * y_prev + self.u - self.beta * self.z) * self.dt / self.tau_r
 
         self.x += dx
@@ -215,7 +214,7 @@ class MatsuokaOscillator:
         """
 
         y_output = torch.zeros(steps, self.neuron_number, dtype=torch.float32, device=self.device)
-
+        y = weights_seq[0]
         for i in range(steps):
             weights = weights_seq[i] if weights_seq is not None else None
             y = self.step(weights=weights)
@@ -301,7 +300,7 @@ class MatsuokaNetworkWithNN:
         self.num_oscillators = num_oscillators
         self.neuron_number = neuron_number
         self.action_dim = da
-        self.feedback_strength = 0.5
+        self.feedback_strength = 0.3
         self.parameters_dimension = self.num_oscillators * self.neuron_number
         self.min_value = np.min(min_value)
         self.max_value = np.max(max_value)
@@ -362,7 +361,9 @@ class MatsuokaNetworkWithNN:
         y_prev, feedback_y = self.oscillators_feedback(self.oscillator.y)
         self.oscillator.u = self.update_u(feed_u, feedback_y, y_prev)
         if self.isMuscular:
-            oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=None)
+            weights_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim,
+                                                             device=self.device)
+            oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
             """
             # Get the feedbacks
@@ -437,6 +438,8 @@ class MatsuokaNetworkWithNN:
                                                              device=self.device)
             oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
+        self.osc_output = oscillators_output.cpu().numpy()
+
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
         # output_actions = torch.clamp(output_actions, min=self.min_value, max=self.max_value)
@@ -483,7 +486,7 @@ class MatsuokaNetworkWithNN:
                                           amplitude=amplitude,
                                           neuron_number=neuron_number, tau_r=tau_r,
                                           tau_a=tau_a, isMuscular=isMuscular)
-            oscillators.w = 0
+            oscillators.w = 0 # Making sure, it outputs literally the value of oscillators
             oscillators.o = 1
             return oscillators, None
 
@@ -561,8 +564,11 @@ class MatsuokaNetworkWithNN:
         outputs = torch.roll(outputs_prev, shifts=1, dims=0)
         # Update each oscillator with the output of the previous one
         adaptive_feedback_strength = self.feedback_strength * torch.sigmoid(torch.mean(outputs))
-        feedback = adaptive_feedback_strength * torch.sum(outputs, dim=0,
+        if self.num_oscillators > 1:
+            feedback = adaptive_feedback_strength * torch.sum(outputs, dim=1,
                                                           keepdim=True) - adaptive_feedback_strength * outputs
+        else:
+            feedback = adaptive_feedback_strength * torch.sum(outputs) - adaptive_feedback_strength * outputs
         return outputs, feedback
 
     def update_u(self, u_value, feed_y=None, y_prev=None):

@@ -82,6 +82,10 @@ class CPGWrapper(gym.Wrapper):
             self.cpg_model.reset()
         return self.env.reset(**kwargs)
 
+    def get_osc_output(self):
+        # 2 values: left and right
+        return self.cpg_model.osc_output
+
 
 def env_selection(action_dim, weights, params, obs):
     """
@@ -108,19 +112,20 @@ def env_selection(action_dim, weights, params, obs):
 
 
 def weight_conversion_walker(observation):
-    return np.concatenate([observation[0:2], observation[3:5]])
+    return np.array([observation[3], observation[5]])  #[observation[0], observation[2],
 
 
 def weight_conversion_humanoid(obs):
-    return np.array([obs[10], obs[11], obs[14], obs[15]])
+    return np.array([obs[10], obs[14]])
 
 
 # Define muscle groups and their corresponding neurons/oscillators
 def weight_conversion_myoleg(obs):
-    hip_flex_r = np.array([obs[5], obs[21]])  # Feedback to muscles controlling hip
-    knee_rot_r = np.array([obs[9], obs[26]])  # Feedback to muscles controlling knee
+    # hip_flex_r = np.array([obs[5], obs[21]])  # Feedback to muscles controlling hip
+    # knee_rot_r = np.array([obs[9], obs[26]])  # Feedback to muscles controlling knee
     ankle_flex_r = np.array([obs[17], obs[29]])  # Feedback to muscles controlling ankle right
 
-    u_feedback = np.concatenate([hip_flex_r, knee_rot_r, ankle_flex_r])
+    # u_feedback = np.concatenate([hip_flex_r, ankle_flex_r])
+    u_feedback = np.array(ankle_flex_r)
     return u_feedback
 
