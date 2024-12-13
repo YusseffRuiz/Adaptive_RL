@@ -107,9 +107,9 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             obs, reward, done, info, *_ = env.step(action)
             # phase_1 = obs[0]
             # phase_2 = obs[3]
-            # phase_1, phase_2 = env.get_error_data()
-            # phases_1.append(phase_1)
-            # phases_2.append(phase_2)
+            phase_1, phase_2 = env.get_osc_output()
+            phases_1.append(phase_1)
+            phases_2.append(phase_2)
             # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
@@ -120,7 +120,7 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        # plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
+        plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
         total_rewards.append(episode_reward)
         print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
