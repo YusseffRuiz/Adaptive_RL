@@ -33,7 +33,6 @@ class MPO(base_agent.BaseAgent):
                                                                   gradient_clip=gradient_clip)
         self.critic_updater = neural_networks.ExpectedSARSA(lr_critic=lr_critic)
         self.decay_lr = decay_lr
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.config = {
             "agent": "MPO",
             "lr_actor": lr_actor,
@@ -70,12 +69,12 @@ class MPO(base_agent.BaseAgent):
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store the last transitions in the replay.
-        self.replay_buffer.push(observations=utils.to_tensor(self.last_observations, self.device),
-                                actions=utils.to_tensor(self.last_actions, self.device),
-                                next_observations=utils.to_tensor(observations, self.device),
-                                rewards=utils.to_tensor(rewards, self.device),
-                                resets=utils.to_tensor(resets, self.device),
-                                terminations=utils.to_tensor(terminations, self.device))
+        self.replay_buffer.push(observations=self.last_observations,
+                                actions=self.last_actions,
+                                next_observations=observations,
+                                rewards=rewards,
+                                resets=resets,
+                                terminations=terminations)
         # Prepare to update the normalizers.
         if self.model.observation_normalizer:
             self.model.observation_normalizer.record(self.last_observations)
@@ -106,7 +105,7 @@ class MPO(base_agent.BaseAgent):
 
         # Update both the actor and the critic multiple times.
         for batch in self.replay_buffer.get(*keys, steps=steps):
-            # Batch data is already in tensor form, so no need to convert again
+            batch = {k: torch.as_tensor(v) for k, v in batch.items()}
             infos = self._update_actor_critic(**batch)
 
             for key in infos:

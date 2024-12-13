@@ -60,7 +60,7 @@ class ReplayBuffer:
             - kwargs (dict): Experience data to store (e.g., 'observations', 'actions', 'rewards', etc.).
         """
         if 'terminations' in kwargs:
-            continuations = torch.tensor((1 - kwargs['terminations']), dtype=torch.float).to(self.device)
+            continuations = np.float32(1 - kwargs['terminations'])
             kwargs['discounts'] = continuations * self.discount_factor
 
         # Create the named buffers.
@@ -69,12 +69,12 @@ class ReplayBuffer:
             self.max_size = self.full_max_size // self.num_workers
             self.buffers = {}  # Initialize buffers as a dictionary
             for key, val in kwargs.items():
-                shape = (self.max_size,) + torch.tensor(val).shape
-                self.buffers[key] = torch.full(shape, float('nan'), dtype=torch.float32, device=self.device)
+                shape = (self.max_size,) + np.array(val).shape
+                self.buffers[key] = np.full(shape, np.nan, dtype=np.float32)
 
         # Store the new values.
         for key, val in kwargs.items():
-            self.buffers[key][self.index] = torch.tensor(val, dtype=torch.float32, device=self.device)
+            self.buffers[key][self.index] = val
 
         # Accumulate values for n-step returns.
         if self.return_steps > 1:
@@ -93,7 +93,7 @@ class ReplayBuffer:
         next_observations = kwargs['next_observations']
         discounts = kwargs['discounts']
         # Convert masks to a torch tensor (same as your buffers)
-        masks = torch.ones(self.num_workers, dtype=torch.float32, device=self.device)
+        masks = np.ones(self.num_workers, dtype=np.float32)
 
         for i in range(min(self.size, self.return_steps - 1)):
             index = (self.index - i - 1) % self.max_size
@@ -127,7 +127,7 @@ class ReplayBuffer:
         """
         for _ in range(self.batch_iterations):
             total_size = self.size * self.num_workers
-            indices = torch.randint(0, total_size, (self.batch_size,), device=self.device)
+            indices = self.np_random.randint(total_size, size=self.batch_size)
             rows = indices // self.num_workers
             columns = indices % self.num_workers
             yield {k: self.buffers[k][rows, columns] for k in keys}

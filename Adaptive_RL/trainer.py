@@ -106,12 +106,12 @@ class Trainer:
                 epoch_time = current_time - last_epoch_time
                 # sps = epoch_steps / epoch_time
                 logger.store('train/episodes', episodes)
-                # logger.store('train/epochs', epochs)
+                logger.store('train/epochs', epochs)
                 logger.store('train/seconds', current_time - start_time)
                 logger.store('train/epoch_seconds', epoch_time)
                 logger.store('train/epoch_steps', epoch_steps)
                 logger.store('train/steps', self.steps)
-                # logger.store('train/worker_steps', self.steps // num_workers)
+                logger.store('train/worker_steps', self.steps // num_workers)
                 # logger.store('train/steps_per_second', sps)
                 logger.dump()
                 last_epoch_time = time.time()

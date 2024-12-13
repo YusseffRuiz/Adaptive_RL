@@ -105,6 +105,7 @@ def matsuoka_main():
                 oscillator = HHMatsuokaOscillator(neuron_number=neuron_number, tau_r=tau_r, tau_a=tau_a,
                                             beta=beta, dt=dt,
                                             num_oscillators=num_oscillators, amplitude=amplitude)
+            oscillator.w = 0
             y_output = oscillator.run(steps=steps, weights_seq=weights_seq)
 
             y_output = y_output.cpu().numpy()
@@ -128,7 +129,7 @@ def matsuoka_main():
             else:
                 coupled_system = HHMatsuokaNetwork(num_oscillators=num_oscillators, neuron_number=neuron_number, tau_r=tau_r,
                                              tau_a=tau_a, beta=beta, dt=dt, amplitude=amplitude)
-
+            coupled_system.oscillators.w = 0
             y_output = coupled_system.run(steps=steps)
 
             # Coupled Oscillators

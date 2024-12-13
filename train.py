@@ -1,6 +1,5 @@
 import torch
-
-from MatsuokaOscillator import MatsuokaNetworkWithNN, HHMatsuokaNetwork
+from MatsuokaOscillator import MatsuokaNetworkWithNN
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO
 import Experiments.experiments_utils as trials
@@ -57,7 +56,7 @@ def parse_args():
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
-        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False):
+        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False, device='cuda'):
     """
     :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
@@ -75,13 +74,18 @@ def train_agent(
     :param seed: random seed
     :param checkpoint: checkpoint to verify existence.
     :param path: Path where the experiment to check for checkpoints
+    :param device:
     """
-    if torch.cuda.is_available():
-        device = torch.cuda.get_device_name(torch.cuda.current_device())
-        torch.set_default_device('cuda')
-        print(f"Runing with {device}")
+    if device == 'cuda':
+        if torch.cuda.is_available():
+            device = torch.cuda.get_device_name(torch.cuda.current_device())
+            torch.set_default_device('cuda')
+            print(f"Runing with {device}")
+        else:
+            print("Running with CPU, no CUDA available")
     else:
         print("Running with CPU")
+
     args = dict(locals())
     # Create a new dictionary excluding 'agent'
 
@@ -105,8 +109,8 @@ def train_agent(
             # Loading CPG configuration
             cpg_oscillators = config.cpg_oscillators or cpg_oscillators
             cpg_neurons = config.cpg_neurons or cpg_neurons
-            # cpg_tau_r = config.cpg_tau_r or cpg_tau_r
-            # cpg_tau_a = config.cpg_tau_a or cpg_tau_a
+            cpg_tau_r = config.cpg_tau_r or cpg_tau_r
+            cpg_tau_a = config.cpg_tau_a or cpg_tau_a
 
             print("Loaded Config")
 
@@ -125,13 +129,13 @@ def train_agent(
                                           tau_a=cpg_tau_a, tau_r=cpg_tau_r)
         print(cpg_model.print_characteristics())
         _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
-    environment = Adaptive_RL.parallelize.distribute(
-        lambda: _environment, parallel, sequential)
-    environment.initialize() if parallel > 1 else 0
+    environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential)
+    environment.initialize()
 
     # Build the testing environment.
-    test_environment = Adaptive_RL.parallelize.distribute(
-        lambda: _environment)
+    test_environment = Adaptive_RL.parallelize.distribute(_environment)
+    test_environment.initialize()
+
 
     # Build the agent.
     if not agent:
@@ -206,8 +210,8 @@ if __name__ == "__main__":
         # CPG params
         cpg_oscillator = cpg_args['num_oscillators']
         cpg_neurons = cpg_args['neuron_number']
-        # cpg_tau_r = cpg_args['tau_r'] or 1.0
-        # cpg_tau_a = cpg_args['tau_a'] or 6.0
+        cpg_tau_r = cpg_args['tau_r'] or 32.0
+        cpg_tau_a = cpg_args['tau_a'] or 96.0
 
         max_steps = int(float(args['training']['steps']))
 
@@ -234,8 +238,8 @@ if __name__ == "__main__":
         # cpg
         cpg_oscillator = args.cpg_oscillators
         cpg_neurons = args.cpg_neurons
-        # cpg_tau_r = args.cpg_tau_r
-        # cpg_tau_a = args.cpg_tau_a
+        cpg_tau_r = args.cpg_tau_r
+        cpg_tau_a = args.cpg_tau_a
     epochs = int(max_steps / 1000)
     save_steps = int(max_steps / 500)
 
@@ -270,11 +274,11 @@ if __name__ == "__main__":
     if agent is not None:
         agent = train_agent(agent=agent,
                             environment=env_name,
-                            sequential=1, parallel=1,
+                            sequential=sequential, parallel=parallel,
                             trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
                                                         early_stopping=early_stopping),
                             path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
-                            cpg_neurons=cpg_neurons, cpg_tau_a=96.0, cpg_tau_r=32.0)
+                            cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r)
 
 
         if 'myo' in env_name:
@@ -291,8 +295,11 @@ if __name__ == "__main__":
                                               neuron_number=cpg_neurons, max_value=max_value, min_value=min_value, hh=hh)
         env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
 
-        print("Starting Evaluation")
-        trials.evaluate(agent, env, algorithm=training_algorithm, num_episodes=5)
+        path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=False)
+        agent_test, _ = Adaptive_RL.load_agent(config, path, env)
+
+        # print("Starting Evaluation")
+        trials.evaluate(agent_test, env, algorithm=training_algorithm, num_episodes=3)
 
         env.close()
     else:

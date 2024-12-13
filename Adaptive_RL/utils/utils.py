@@ -12,7 +12,6 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 def get_last_checkpoint(path, best=True):
     arguments_path = os.path.join(path, 'config.yaml')
     path = os.path.join(path, 'checkpoints')
-    print(arguments_path)
     checkpoint_folder = path
     # List all the checkpoints.
     checkpoint_ids = []
@@ -175,7 +174,7 @@ def record_video(env, video_folder, alg, agent, env_name):
         os.remove(extra_file)
 
 
-def to_tensor(data, device):
+def to_tensor(data):
     """
     Check if the input data is already a tensor. If not, convert it to a tensor.
     Parameters:
@@ -185,7 +184,7 @@ def to_tensor(data, device):
     """
     if torch.is_tensor(data):
         return data
-    return torch.as_tensor(data, dtype=torch.float32, device=device)
+    return torch.as_tensor(data, dtype=torch.float32)
 
 
 def file_to_hyperparameters(file_path, env, algorithm):
