@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import torch
+from Cython.Shadow import numeric
 
 from MatsuokaOscillator import oscillators_helper
 from MatsuokaOscillator.hudgkin_huxley import HHNeuron
@@ -68,7 +69,7 @@ class MatsuokaNetwork:
 class MatsuokaOscillator:
     def __init__(self, num_oscillators=1, amplitude=1.0, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=1.0,
                  tau_a=6.0, weights=None, u=None,
-                 beta=2.5, dt=2.0, isMuscular=False, device="cuda"):
+                 beta=2.5, dt=2.0, isMuscular=False, device="cpu"):
         """
                 Initialize the Matsuoka Oscillator.
 
@@ -154,6 +155,7 @@ class MatsuokaOscillator:
         else:
             assert len(u) == neuron_number, "Input array u - (fire rate) must match the number of neurons."
             self.u = torch.tensor(u, dtype=torch.float32, device=self.device)
+        self.output = self.amplitude * self.y
 
     def step(self, weights=None, weights_origin=None):
         """
@@ -183,7 +185,6 @@ class MatsuokaOscillator:
 
         if self.num_oscillators > 1:
             weights_tmp = weights_tmp.reshape(self.num_oscillators, self.neuron_number)
-            weights_origin = weights_origin.reshape(self.num_oscillators, self.neuron_number)
             y_prev = torch.roll(self.y, shifts=1, dims=1)
         else:
             assert len(weights_tmp) == self.param_dim, \
@@ -203,7 +204,10 @@ class MatsuokaOscillator:
             self.y = self.o * self.activation_function(self.x - torch.mean(self.x)) + self.w * weights_origin
         else:
             self.y = self.activation_function(self.x - torch.mean(self.x))
-        return self.amplitude*self.y
+
+        self.y = torch.clamp(self.y, min=-self.amplitude, max=self.amplitude)
+        self.output = self.amplitude*self.y
+        return self.output
 
     def run(self, steps=1000, weights_seq=None):
         """
@@ -323,7 +327,9 @@ class MatsuokaNetworkWithNN:
 
         self.oscillator, self.oscillator_2 = self.initialize_oscillator(
             action_dim=self.action_dim,neuron_number=neuron_number, num_oscillators=num_oscillators,
-            amplitude=amplitude, tau_r=tau_r, tau_a=tau_a, hh=hh, isMuscular=self.isMuscular)
+            amplitude=amplitude, tau_r=tau_r, tau_a=tau_a, hh=hh, isMuscular=self.isMuscular, device=self.device)
+
+        self.osc_output = self.oscillator.output
         self.characteristics = {
             "num_oscillators": num_oscillators,
             "neuron_number": neuron_number,
@@ -438,19 +444,22 @@ class MatsuokaNetworkWithNN:
                                                              device=self.device)
             oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
-        self.osc_output = oscillators_output.cpu().numpy()
+        self.osc_output = oscillators_output
 
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
         # output_actions = torch.clamp(output_actions, min=self.min_value, max=self.max_value)
-        output_actions = np.clip(output_actions, a_min=self.min_value, a_max=self.max_value)
+        output_actions = np.clip(output_actions, a_min=self.min_value, a_max=self.max_value*2.88)  #Except Ankle Motor
+        # Assert to check for NaNs in output_actions
+        assert not np.any(np.isnan(output_actions)), f"Error: output_actions contains NaN values! {output_actions}"
 
         return output_actions
 
 
     @staticmethod
     def initialize_oscillator(action_dim, initial_phase=0.0, amplitude=1.0,
-                              neuron_number=2, num_oscillators=None, tau_r=16.0, tau_a=48.0, hh=False, isMuscular=False):
+                              neuron_number=2, num_oscillators=None, tau_r=16.0, tau_a=48.0, hh=False, isMuscular=False,
+                              device='cpu'):
         """ Initialize multiple oscillators with different frequencies.
         Must be modified and improved to match higher size Action spaces, multiple oscillators with different muscle groups.
         """
@@ -461,7 +470,7 @@ class MatsuokaNetworkWithNN:
                                                   initial_phase=initial_phase,
                                                   amplitude=amplitude,
                                                   neuron_number=neuron_number, tau_r=tau_r,
-                                                  tau_a=tau_a)
+                                                  tau_a=tau_a, device=device)
             return oscillators, None
         if action_dim == 70:  # Creation of different size oscillators
             # Define the frequencies for different muscle groups (example values, can be tuned)
@@ -485,7 +494,7 @@ class MatsuokaNetworkWithNN:
                                           initial_phase=initial_phase, frequency=1.0,
                                           amplitude=amplitude,
                                           neuron_number=neuron_number, tau_r=tau_r,
-                                          tau_a=tau_a, isMuscular=isMuscular)
+                                          tau_a=tau_a, isMuscular=isMuscular, device=device)
             oscillators.w = 0 # Making sure, it outputs literally the value of oscillators
             oscillators.o = 1
             return oscillators, None
@@ -553,7 +562,7 @@ class MatsuokaNetworkWithNN:
                                                   initial_phase=initial_phase, frequency=frequency_right,
                                                   amplitude=amplitude,
                                                   neuron_number=neuron_number, tau_r=tau_r,
-                                                  tau_a=tau_a)
+                                                  tau_a=tau_a, device=device)
 
             return oscillators, None
 
@@ -582,6 +591,13 @@ class MatsuokaNetworkWithNN:
 
     def reset(self):
         self.oscillator.reset_oscillator()
+
+    def get_osc_states(self):
+        numpy_output = self.osc_output.cpu().numpy()
+        # Flatten if it is not already 1D
+        if numpy_output.ndim > 1:
+            numpy_output = numpy_output.flatten()
+        return numpy_output
 
 
 class HHMatsuokaOscillator(MatsuokaOscillator):

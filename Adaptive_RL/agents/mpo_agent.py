@@ -16,7 +16,7 @@ class MPO(base_agent.BaseAgent):
         self, hidden_size=256, hidden_layers=2, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
-            action_penalization=True, gradient_clip=0.1, batch_size=128, return_step=5, steps_between_batches=20,
+            action_penalization=True, gradient_clip=0.1, batch_size=256, return_step=3, steps_between_batches=30,
             replay_buffer_size=10e5, decay_lr=0.98):
         self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,

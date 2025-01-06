@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import DeterministicPolicyGradient, DeterministicQLearning
@@ -30,13 +31,12 @@ class DDPG(base_agent.BaseAgent):
             "replay_buffer_size": replay_buffer_size,
         }
         self.model = neural_networks.ActorCriticDeterministic(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
-        self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
+        self.replay = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
                                           size=int(replay_buffer_size))
         self.exploration = explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
         self.actor_updater = DeterministicPolicyGradient(lr_actor=learning_rate)
         self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.decay_lr = decay_lr
 
     def initialize(self, observation_space, action_space, seed=None):
@@ -59,7 +59,21 @@ class DDPG(base_agent.BaseAgent):
     def update(self, observations, rewards, resets, terminations, steps):
         # Verify if data is tensor already, otherwise, change it
         # Store last transition in the replay buffer
-        self.replay_buffer.push(observations=self.last_observations, actions=self.last_actions,
+        # Store the last transitions in the replay.
+        if np.any(np.isnan(observations)):
+            print("NaN detected in output_actions:", observations)
+            observations = np.ones_like(observations)
+        if np.any(np.isnan(rewards)):
+            print("NaN detected in output_rewards:", rewards)
+            rewards = np.ones_like(rewards)
+        if np.any(np.isnan(resets)):
+            print("NaN detected in output_resets:", resets)
+            resets = np.ones_like(resets)
+        if np.any(np.isnan(terminations)):
+            print("NaN detected in output_terminations:", terminations)
+            terminations = np.ones_like(terminations)
+
+        self.replay.push(observations=self.last_observations, actions=self.last_actions,
                                 next_observations=observations, rewards=rewards, resets=resets,
                                 terminations=terminations)
 
@@ -69,7 +83,7 @@ class DDPG(base_agent.BaseAgent):
         if self.model.return_normalizer:
             self.model.return_normalizer.record(rewards)
 
-        if self.replay_buffer.ready(steps):
+        if self.replay.ready(steps):
             self._update(steps)
 
         self.exploration.update(resets)
@@ -79,7 +93,7 @@ class DDPG(base_agent.BaseAgent):
             self.critic_updater.lr_critic *= self.decay_lr
 
 
-    def test_step(self, observations):
+    def test_step(self, observations, steps=None):
         # Greedy actions for testing.
         return self._greedy_actions(observations).cpu().numpy()
 
@@ -97,7 +111,7 @@ class DDPG(base_agent.BaseAgent):
                 'discounts')
 
         # Update both the actor and the critic multiple times.
-        for batch in self.replay_buffer.get(*keys, steps=steps):
+        for batch in self.replay.get(*keys, steps=steps):
             # Batch data is already in tensor form, so no need to convert again
             batch = {k: torch.as_tensor(v) for k, v in batch.items()}
             infos = self._update_actor_critic(**batch)

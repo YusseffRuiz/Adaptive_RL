@@ -10,9 +10,9 @@ class ReplayBuffer:
     """
 
     def __init__(
-        self, size=int(1e5), return_steps=1, batch_iterations=20,
-        batch_size=256, discount_factor=0.99, steps_before_batches=int(1e3),
-        steps_between_batches=50, device='cuda'
+        self, size=int(1e6), return_steps=3, batch_iterations=30,
+        batch_size=100, discount_factor=0.99, steps_before_batches=1e4,
+        steps_between_batches=50
     ):
         """
         Initializes the replay buffer.
@@ -26,7 +26,6 @@ class ReplayBuffer:
             - steps_between_batches (int): Minimum number of steps between consecutive batch sampling operations.
         """
 
-        self.device = device
         self.full_max_size = int(size)
         self.return_steps = return_steps
         self.batch_iterations = batch_iterations

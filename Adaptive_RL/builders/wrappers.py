@@ -84,7 +84,8 @@ class CPGWrapper(gym.Wrapper):
 
     def get_osc_output(self):
         # 2 values: left and right
-        return self.cpg_model.osc_output
+        return self.cpg_model.get_osc_states()
+
 
 
 def env_selection(action_dim, weights, params, obs):
@@ -123,9 +124,9 @@ def weight_conversion_humanoid(obs):
 def weight_conversion_myoleg(obs):
     # hip_flex_r = np.array([obs[5], obs[21]])  # Feedback to muscles controlling hip
     # knee_rot_r = np.array([obs[9], obs[26]])  # Feedback to muscles controlling knee
-    ankle_flex_r = np.array([obs[17], obs[29]])  # Feedback to muscles controlling ankle right
+    # ankle_flex_r = np.array([obs[17], obs[29]])  # Feedback to muscles controlling ankle right
 
     # u_feedback = np.concatenate([hip_flex_r, ankle_flex_r])
-    u_feedback = np.array(ankle_flex_r)
-    return u_feedback
+    # u_feedback = np.array(ankle_flex_r)
+    return obs
 
