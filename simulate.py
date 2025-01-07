@@ -209,7 +209,7 @@ def main_running():
         else:
             """ load network weights """
             agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag)
-
+            print(env.cpg_model.print_characteristics())
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=False)
     else:

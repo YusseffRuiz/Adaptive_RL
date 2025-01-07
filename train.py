@@ -277,8 +277,10 @@ if __name__ == "__main__":
         agent = None
 
     if agent is not None:
-        if muscle_flag:
-            agent = Adaptive_RL.dep_agents.dep_factory(3, agent)()
+        if muscle_flag:  # Modify if using MPO
+            agent = Adaptive_RL.dep_agents.dep_factory(3, agent)(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
+                    hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
+                    learning_starts=learning_starts)
         agent = train_agent(agent=agent,
                             environment=env_name,
                             sequential=sequential, parallel=parallel,
