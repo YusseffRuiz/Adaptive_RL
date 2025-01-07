@@ -27,7 +27,9 @@ def parse_args():
     parser.add_argument('--V', action='store_true', default=False, help='Whether to record video.')
     parser.add_argument('--R', action='store_true', default=False, help='Run random actions.')
     parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
+    parser.add_argument('--muscle_flag', action='store_true', default=False, help='Use muscle configuration')
     parser.add_argument('--last_check', action='store_true', default=False, help='Load last Checkpoint, not best.')
+
 
     return parser.parse_args()
 
@@ -44,6 +46,7 @@ def main_running():
 
     video_record = args.V
     experiment = args.E
+    muscle_flag = args.muscle_flag
     cpg_flag = args.cpg
     experiment_number = args.experiment_number
     hh = args.hh
@@ -73,17 +76,11 @@ def main_running():
 
         if cpg_flag:
             cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
-            amplitude = env.action_space.high
-            min_value = env.action_space.low
-            cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
-                                              da=env.action_space.shape[0],
-                                              neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                              tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
-            env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+            env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
 
         if video_record:
             video_folder = "videos/" + env_name
-            agent, _ = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag=muscle_flag)
 
             print("Video Recording with loaded weights from {} algorithm, path: {}".format(algorithm, path))
 
@@ -92,7 +89,7 @@ def main_running():
 
         elif experiment:
             print("Initialize Experiment")
-            if algorithm == 'RANDOM':
+            if algorithm == 'RANDOM':  # Meaning to compare all saved data
                 algos = ['PPO', 'MPO', 'DDPG', 'SAC']
                 algos_compare = []  # Adding CPG and HH neurons
                 for algo in algos:
@@ -118,19 +115,13 @@ def main_running():
                     cpg_flag=False
                     if 'CPG' in algo:
                         cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
-
-                        amplitude = max(env.action_space.high)
-                        min_value = min(env.action_space.low)
-                        cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
-                                                          da=env.action_space.shape[0],
-                                                          neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                                          tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
-                        env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
+                        env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,
+                                                   cpg_tau_a, hh)
                         cpg_flag=True
 
                     if checkpoint_path and config:
                         # Load the agent using the config and checkpoint path
-                        agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
+                        agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env, muscle_flag=muscle_flag)
 
                         result = trials.evaluate_experiment(agent, env, algo, episodes_num=num_episodes,
                                                    env_name=save_folder, cpg=cpg_flag)
@@ -190,7 +181,7 @@ def main_running():
                     print(f"Not enough results found for comparison. Expected at least 2 results.")
             else:
                 logger.log(f"\nRunning experiments for algorithm: {algorithm} in folder: {path}")
-                agent, _ = Adaptive_RL.load_agent(config, path, env)
+                agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag=muscle_flag)
                 results = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
                                            env_name=save_folder, cpg=cpg_flag)
                 velocities=results['velocity']
@@ -217,7 +208,7 @@ def main_running():
 
         else:
             """ load network weights """
-            agent, _ = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag)
 
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=False)

@@ -1,7 +1,6 @@
 import math
 import numpy as np
 import torch
-from Cython.Shadow import numeric
 
 from MatsuokaOscillator import oscillators_helper
 from MatsuokaOscillator.hudgkin_huxley import HHNeuron

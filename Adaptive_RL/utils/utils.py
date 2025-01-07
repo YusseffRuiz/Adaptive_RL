@@ -1,6 +1,9 @@
 import os
 from Adaptive_RL.agents import SAC, PPO, MPO, DDPG
+from Adaptive_RL import CPGWrapper
+from MatsuokaOscillator import MatsuokaNetworkWithNN
 from Adaptive_RL.utils import logger
+from Adaptive_RL.dep_search.dep_agents import dep_factory
 from gymnasium.envs.registration import register
 import yaml
 import argparse
@@ -89,7 +92,7 @@ def load_checkpoint(checkpoint, path):
     return checkpoint_path
 
 
-def load_agent(config, path, env):
+def load_agent(config, path, env, muscle_flag=False):
     if config.agent["agent"] == "DDPG":
         agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
                      learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
@@ -114,10 +117,26 @@ def load_agent(config, path, env):
                     normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
     else:
         agent = None
+    if muscle_flag:
+        agent = dep_factory(3, agent)()
     agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
     step = agent.load(path)
     agent.get_config(print_conf=True)
     return agent, step
+
+
+def wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh):
+    amplitude = max(env.action_space.high)
+    if 'myo' in env_name:
+        min_value = 0
+    else:
+        min_value = min(env.action_space.low)
+    cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                      da=env.action_space.shape[0],
+                                      neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                      tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
+    env = CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
+    return env
 
 
 def record_video(env, video_folder, alg, agent, env_name):

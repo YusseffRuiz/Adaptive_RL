@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import platform
 from playsound import playsound
+import gc
 
 from Adaptive_RL import logger
 
@@ -13,7 +14,7 @@ class Trainer:
 
     def __init__(
         self, steps=int(1e7), epoch_steps=int(2e4), save_steps=int(5e5),
-        test_episodes=5, show_progress=True, replace_checkpoint=False, early_stopping=False,
+        test_episodes=10, show_progress=True, replace_checkpoint=False, early_stopping=False,
     ):
         self.max_steps = steps
         self.epoch_steps = epoch_steps
@@ -27,6 +28,7 @@ class Trainer:
         self.test_environment = None
         self.environment = None
         self.agent = None
+        self.muscle_flag=False
 
         # Early Stop Parameters
         self.best_reward = -float('inf')
@@ -35,12 +37,13 @@ class Trainer:
         self.early_stopping = early_stopping
         self.decay_counter = 0
 
-    def initialize(self, agent, environment, test_environment=None, step_saved=None):
+    def initialize(self, agent, environment, test_environment=None, step_saved=None, muscle_flag=False):
         self.agent = agent
         self.environment = environment
         self.test_environment = test_environment
         if step_saved is not None:
             self.steps = step_saved
+        self.muscle_flag = muscle_flag
 
     def dump_trainer(self):
         trainer_data = {
@@ -58,7 +61,10 @@ class Trainer:
         start_time = last_epoch_time = time.time()
 
         # Start the environments.
-        observations = self.environment.start()
+        if self.muscle_flag:
+            observations, muscle_states = self.environment.start()
+        else:
+            observations = self.environment.start()
         num_workers = len(observations)
         scores = np.zeros(num_workers)
         lengths = np.zeros(num_workers, int)
@@ -67,13 +73,32 @@ class Trainer:
         stop_training = False
 
         while not stop_training:
-            # Select actions.
-            actions = self.agent.step(observations, self.steps)
-            assert not np.isnan(actions.sum())
+            # Select actions, if using DEP, means balance between DEP and RL exploration.
+            if self.muscle_flag:
+                if hasattr(self.agent, "expl"):
+                    greedy_episode = (
+                        not episodes % self.agent.expl.test_episode_every
+                    )
+                else:
+                    greedy_episode = None
+                assert not np.isnan(observations.sum())
+
+                actions = self.agent.step(
+                    observations, self.steps, muscle_states, greedy_episode
+                )
+            else:
+                actions = self.agent.step(observations, self.steps)
+
+            assert not np.isnan(actions).any(), "NaN in actions!"
             logger.store('train/action', actions, stats=True)
 
             # Take a step in the environments.
-            observations, infos = self.environment.step(actions)
+            if self.muscle_flag:
+                observations, muscle_states, infos = self.environment.step(actions)
+                if "env_infos" in infos:
+                    infos.pop("env_infos")
+            else:
+                observations, infos = self.environment.step(actions)
             self.agent.update(**infos, steps=self.steps)
             scores += infos['rewards']
             lengths += 1
@@ -117,8 +142,13 @@ class Trainer:
                 last_epoch_time = time.time()
                 epoch_steps = 0
 
+                # Clear memory
+                gc.collect()
+                torch.cuda.empty_cache()
+
             # End of training.
             stop_training = self.steps >= self.max_steps
+
             # Check if no improvement for 'patience' number of epochs
             if self.no_improvement_counter >= self.patience and self.early_stopping:
                 print(f"Early stopping at epoch {epochs}")
@@ -150,6 +180,10 @@ class Trainer:
                 else:
                     self.no_improvement_counter += 1
 
+                # Clear memory
+                gc.collect()
+                torch.cuda.empty_cache()
+
                 self.save_cycles += 1
                 if self.save_cycles % 10 == 0:  # Saving everything only every 10% of the total training
                     self.save_cycles = 1
@@ -170,8 +204,11 @@ class Trainer:
         """Tests the agent on the test environment."""
 
         # Start the environment.
-        if not hasattr(self, 'test_observations'):
-            self.test_observations = self.test_environment.start()
+        if not hasattr(self.test_environment, 'test_observations'):
+            if self.muscle_flag:
+                self.test_observations, _ = self.test_environment.start()
+            else:
+                self.test_observations = self.test_environment.start()
             assert len(self.test_observations) == 1
 
         # Test loop.
@@ -180,12 +217,15 @@ class Trainer:
 
             while True:
                 # Select an action.
-                actions = self.agent.test_step(self.test_observations)
+                actions = self.agent.test_step(self.test_observations, self.steps)
                 assert not np.isnan(actions.sum())
                 logger.store('test/action', actions, stats=True)
 
                 # Take a step in the environment.
-                self.test_observations, infos = self.test_environment.step(actions)
+                if self.muscle_flag:
+                    self.test_observations,_, infos = self.test_environment.step(actions)
+                else:
+                    self.test_observations, infos = self.test_environment.step(actions)
                 self.agent.test_update(**infos, steps=self.steps)
 
                 score += infos['rewards'][0]

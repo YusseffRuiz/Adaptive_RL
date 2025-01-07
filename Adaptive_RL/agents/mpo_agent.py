@@ -2,7 +2,7 @@ import torch
 from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import MaximumAPosterioriPolicyOptimization
-from Adaptive_RL.utils import ReplayBuffer, utils
+from Adaptive_RL.utils import ReplayBuffer
 
 
 class MPO(base_agent.BaseAgent):

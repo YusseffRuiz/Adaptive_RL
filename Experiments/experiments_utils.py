@@ -90,8 +90,11 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     total_rewards = []
     range_episodes = num_episodes
     mujoco_env = hasattr(env, "sim")
-    for i in range(range_episodes):
+    muscle_flag = hasattr(env, "muscle_states")
+    for step in range(range_episodes):
         obs, *_ = env.reset()
+        if muscle_flag:
+            muscle_states = env.muscle_states
         done = False
         episode_reward = 0
         cnt = 0
@@ -101,15 +104,22 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             cnt += 1
             with torch.no_grad():
                 if algorithm != "random":
-                    action = model.test_step(obs)
+                    if muscle_flag:
+                        action = model.test_step(observations=obs, muscle_states=muscle_states, steps=step)
+                    else:
+                        action = model.test_step(observations=obs, steps=step)
                 else:
                     action = env.action_space.sample()
+            if len(action.shape) > 1:
+                action = action[0, :]
             obs, reward, done, info, *_ = env.step(action)
+            if muscle_flag:
+                muscle_states = env.muscle_states
             # phase_1 = obs[0]
             # phase_2 = obs[3]
-            phase_1, phase_2 = env.get_osc_output()
-            phases_1.append(phase_1)
-            phases_2.append(phase_2)
+            # phase_1, phase_2 = env.get_osc_output()
+            # phases_1.append(phase_1)
+            # phases_2.append(phase_2)
             # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
@@ -120,9 +130,9 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
+        # plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
         total_rewards.append(episode_reward)
-        print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
+        print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
     env.close()
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
@@ -136,6 +146,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     successful_episodes = 0
     max_attempts_per_episode = 50  # Maximum retries per episode
     min_reward = 400
+    muscle_flag = hasattr(env, "muscle_states")
     if alg == "PPO" or alg == "PPO-CPG":
         min_reward = 100
     total_rewards = []
@@ -160,6 +171,8 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 obs = env.reset()
             else:
                 obs, *_ = env.reset()
+            if muscle_flag:
+                muscle_states = env.muscle_states
             lstm_states = None
             reward = 0
             ep_energy = []
@@ -177,7 +190,10 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
 
             for step in range(duration):
                 if alg != "random":
-                    action = agent.test_step(obs)
+                    if muscle_flag:
+                        action = agent.test_step(observations=obs, muscle_states=muscle_states, steps=step)
+                    else:
+                        action = agent.test_step(obs, step=step)
                 else:
                     action, lstm_states = agent.predict(
                         obs,
@@ -185,12 +201,16 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                         episode_start=np.ones((env.num_envs,), dtype=bool),
                         deterministic=deterministic,
                     )
+                if len(action.shape) > 1:
+                    action = action[0, :]
                 if alg == "random":
                     obs, rw, done, info = env.step(action)
                     position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
                 else:
                     obs, rw, done, info, extras = env.step(action)
                     position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras)
+                if muscle_flag:
+                    muscle_states = env.muscle_states
 
                 if done and not fall:
                     ending_step = step
