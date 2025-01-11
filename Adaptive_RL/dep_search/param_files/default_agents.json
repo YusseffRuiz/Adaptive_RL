@@ -1,20 +1,20 @@
 {
 
   "DEP":{
-        "test_episode_every": 3,
-        "kappa": 1169.7,
-        "tau": 40,
-        "buffer_size": 200,
-        "bias_rate": 0.002,
-        "s4avg": 2,
-        "time_dist": 5,
-        "normalization":  "independent",
-        "sensor_delay": 1,
-        "regularization": 32,
-        "with_learning": true,
-        "q_norm_selector": "l2",
-        "intervention_length": 5,
-        "intervention_proba": 0.0004
+    "test_episode_every": 3,
+    "kappa": 1169.7,
+    "tau": 40,
+    "buffer_size": 200,
+    "bias_rate": 0.002,
+    "s4avg": 2,
+    "time_dist": 5,
+    "normalization":  "independent",
+    "sensor_delay": 1,
+    "regularization": 32,
+    "with_learning": true,
+    "q_norm_selector": "l2",
+    "intervention_length": 5,
+    "intervention_proba": 0.0004
   }
 
 }

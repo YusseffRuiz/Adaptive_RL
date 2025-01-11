@@ -5,6 +5,7 @@ class CPGWrapper(gym.Wrapper):
     def __init__(self, env, cpg_model=None, use_cpg=False):
         super(CPGWrapper, self).__init__(env)
         self.use_cpg = use_cpg
+        self.muscle_flag = hasattr(self.env, "muscle_states")
         if use_cpg:
             self.cpg_model = cpg_model  # The CPG model should be passed in as an argument
             self.da = len(env.action_space.low)
@@ -54,7 +55,7 @@ def env_selection(action_dim, weights, params, obs):
     elif action_dim == 17:
         u_values = weight_conversion_humanoid(obs)
     elif action_dim == 70:
-        u_values = weight_conversion_myoleg(obs)
+        u_values = obs
     else:
         print("Not an implemented environment")
         return None
@@ -72,6 +73,7 @@ def weight_conversion_humanoid(obs):
 
 # Define muscle groups and their corresponding neurons/oscillators
 def weight_conversion_myoleg(obs):
+    # Placeholder in case we need some conversion
     # hip_flex_r = np.array([obs[5], obs[21]])  # Feedback to muscles controlling hip
     # knee_rot_r = np.array([obs[9], obs[26]])  # Feedback to muscles controlling knee
     # ankle_flex_r = np.array([obs[17], obs[29]])  # Feedback to muscles controlling ankle right

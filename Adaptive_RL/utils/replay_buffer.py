@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import random
 
 class ReplayBuffer:
     """
@@ -33,6 +34,8 @@ class ReplayBuffer:
         self.discount_factor = discount_factor
         self.steps_before_batches = steps_before_batches
         self.steps_between_batches = steps_between_batches
+
+    def initialize(self):
         self.np_random = np.random.RandomState()
         self.buffers = None
         self.index = 0
@@ -81,6 +84,11 @@ class ReplayBuffer:
 
         self.index = (self.index + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
+
+        assert self.size <= self.max_size, "Replay buffer size exceeded maximum capacity!"
+
+        if self.size > self.full_max_size:
+            self.clean_buffer()
 
     def accumulate_n_steps(self, kwargs):
         """
@@ -132,6 +140,17 @@ class ReplayBuffer:
             yield {k: self.buffers[k][rows, columns] for k in keys}
 
         self.last_steps = steps
+
+    def clean_buffer(self):
+        """
+        Clears the replay buffer to release memory.
+        """
+        self.buffers = None
+        self.index = 0
+        self.size = 0
+        torch.cuda.empty_cache()  # Clear CUDA memory if needed
+        print("Replay buffer cleared.")
+
 
 
 class Segment:

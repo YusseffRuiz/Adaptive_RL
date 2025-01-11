@@ -40,7 +40,9 @@ class DDPG(base_agent.BaseAgent):
         self.decay_lr = decay_lr
 
     def initialize(self, observation_space, action_space, seed=None):
+        super().initialize(observation_space, action_space, seed=seed)
         self.model.initialize(observation_space, action_space)
+        self.replay.initialize()
         self.exploration.initialize(self._policy, action_space, seed)
         self.actor_updater.initialize(self.model)
         self.critic_updater.initialize(self.model)

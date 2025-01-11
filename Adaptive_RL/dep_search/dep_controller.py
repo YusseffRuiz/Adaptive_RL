@@ -52,22 +52,25 @@ class DEP:
         muscle_lengths + alpha * muscle_forces. Alpha can also be 0.
         """
         observations = torch.tensor(observations, dtype=torch.float32)
-        # print("1: ", self.obs_smoothed.shape)
         if observations.shape != self.obs_spec:
             self.obs_spec = observations.shape
-            # print("1.1, obs: ", observations.shape)
-            # print("2: ", self.obs_smoothed.shape)
             self._reset(observations.shape)
-            # print("3: ", self.obs_smoothed.shape)
         if len(observations.shape) == 1:
             observations = observations[None, :]
-        # print("4: ", observations.shape)
         return self._get_action(observations).numpy(force=True)
 
     def set_params(self, param_dict):
         for k, v in param_dict.items():
             setattr(self, k, v)
         self._reset()
+
+    def get_params(self, get_print=False):
+        if get_print:
+            print("######## DEP PARAMETERS ########")
+            for k, v in self.params.items():
+                print(f"{k}: {v}")
+        return self.params
+
 
     def _reset(self, obs_shape=None):
         """
@@ -223,3 +226,17 @@ class DEP:
 
             C += torch.einsum("ij, ik->ijk", mu, v)
         return C
+
+
+def default_params():
+    dirname = os.path.dirname(__file__)
+    params_path = os.path.join(
+        dirname, "param_files/default_agents.json"
+    )
+    params = {}
+    try:
+        with open(params_path, "r") as f:
+            params = json.load(f)["DEP"]
+    except FileNotFoundError:
+        print("No default agent parameters file found.")
+    return params

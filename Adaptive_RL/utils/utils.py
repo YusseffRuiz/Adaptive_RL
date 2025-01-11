@@ -1,6 +1,6 @@
 import os
 from Adaptive_RL.agents import SAC, PPO, MPO, DDPG
-from Adaptive_RL import CPGWrapper
+from Adaptive_RL import CPGWrapper, MyoSuite, Gym
 from MatsuokaOscillator import MatsuokaNetworkWithNN
 from Adaptive_RL.utils import logger
 from Adaptive_RL.dep_search.dep_agents import dep_factory
@@ -129,7 +129,7 @@ def load_agent(config, path, env, muscle_flag=False):
     return agent, step
 
 
-def wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh):
+def wrap_cpg(env, env_name, cpg_oscillators=2, cpg_neurons=2, cpg_tau_r=2, cpg_tau_a=12, hh=False):
     amplitude = max(env.action_space.high)
     if 'myo' in env_name:
         min_value = 0
@@ -141,6 +141,21 @@ def wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, 
                                       tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
     env = CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
     return env
+
+def get_cpg_model(env_name, cpg_oscillators=2, cpg_neurons=2, cpg_tau_r=2, cpg_tau_a=12, hh=False):
+    if 'myo' in env_name:
+        dummy_env = MyoSuite(env_name, reset_type='random', scaled_actions=False)
+        min_value = 0
+    else:
+        dummy_env = Gym(env_name)
+        min_value = min(dummy_env.action_space.low)
+    amplitude = max(dummy_env.action_space.high)
+    cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                      da=dummy_env.action_space.shape[0],
+                                      neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                      tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
+    del dummy_env
+    return cpg_model
 
 
 def record_video(env, video_folder, alg, agent, env_name):

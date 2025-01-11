@@ -49,6 +49,7 @@ class MPO(base_agent.BaseAgent):
 
     def initialize(self, observation_space, action_space, seed=None):
         self.model.initialize(observation_space, action_space)
+        self.replay_buffer.initialize()
         self.actor_updater.initialize(self.model, action_space)
         self.critic_updater.initialize(self.model)
         self.decay_flag = False

@@ -1,5 +1,4 @@
 import torch
-from MatsuokaOscillator import MatsuokaNetworkWithNN
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO
 import Experiments.experiments_utils as trials
@@ -93,6 +92,7 @@ def train_agent(
     checkpoint_path = None
     checkpoint_folder = None
     config = {}
+    dep_params = Adaptive_RL.default_params()
 
     if path:
         # Load last checkpoint, not best
@@ -114,29 +114,43 @@ def train_agent(
             cpg_tau_a = config.cpg_tau_a or cpg_tau_a
 
             # Set DEP parameters
-            # if hasattr(agent, "expl") and "DEP" in config:
-            #     agent.expl.set_params(config["DEP"])
+            if hasattr(agent, "expl") and "DEP" in config:
+               dep_params = config.DEP
 
             print("Loaded Config")
 
     # Build the training environment.
+    myo_flag = False
     if 'myo' in env_name:
-        _environment = Adaptive_RL.MyoSuite(environment)
-    else:
-        _environment = Adaptive_RL.Gym(environment)
-    if muscle_flag:
-        _environment = Adaptive_RL.apply_wrapper(_environment)
+        myo_flag = True
     cpg_model = None
     if cpg_flag:
-        _environment = Adaptive_RL.wrap_cpg(_environment, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,
-                                   cpg_tau_a, hh)
-        print(_environment.cpg_model.print_characteristics())
-    environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential)
-    environment.initialize(muscles=muscle_flag)
+        cpg_model = Adaptive_RL.get_cpg_model(env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,cpg_tau_a, hh)
+        print(cpg_model.print_characteristics())
+    # Apply DEP Wrapper and load parameters
+    if muscle_flag:
+        agent.expl.params = dep_params
+    # environment.initialize(seed=tonic_conf["seed"])
+    # _environment = "deprl.environments.CPGWrapper(deprl.environments.Gym('myoAmp1DoFWalk-v0', reset_type='random', scaled_actions=False), cpg_model=MatsuokaOscillator.MatsuokaNetworkWithNN(num_oscillators=2, tau_r=8.0, tau_a=48.0, da=70, neuron_number=2, hh=False, max_value=1, min_value=0), use_cpg=True)"
+    _environment = f"'{environment}', reset_type='random', scaled_actions=False"
+
+    environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential, cpg_flag=cpg_flag,
+                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+    environment.initialize(seed=seed)
 
     # Build the testing environment.
-    test_environment = Adaptive_RL.parallelize.distribute(_environment)
-    test_environment.initialize(muscles=muscle_flag)
+    test_environment = Adaptive_RL.parallelize.distribute(_environment, cpg_flag=cpg_flag,
+                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+    test_environment.initialize(seed=seed + 1000000)
+    # _test_environment = _environment
+    # test_environment = deprl.custom_distributed.distribute(
+    #     environment=_test_environment,
+    #     tonic_conf=tonic_conf,
+    #     env_args={},
+    #     parallel=1,
+    #     sequential=1,
+    # )
+
 
 
     # Build the agent.
@@ -146,28 +160,35 @@ def train_agent(
     # Load the weights of the agent form a checkpoint.
     step_number = 0
     if checkpoint_path:
-        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=_environment, muscle_flag=muscle_flag)
-        agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
-                             seed=seed)
+        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=environment, muscle_flag=muscle_flag)
     else:
         agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                          seed=seed)
 
+    agent.expl.get_params(get_print=True)
     args['agent'] = agent.get_config(print_conf=True)
     args['trainer'] = trainer.dump_trainer()
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=path, config=args, progress=progress)
 
     # Build the trainer.
+    # trainer_1 = deprl.custom_trainer.Trainer(steps=int(4e7), epoch_steps=int(1e5), save_steps=int(2e5))
+    # trainer_1.initialize(
+    #     agent=agent,
+    #     environment=environment,
+    #     test_environment=test_environment,
+    #     # full_save=tonic_conf["full_save"],
+    # )
+    # trainer_1.run(config, steps=0, epochs=0, episodes=0)
     trainer.initialize(
         agent=agent, environment=environment,
         test_environment=test_environment, step_saved=step_number, muscle_flag=muscle_flag)
-    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay,
+    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay=agent.replay,
                        save_path=checkpoint_folder)
     # Train.
     trainer.run()
-    agent = trainer.agent
-    return agent
+    # agent = trainer.agent
+    # return agent
 
 
 if __name__ == "__main__":

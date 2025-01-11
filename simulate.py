@@ -60,16 +60,16 @@ def main_running():
                                                                  experiment_number=experiment_number, external_folder=args.f,
                                                                  hh_neuron=hh)
 
-    if experiment or video_record:
-        if 'myo' in env_name:
-            env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array")
-        else:
-            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
+    if 'myo' in env_name:
+        env = Adaptive_RL.MyoSuite(env_name, reset_type='random', scaled_actions=False)
     else:
-        if 'myo' in env_name:
-            env = Adaptive_RL.MyoSuite(env_name)
+        if experiment or video_record:
+            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
         else:
             env = Adaptive_RL.Gym(env_name, render_mode="human")
+
+    if muscle_flag:
+        env = Adaptive_RL.apply_wrapper(env, direct=True)
 
     if not random:
         path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
@@ -197,30 +197,23 @@ def main_running():
                 right_hip_movement_clean = trials.cut_values_at_zero(right_hip_movement_clean)
                 left_hip_movement_clean = trials.cut_values_at_zero(left_hip_movement_clean)
 
-                trials.get_energy_per_meter(energies, distances, avg_energies, plot_fig=True)
+                trials.get_energy_per_meter(energies, distances, avg_energies, plot_fig=True, save_folder=save_folder)
                 trials.statistical_analysis(data=velocities, y_axis_name="Velocity(m/s)", x_axis_name="Time",
-                                            title="Velocity across time", mean_calc=True)
-                trials.plot_phase(right_hip_movement_clean, left_hip_movement_clean, algo=algorithm, name="Joint Motion")
-                trials.perform_autocorrelation(right_hip_movement, left_hip_movement, "Hips")
+                                            title="Velocity across time", mean_calc=True, save_folder=save_folder)
+                trials.plot_phase(right_hip_movement_clean, left_hip_movement_clean, algo=algorithm, name="Joint Motion", save_folder=save_folder)
+                trials.perform_autocorrelation(right_hip_movement, left_hip_movement, "Hips", save_folder=save_folder)
                 print("Reward: ", np.mean(rewards), "\n Distance: ", np.mean(distances))
-
-
 
         else:
             """ load network weights """
+
             agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag)
-            print(env.cpg_model.print_characteristics())
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=False)
     else:
         algorithm = "random"
         if cpg_flag:
-            amplitude = env.action_space.high
-            min_value = env.action_space.low
-            cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
-                                              da=env.action_space.shape[0],
-                                              neuron_number=2, hh=hh, max_value=amplitude, min_value=min_value)
-            env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+            env = Adaptive_RL.wrap_cpg(env, env_name, 2, 2, hh)
         trials.evaluate(env=env, algorithm=algorithm, num_episodes=num_episodes, no_done=True, max_episode_steps=500)
     env.close()
 

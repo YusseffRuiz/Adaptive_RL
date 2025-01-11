@@ -141,7 +141,7 @@ class ExceptionWrapper(AbstractWrapper):
 
     def step(self, action):
         try:
-            observation, reward, done, info, _ = self._inner_step(action)
+            observation, reward, done, info, extras = self._inner_step(action)
             if np.any(np.isnan(observation)):
                 raise self.error("NaN detected! Resetting.")
 
@@ -152,8 +152,9 @@ class ExceptionWrapper(AbstractWrapper):
             reward = 0
             done = 1
             info = {}
+            extras = {}
             self.reset()
-        return observation, reward, done, info
+        return observation, reward, done, info, extras
 
     def _inner_step(self, action):
         return super().step(action)
@@ -166,6 +167,7 @@ class GymWrapper(ExceptionWrapper):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.muscles_enable=True
 
     def render(self, *args, **kwargs):
         kwargs["mode"] = "window"
