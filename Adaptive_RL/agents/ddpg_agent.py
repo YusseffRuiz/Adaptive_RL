@@ -12,13 +12,15 @@ class DDPG(base_agent.BaseAgent):
     DDPG: https://arxiv.org/pdf/1509.02971.pdf
     """
 
-    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, batch_size=512, return_step=5,
+    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, lr_critic=None,
+                 batch_size=512, return_step=5,
                  discount_factor=0.99, steps_between_batches=20, replay_buffer_size=10e5, noise_std=0.1,
                  decay_lr=0.98, learning_starts=20000):
         # Store all the inputs in a dictionary
         self.config = {
             "agent" : "DDPG",
             "learning_rate": learning_rate,
+            "lr_critic": lr_critic,
             "noise_std": noise_std,
             "decay_lr": decay_lr,
             "learning_starts": learning_starts,
@@ -30,13 +32,15 @@ class DDPG(base_agent.BaseAgent):
             "steps_between_batches": steps_between_batches,
             "replay_buffer_size": replay_buffer_size,
         }
+        if lr_critic is None:
+            lr_critic = learning_rate
         self.model = neural_networks.ActorCriticDeterministic(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
         self.replay = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
                                           size=int(replay_buffer_size))
         self.exploration = explorations.NormalNoiseExploration(scale=noise_std, start_steps=learning_starts)
         self.actor_updater = DeterministicPolicyGradient(lr_actor=learning_rate)
-        self.critic_updater = DeterministicQLearning(lr_critic=learning_rate)
+        self.critic_updater = DeterministicQLearning(lr_critic=lr_critic)
         self.decay_lr = decay_lr
 
     def initialize(self, observation_space, action_space, seed=None):
@@ -64,16 +68,16 @@ class DDPG(base_agent.BaseAgent):
         # Store the last transitions in the replay.
         if np.any(np.isnan(observations)):
             print("NaN detected in output_actions:", observations)
-            observations = np.ones_like(observations)
+            observations[np.isnan(observations)] = 0.0
         if np.any(np.isnan(rewards)):
             print("NaN detected in output_rewards:", rewards)
-            rewards = np.ones_like(rewards)
+            rewards[np.isnan(rewards)] = 0.0
         if np.any(np.isnan(resets)):
             print("NaN detected in output_resets:", resets)
-            resets = np.ones_like(resets)
+            resets[np.isnan(resets)] = 0.0
         if np.any(np.isnan(terminations)):
             print("NaN detected in output_terminations:", terminations)
-            terminations = np.ones_like(terminations)
+            terminations[np.isnan(terminations)] = 0.0
 
         self.replay.push(observations=self.last_observations, actions=self.last_actions,
                                 next_observations=observations, rewards=rewards, resets=resets,

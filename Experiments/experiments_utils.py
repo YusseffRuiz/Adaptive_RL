@@ -62,6 +62,10 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
 
 # Define function to search for trained algorithms in specified folders
 def search_trained_algorithms(env_name, algorithms_list, save_folder="training", experiment_number=0):
+    """
+    The folder to look for the algorithms must be in the form: save_folder/environment_name-algorithm
+    logs/checkpoints folder must be inside environment_name-algorithm
+    """
     if save_folder is None:
         save_folder = "training"
     # List of algorithms to look for
@@ -77,7 +81,6 @@ def search_trained_algorithms(env_name, algorithms_list, save_folder="training",
             possible_folders = [
                 os.path.join(f"{save_folder}/{env_name}-{algo}"),
             ]
-
         for folder in possible_folders:
             if os.path.exists(folder):
                 algorithms_found.append((algo, folder))
@@ -501,7 +504,7 @@ def get_data(info, muscles=False):
         joint_angles = info["joint_angles"] * 180 / math.pi
         joint_velocity = info["joint_velocities"] * 180 / math.pi
         torques = info["torques"]
-        step_energy = torques #* info["joint_velocities"]
+        step_energy = torques * info["joint_velocities"]
 
     return position, velocity, joint_angles, joint_velocity, torques, step_energy
 

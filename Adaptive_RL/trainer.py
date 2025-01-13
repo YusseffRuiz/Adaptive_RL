@@ -183,11 +183,11 @@ class Trainer:
                 torch.cuda.empty_cache()
 
                 self.save_cycles += 1
-                if self.save_cycles % 10 == 0:  # Saving everything only every 10% of the total training
+                if self.save_cycles % 20 == 0:  # Saving everything only every 20% of saved epochs
                     self.save_cycles = 1
-                    save_model_path = os.path.join(path, "model_checkpoint.pth")
-                    self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay,
-                                    save_model_path)
+                    # save_model_path = os.path.join(path, "model_checkpoint.pth")
+                    # self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay,
+                    #                 save_model_path)
                     self.agent.replay.clean_buffer()
 
                 if self.no_improvement_counter >= self.patience * 0.6:

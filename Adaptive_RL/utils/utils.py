@@ -94,35 +94,74 @@ def load_checkpoint(checkpoint, path):
 
 def load_agent(config, path, env, muscle_flag=False):
     if config.agent["agent"] == "DDPG":
-        agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
-                     learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
-                     hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                     replay_buffer_size=config.agent["replay_buffer_size"], )
+        if muscle_flag:
+            agent = dep_factory(3, DDPG())(learning_rate=config.agent["learning_rate"],
+                                           lr_critic=config.agent["lr_critic"],
+                                         batch_size=config.agent["batch_size"],
+                                         learning_starts=config.agent["learning_starts"],
+                                         noise_std=config.agent["noise_std"],
+                                         hidden_layers=config.agent["hidden_layers"],
+                                         hidden_size=config.agent["hidden_size"],
+                                         replay_buffer_size=config.agent["replay_buffer_size"], )
+        else:
+            agent = DDPG(learning_rate=config.agent["learning_rate"],
+                         lr_critic=config.agent["lr_critic"], batch_size=config.agent["batch_size"],
+                         learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                         hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
+                         replay_buffer_size=config.agent["replay_buffer_size"], )
     elif config.agent["agent"] == "MPO":
-        agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
-                    lr_dual=config.agent["lr_dual"],
-                    hidden_size=config.agent["hidden_size"], discount_factor=config.agent["gamma"],
-                    replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["hidden_layers"])
+        if muscle_flag:
+            agent = dep_factory(3, MPO())(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
+                                        lr_dual=config.agent["lr_dual"],
+                                        hidden_size=config.agent["hidden_size"],
+                                        discount_factor=config.agent["gamma"],
+                                        replay_buffer_size=config.agent["replay_buffer_size"],
+                                        hidden_layers=config.agent["hidden_layers"])
+        else:
+            agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
+                        lr_dual=config.agent["lr_dual"],
+                        hidden_size=config.agent["hidden_size"], discount_factor=config.agent["gamma"],
+                        replay_buffer_size=config.agent["replay_buffer_size"],
+                        hidden_layers=config.agent["hidden_layers"])
     elif config.agent["agent"] == "SAC":
-        agent = SAC(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
-                    learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
-                    hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                    replay_buffer_size=config.agent["replay_buffer_size"],
-                    discount_factor=config.agent["discount_factor"], )
+        if muscle_flag:
+            agent = dep_factory(3, SAC())(learning_rate=config.agent["learning_rate"],
+                                          lr_critic=config.agent["lr_critic"],
+                                      batch_size=config.agent["batch_size"],
+                                      learning_starts=config.agent["learning_starts"],
+                                      noise_std=config.agent["noise_std"],
+                                      hidden_layers=config.agent["hidden_layers"],
+                                      hidden_size=config.agent["hidden_size"],
+                                      replay_buffer_size=config.agent["replay_buffer_size"],
+                                      discount_factor=config.agent["discount_factor"], )
+        else:
+            agent = SAC(learning_rate=config.agent["learning_rate"],
+                        lr_critic=config.agent["lr_critic"], batch_size=config.agent["batch_size"],
+                        learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                        hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
+                        replay_buffer_size=config.agent["replay_buffer_size"],
+                        discount_factor=config.agent["discount_factor"], )
     elif config.agent["agent"] == "PPO":
-        agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
-                    hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
-                    batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
-                    clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"],
-                    normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
+        if muscle_flag:
+            agent = dep_factory(3, PPO())(learning_rate=config.agent["learning_rate"],
+                                          lr_critic=config.agent["lr_critic"],
+                                        hidden_size=config.agent["hidden_size"],
+                                        hidden_layers=config.agent["hidden_layers"],
+                                        discount_factor=config.agent["discount_factor"],
+                                        batch_size=config.agent["batch_size"],
+                                        entropy_coeff=config.agent["entropy_coeff"],
+                                        clip_range=config.agent["clip_range"],
+                                        replay_buffer_size=config.agent["replay_buffer_size"],
+                                        normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
+        else:
+            agent = PPO(learning_rate=config.agent["learning_rate"],
+                        lr_critic=config.agent["lr_critic"], hidden_size=config.agent["hidden_size"],
+                        hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
+                        batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
+                        clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"],
+                        normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
     else:
         agent = None
-    if muscle_flag:  #Modify if using MPO
-        agent = dep_factory(3, agent)(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
-                    learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
-                    hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                    replay_buffer_size=config.agent["replay_buffer_size"],
-                    discount_factor=config.agent["discount_factor"], )
     agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
     step = agent.load(path)
     agent.get_config(print_conf=True)

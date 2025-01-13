@@ -35,11 +35,15 @@ class SAC(DDPG):
     critic_updater : TwinCriticSoftQLearning
         Update method for the critic network, using the Soft Q-Learning technique. Defaults to `TwinCriticSoftQLearning`.
     """
-    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, entropy_coeff=0.001, tau=0.005, batch_size=256, return_step=3,
+    def __init__(self, hidden_size=256, hidden_layers=2, learning_rate=3e-4, lr_critic=None,
+                 entropy_coeff=0.001, tau=0.005,
+                 batch_size=256, return_step=3,
                  discount_factor=0.99, steps_between_batches=30, replay_buffer_size=10e5, noise_std=0.1,
                  learning_starts=20000):
-        super().__init__(hidden_size, hidden_layers, learning_rate, batch_size, return_step,
+        super().__init__(hidden_size, hidden_layers, learning_rate, lr_critic, batch_size, return_step,
                          discount_factor, steps_between_batches, replay_buffer_size, noise_std, learning_starts)
+        if lr_critic is None:
+            lr_critic = learning_rate
         self.model = neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size,
                                                                  hidden_layers=hidden_layers).get_model()
         self.exploration = explorations.NoNoiseExploration(start_steps=learning_starts)
@@ -48,11 +52,12 @@ class SAC(DDPG):
                                           , size=replay_buffer_size)
         self.actor_updater = TwinCriticSoftDeterministicPolicyGradient(lr_actor=learning_rate,
                                                                        entropy_coeff=entropy_coeff)
-        self.critic_updater = TwinCriticSoftQLearning(lr_critic=learning_rate, entropy_coeff=tau)
+        self.critic_updater = TwinCriticSoftQLearning(lr_critic=lr_critic, entropy_coeff=tau)
 
         self.config = {
             "agent": "SAC",
             "learning_rate": learning_rate,
+            "lr_critic": lr_critic,
             "noise_std": noise_std,
             "tau": tau,
             "learning_starts": learning_starts,

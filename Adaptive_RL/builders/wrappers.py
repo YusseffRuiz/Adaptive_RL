@@ -143,9 +143,15 @@ class ExceptionWrapper(AbstractWrapper):
         try:
             observation, reward, done, info, extras = self._inner_step(action)
             if np.any(np.isnan(observation)):
-                raise self.error("NaN detected! Resetting.")
+                observation[np.isnan(observation)] = 0.0
+                reward = 0
+                done = 1
+                info = {}
+                extras = {}
+                self.reset()
+                print("NaN detected! Resetting.")
 
-        except self.error as e:
+        except Exception as e:
             # logger.log(f"Simulator exception thrown: {e}")
             print(f"Simulator exception thrown: {e}")
             observation = self.last_observation

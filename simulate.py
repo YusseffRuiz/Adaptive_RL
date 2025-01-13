@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
     parser.add_argument('--muscle_flag', action='store_true', default=False, help='Use muscle configuration')
     parser.add_argument('--last_check', action='store_true', default=False, help='Load last Checkpoint, not best.')
+    parser.add_argument('--auto', action='store_true', default=False, help='Automatically close experiment windows.')
 
 
     return parser.parse_args()
@@ -51,6 +52,7 @@ def main_running():
     experiment_number = args.experiment_number
     hh = args.hh
     random = args.R
+    auto_close = args.auto
     algorithm = args.algorithm.upper()
     if algorithm == 'RANDOM' and experiment is not True:
         random = True
@@ -72,13 +74,13 @@ def main_running():
         env = Adaptive_RL.apply_wrapper(env, direct=True)
 
     if not random:
-        path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
-
-        if cpg_flag:
-            cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
-            env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
-
         if video_record:
+            path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
+
+            if cpg_flag:
+                cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
+                env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
+
             video_folder = "videos/" + env_name
             agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag=muscle_flag)
 
@@ -104,7 +106,8 @@ def main_running():
                     logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
 
                     if 'myo' in env_name:
-                        env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array", max_episode_steps=1000)
+                        env = Adaptive_RL.MyoSuite(env_name, reset_type='random', scaled_actions=False,
+                                                   max_episode_steps=1000)
                     else:
                         env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
                     save_folder = f"{env_name}/{algo}"
@@ -118,6 +121,9 @@ def main_running():
                         env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,
                                                    cpg_tau_a, hh)
                         cpg_flag=True
+
+                    if muscle_flag:
+                        env = Adaptive_RL.apply_wrapper(env, direct=True)
 
                     if checkpoint_path and config:
                         # Load the agent using the config and checkpoint path
@@ -157,29 +163,34 @@ def main_running():
                             print(f"Results for {algo} not found. Skipping.")
 
                     # Create the directory to save results if it doesn't exist
-                    save_exp = "Experiments/Results_own/"
+                    save_exp = f"Experiments/Results_own/{env_name}"
                     os.makedirs(save_exp, exist_ok=True)
 
                     # Perform energy comparison using vertical bars
                     trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
-                                            units="Joules/s", save_folder=save_exp, auto_close=True)
+                                            units="Joules/s", save_folder=save_exp, auto_close=auto_close)
 
                     # Perform distance comparison using horizontal bars
                     trials.compare_horizontal(data=distances, algos=algos_found, data_name="Distance Travelled",
-                                              units="Mts", save_folder=save_exp, auto_close=True)
+                                              units="Mts", save_folder=save_exp, auto_close=auto_close)
 
                     # Perform reward comparison using vertical bars
-                    trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=True)
+                    trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=auto_close)
 
-                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=True)
+                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close)
 
                     # Perform velocity comparison
                     trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp,
-                                            auto_close=True)
+                                            auto_close=auto_close)
 
                 else:
                     print(f"Not enough results found for comparison. Expected at least 2 results.")
             else:
+                path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
+
+                if cpg_flag:
+                    cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
+                    env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
                 logger.log(f"\nRunning experiments for algorithm: {algorithm} in folder: {path}")
                 agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag=muscle_flag)
                 results = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
@@ -206,7 +217,12 @@ def main_running():
 
         else:
             """ load network weights """
+            path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
 
+            if cpg_flag:
+                cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
+                env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
+                print(env.cpg_model.print_characteristics())
             agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag)
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=False)

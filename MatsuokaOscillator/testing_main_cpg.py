@@ -19,8 +19,8 @@ def matsuoka_main():
     hh_neuron = False  # Running with hudgkin huxley neurons if True
     num_oscillators = 2
     neuron_number = 2
-    tau_r = 32.0
-    tau_a = 96.0
+    tau_r = 4.0
+    tau_a = 24.0
     t_min = 1
     t_max = 8
     amplitude = 1.0

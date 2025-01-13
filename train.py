@@ -219,7 +219,7 @@ if __name__ == "__main__":
         args, cpg_args = Adaptive_RL.file_to_hyperparameters(args.params, env_name, training_algorithm)
         # Hyperparameters
         learning_rate = args['training']['learning_rate']
-        lr_critic = args['training'].get('lr_critic', 0.0)
+        lr_critic = args['training'].get('lr_critic', None)
         ent_coeff = args['training'].get('ent_coeff', 0.0)
         clip_range = args['training'].get('clip_range', 0.0)
         lr_dual = args['training'].get('lr_dual', 0.0)
@@ -279,36 +279,62 @@ if __name__ == "__main__":
                                                                  external_folder=save_folder, hh_neuron=hh)
 
     if training_algorithm == "MPO":
-        agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, MPO())(lr_actor=learning_rate,
+                                                lr_critic=lr_critic, lr_dual=lr_dual,
+                                                hidden_size=neuron_number,
+                                                discount_factor=gamma, replay_buffer_size=replay_buffer_size,
+                                                hidden_layers=layers_number,
+                                                batch_size=batch_size, epsilon=epsilon, gradient_clip=clip_range)
+        else:
+            agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number,
                     batch_size=batch_size, epsilon=epsilon, gradient_clip=clip_range)
     elif training_algorithm == "SAC":
-        agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, SAC())(learning_rate=learning_rate,
+                                                                 lr_critic=lr_critic,
+                                                                 hidden_size=neuron_number, discount_factor=gamma,
+                                                                 hidden_layers=layers_number,
+                                                                 replay_buffer_size=replay_buffer_size,
+                                                                 batch_size=batch_size,
+                                                                 learning_starts=learning_starts)
+        else:
+            agent = SAC(learning_rate=learning_rate, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma,
                     hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
                     learning_starts=learning_starts)
+
     elif training_algorithm == "PPO":
-        agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, PPO())(learning_rate=learning_rate, lr_critic=lr_critic,
+                                            hidden_size=neuron_number, hidden_layers=layers_number,
+                                            gamma=gamma, decay_lr=decay_lr, normalizer=normalizer_flag,
+                                            batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
+        else:
+            agent = PPO(learning_rate=learning_rate, lr_critic=lr_critic, hidden_size=neuron_number, hidden_layers=layers_number,
                     gamma=gamma, decay_lr=decay_lr, normalizer=normalizer_flag,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     elif training_algorithm == "DDPG":
-        agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, DDPG())(learning_rate=learning_rate, lr_critic=lr_critic,
+                                        batch_size=batch_size, learning_starts=learning_starts,
+                                         noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number,
+                                         replay_buffer_size=replay_buffer_size)
+        else:
+            agent = DDPG(learning_rate=learning_rate, lr_critic=lr_critic, batch_size=batch_size, learning_starts=learning_starts,
                      noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number,
                      replay_buffer_size=replay_buffer_size)
     else:
         agent = None
 
     if agent is not None:
-        if muscle_flag:  # Modify if using MPO
-            agent = Adaptive_RL.dep_agents.dep_factory(3, agent)(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
-                    hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
-                    learning_starts=learning_starts)
-        agent = train_agent(agent=agent,
-                            environment=env_name,
-                            sequential=sequential, parallel=parallel,
-                            trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
-                                                        early_stopping=early_stopping),
-                            path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
-                            cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r, muscle_flag=muscle_flag)
+        train_agent(agent=agent,
+                    environment=env_name,
+                    sequential=sequential, parallel=parallel,
+                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
+                                                early_stopping=early_stopping),
+                    path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
+                    cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r, muscle_flag=muscle_flag)
 
         print("Training Done")
     else:
