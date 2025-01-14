@@ -111,16 +111,16 @@ def weight_conversion_ant(weights, device, output=None):
 
 def weight_conversion_walker(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[2], weights[5]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[0], weights[3], weights[2], weights[5]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
-        # first = output[0,0].item()
-        # third = output[0,1].item()
-        second = output[0].item()
-        fourth = output[1].item()
+        first = weights_output_helper_myosim(weights[0], output[0,0].item())
+        second = weights_output_helper_myosim(weights[2], output[1,0].item())
+        third = weights_output_helper_myosim(weights[3], output[0,1].item())
+        fourth = weights_output_helper_myosim(weights[5], output[1,1].item())
         output_tensor = np.array(
-            [weights[0], weights[1], second,
-             weights[3], weights[4], fourth],
+            [first, weights[1], second,
+             third, weights[4], fourth],
             )
         return output_tensor
 
@@ -131,8 +131,8 @@ def weight_conversion_humanoid(weights, device, output=None):
         return weights_tmp
     else:
         output_tensor = weights
-        output_tensor[5] = output[0, 0].item()
-        output_tensor[9] = output[0, 1].item()
+        output_tensor[5] = weights_output_helper_myosim(weights[5], output[0].item())
+        output_tensor[9] = weights_output_helper_myosim(weights[9], output[1].item())
         # output_tensor[6] = output[1, 0].item()
         # output_tensor[10] = output[1, 1].item()
         return output_tensor

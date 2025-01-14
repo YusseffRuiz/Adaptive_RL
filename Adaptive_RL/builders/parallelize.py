@@ -24,11 +24,15 @@ class Sequential:
         self.num_workers = workers
         self.use_cpg = cpg_flag
         self.muscles = muscle_flag
+        self.myo_flag = myo_flag
 
     def initialize(self, seed=0):
         # group seed is given, the others are determined from it
-        for i, environment in enumerate(self.environments):
-            environment.seed(seed + i)
+        if self.myo_flag:
+            for i, environment in enumerate(self.environments):
+                environment.seed(seed + i)
+        else:
+            pass
 
 
     def start(self):
@@ -89,7 +93,10 @@ class Sequential:
             terminations.append(term)
 
             if reset:
-                ob = self.environments[i].reset()
+                if not self.myo_flag:
+                    ob, _ = self.environments[i].reset()
+                else:
+                    ob = self.environments[i].reset()
                 if self.muscles:
                     muscle = self.environments[i].get_wrapper_attr('muscle_states')
                 if self.use_cpg:

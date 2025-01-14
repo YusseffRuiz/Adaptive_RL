@@ -96,7 +96,10 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     mujoco_env = hasattr(env, "sim")
     muscle_flag = hasattr(env, "muscles_enable")
     for step in range(range_episodes):
-        obs = env.reset()
+        if mujoco_env:
+            obs = env.reset()
+        else:
+            obs = env.reset()[0]
         if muscle_flag:
             muscle_states = env.muscle_states
         done = False
@@ -175,7 +178,10 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
             attempts += 1
             # print(f"Starting episode {successful_episodes + 1}, attempt {attempts}")
             if alg == "random":
-                obs = env.reset()
+                if muscle_flag:
+                    obs = env.reset()
+                else:
+                    obs = env.reset()[0]
             else:
                 if muscle_flag:
                     obs = env.reset()

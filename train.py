@@ -121,18 +121,19 @@ def train_agent(
 
     # Build the training environment.
     myo_flag = False
+    _environment = f"'{environment}', render_mode='rgb_array'"
     if 'myo' in env_name:
         myo_flag = True
+        _environment = f"'{environment}', reset_type='random', scaled_actions=False"
     cpg_model = None
     if cpg_flag:
         cpg_model = Adaptive_RL.get_cpg_model(env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,cpg_tau_a, hh)
-        print(cpg_model.print_characteristics())
     # Apply DEP Wrapper and load parameters
     if muscle_flag:
         agent.expl.params = dep_params
     # environment.initialize(seed=tonic_conf["seed"])
     # _environment = "deprl.environments.CPGWrapper(deprl.environments.Gym('myoAmp1DoFWalk-v0', reset_type='random', scaled_actions=False), cpg_model=MatsuokaOscillator.MatsuokaNetworkWithNN(num_oscillators=2, tau_r=8.0, tau_a=48.0, da=70, neuron_number=2, hh=False, max_value=1, min_value=0), use_cpg=True)"
-    _environment = f"'{environment}', reset_type='random', scaled_actions=False"
+
 
     environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential, cpg_flag=cpg_flag,
                                                      muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
@@ -164,8 +165,10 @@ def train_agent(
     else:
         agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                          seed=seed)
-
-    agent.expl.get_params(get_print=True)
+    if muscle_flag:
+        agent.expl.get_params(get_print=True)
+    if cpg_flag:
+        print(environment.cpg_model.print_characteristics())
     args['agent'] = agent.get_config(print_conf=True)
     args['trainer'] = trainer.dump_trainer()
     # Initialize the logger to save data to the path
