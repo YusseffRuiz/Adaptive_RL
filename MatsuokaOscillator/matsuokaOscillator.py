@@ -608,8 +608,17 @@ class HHMatsuokaOscillator(MatsuokaOscillator):
         self.neurons = HHNeuron()
         # print(self.neurons)
         self.v = self.init_output_tensor(neuron_number, num_oscillators, -67.0, 10, device=self.device)
-        self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * 2.0
-        self.u = self.u.unsqueeze(0)
+        # Initialize external input (ones by default)
+        if u is None:
+            if num_oscillators > 1:
+                self.u = torch.ones((num_oscillators, neuron_number), dtype=torch.float32, device=self.device)
+                self.u *= self.excitation_signal
+            else:
+                self.u = torch.ones(neuron_number, dtype=torch.float32, device=self.device) * self.excitation_signal
+        else:
+            assert len(u) == neuron_number, "Input array u - (fire rate) must match the number of neurons."
+            self.u = torch.tensor(u, dtype=torch.float32, device=self.device)
+        self.output = self.amplitude * self.y
 
         self.m = 0.05
         self.h = 0.6

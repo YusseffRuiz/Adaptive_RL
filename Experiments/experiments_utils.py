@@ -158,7 +158,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     if alg == "PPO" or alg == "PPO-CPG":
         min_reward = 100
     if action_dim == 70:
-        min_reward = 10000
+        min_reward = 5000
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -170,6 +170,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_error = []
     total_distance = []
     dt = 5  # Steps per dt
+    ep_fall = 0
 
     while successful_episodes < episodes_num:
         attempts = 0
@@ -220,10 +221,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                     action = action[0, :]
                 if alg == "random":
                     obs, rw, done, info = env.step(action)
-                    if muscle_flag:
-                        position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
-                    else:
-                        position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
+                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
                 else:
                     obs, rw, done, info, extras = env.step(action)
                     if muscle_flag:
@@ -261,6 +259,8 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 total_velocity.append(np.array(ep_velocity))
                 total_accelerations.append(np.array(ep_acceleration))
                 total_error.append(np.array(ep_error))
+                if fall:
+                    ep_fall += 1
                 print(f"Episode {successful_episodes} successful with reward {reward:.2f}")
 
         if not success:
@@ -297,6 +297,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
         'total_energy': total_energy,
         'energy': average_energy,
         'joints': joints,
+        'falls' : ep_fall,
     }
 
     return results_dict

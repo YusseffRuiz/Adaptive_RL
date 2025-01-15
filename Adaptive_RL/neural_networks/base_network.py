@@ -294,7 +294,9 @@ class BaseModel(torch.nn.Module):
             else:
                 self.neuron_shape = hidden_size
         else:
-            if len(hidden_size > 1 and hidden_layers == 1):
+            if isinstance(hidden_size, list):
+                self.neuron_shape = hidden_size
+            elif len(hidden_size > 1 and hidden_layers == 1):
                 self.neuron_shape = hidden_size*2
             self.neuron_shape = hidden_size
         self.activation_fn = activation_fn

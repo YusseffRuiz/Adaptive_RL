@@ -144,6 +144,7 @@ def main_running():
                     distances = []
                     rewards = []
                     joints = []
+                    fall = []
 
                     algos_found = []
 
@@ -158,6 +159,7 @@ def main_running():
                             tmp_joints_r = results[algo]['joints'][0]
                             tmp_joints_l = results[algo]['joints'][3]
                             joints.append((tmp_joints_r, tmp_joints_l))
+                            print(f"Falls in {algo} algorithm", results[algo]['falls'])
                         else:
                             # Handle the case where a result does not exist (e.g., missing algorithm folder)
                             print(f"Results for {algo} not found. Skipping.")
