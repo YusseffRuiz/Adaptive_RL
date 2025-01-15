@@ -1,7 +1,9 @@
 import torch
 import numpy as np
-from dm_control.locomotion.tasks.reference_pose.rewards import comic_reward_fn
-from triton.language import dtype
+
+
+W_osc = 0.5
+W_drl = 1-W_osc
 
 
 class PIDController:
@@ -109,16 +111,16 @@ def weight_conversion_ant(weights, device, output=None):
 
 def weight_conversion_walker(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[2], weights[5]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[0], weights[3], weights[2], weights[5]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
-        # first = output[0,0].item()
-        # third = output[0,1].item()
-        second = output[0].item()
-        fourth = output[1].item()
+        first = weights_output_helper_myosim(weights[0], output[0,0].item())
+        second = weights_output_helper_myosim(weights[2], output[1,0].item())
+        third = weights_output_helper_myosim(weights[3], output[0,1].item())
+        fourth = weights_output_helper_myosim(weights[5], output[1,1].item())
         output_tensor = np.array(
-            [weights[0], weights[1], second,
-             weights[3], weights[4], fourth],
+            [first, weights[1], second,
+             third, weights[4], fourth],
             )
         return output_tensor
 
@@ -129,8 +131,8 @@ def weight_conversion_humanoid(weights, device, output=None):
         return weights_tmp
     else:
         output_tensor = weights
-        output_tensor[5] = output[0, 0].item()
-        output_tensor[9] = output[0, 1].item()
+        output_tensor[5] = weights_output_helper_myosim(weights[5], output[0].item())
+        output_tensor[9] = weights_output_helper_myosim(weights[9], output[1].item())
         # output_tensor[6] = output[1, 0].item()
         # output_tensor[10] = output[1, 1].item()
         return output_tensor
@@ -182,26 +184,30 @@ def weight_conversion_myoleg(weights, device, output=None):
         # We assume weights or output has dimension 71 (for 70 muscles + 1 motor)
         # Map CPG output to muscle groups (for when the CPG outputs the control signals)
         output_tensor = weights  # Assuming weights is preallocated
+        hip_flexor_value = max(output[0,0].item(), 0)  # Positive values for dorsiflexion.
+        hip_extensor_value = max(-output[0,0].item(), 0)  # Negative values for hip extensor.
         # output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_right']], output[1,0])
         # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']], output[1,0])
-        # output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']], output[0,0])
-        # output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']], output[0,0])
-        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']], output[0].item()*2.88)
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']], hip_flexor_value)
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']], hip_extensor_value)
+        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']]*2.88, output[1,0].item()*2.88)
 
         # Left ankle dorsiflexor and plantarflexor muscles
-        dorsiflexor_value = max(output[1].item(), 0)  # Positive values for dorsiflexion.
-        plantarflexor_value = max(-output[1].item(), 0)  # Negative values for plantarflexion.
+        hip_flexor_value = max(output[0,1].item(), 0)  # Positive values for dorsiflexion.
+        hip_extensor_value = max(-output[0,1].item(), 0)  # Negative values for plantarflexion.
+        dorsiflexor_value = max(output[1,1].item(), 0)  # Positive values for dorsiflexion.
+        plantarflexor_value = max(-output[1,1].item(), 0)  # Negative values for plantarflexion.
         # output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_left']], output[1,1])
         # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']], output[1,1])
-        # output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']], output[0,1])
-        # output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']], output[0,1])
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']], hip_flexor_value)
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']], hip_extensor_value)
         output_tensor[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']], dorsiflexor_value)
         output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']], plantarflexor_value)
         return output_tensor
 
 
 def weights_output_helper_myosim(weights, oscillator):
-    return 0.6*weights + 0.4*oscillator
+    return W_drl*weights + W_osc*oscillator
 
 def leg_synchronize(data_left, data_right):
     pass

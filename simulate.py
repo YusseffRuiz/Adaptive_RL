@@ -27,7 +27,10 @@ def parse_args():
     parser.add_argument('--V', action='store_true', default=False, help='Whether to record video.')
     parser.add_argument('--R', action='store_true', default=False, help='Run random actions.')
     parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
+    parser.add_argument('--muscle_flag', action='store_true', default=False, help='Use muscle configuration')
     parser.add_argument('--last_check', action='store_true', default=False, help='Load last Checkpoint, not best.')
+    parser.add_argument('--auto', action='store_true', default=False, help='Automatically close experiment windows.')
+
 
     return parser.parse_args()
 
@@ -44,10 +47,12 @@ def main_running():
 
     video_record = args.V
     experiment = args.E
+    muscle_flag = args.muscle_flag
     cpg_flag = args.cpg
     experiment_number = args.experiment_number
     hh = args.hh
     random = args.R
+    auto_close = args.auto
     algorithm = args.algorithm.upper()
     if algorithm == 'RANDOM' and experiment is not True:
         random = True
@@ -57,33 +62,27 @@ def main_running():
                                                                  experiment_number=experiment_number, external_folder=args.f,
                                                                  hh_neuron=hh)
 
-    if experiment or video_record:
-        if 'myo' in env_name:
-            env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array")
-        else:
-            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
+    if 'myo' in env_name:
+        env = Adaptive_RL.MyoSuite(env_name, reset_type='random', scaled_actions=False)
     else:
-        if 'myo' in env_name:
-            env = Adaptive_RL.MyoSuite(env_name)
+        if experiment or video_record:
+            env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
         else:
             env = Adaptive_RL.Gym(env_name, render_mode="human")
 
+    if muscle_flag:
+        env = Adaptive_RL.apply_wrapper(env, direct=True)
+
     if not random:
-        path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
-
-        if cpg_flag:
-            cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
-            amplitude = env.action_space.high
-            min_value = env.action_space.low
-            cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
-                                              da=env.action_space.shape[0],
-                                              neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                              tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
-            env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
-
         if video_record:
+            path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
+
+            if cpg_flag:
+                cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
+                env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
+
             video_folder = "videos/" + env_name
-            agent, _ = Adaptive_RL.load_agent(config, path, env)
+            agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag=muscle_flag)
 
             print("Video Recording with loaded weights from {} algorithm, path: {}".format(algorithm, path))
 
@@ -92,7 +91,7 @@ def main_running():
 
         elif experiment:
             print("Initialize Experiment")
-            if algorithm == 'RANDOM':
+            if algorithm == 'RANDOM':  # Meaning to compare all saved data
                 algos = ['PPO', 'MPO', 'DDPG', 'SAC']
                 algos_compare = []  # Adding CPG and HH neurons
                 for algo in algos:
@@ -107,7 +106,8 @@ def main_running():
                     logger.log(f"\nRunning experiments for algorithm: {algo} in folder: {algo_folder}")
 
                     if 'myo' in env_name:
-                        env = Adaptive_RL.MyoSuite(env_name, render_mode="rgb_array", max_episode_steps=1000)
+                        env = Adaptive_RL.MyoSuite(env_name, reset_type='random', scaled_actions=False,
+                                                   max_episode_steps=1000)
                     else:
                         env = Adaptive_RL.Gym(env_name, render_mode="rgb_array", max_episode_steps=1000)
                     save_folder = f"{env_name}/{algo}"
@@ -118,19 +118,16 @@ def main_running():
                     cpg_flag=False
                     if 'CPG' in algo:
                         cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
-
-                        amplitude = max(env.action_space.high)
-                        min_value = min(env.action_space.low)
-                        cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
-                                                          da=env.action_space.shape[0],
-                                                          neuron_number=cpg_neurons, tau_r=cpg_tau_r,
-                                                          tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
-                        env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
+                        env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,
+                                                   cpg_tau_a, hh)
                         cpg_flag=True
+
+                    if muscle_flag:
+                        env = Adaptive_RL.apply_wrapper(env, direct=True)
 
                     if checkpoint_path and config:
                         # Load the agent using the config and checkpoint path
-                        agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env)
+                        agent, _ = Adaptive_RL.load_agent(config, checkpoint_path, env, muscle_flag=muscle_flag)
 
                         result = trials.evaluate_experiment(agent, env, algo, episodes_num=num_episodes,
                                                    env_name=save_folder, cpg=cpg_flag)
@@ -147,6 +144,7 @@ def main_running():
                     distances = []
                     rewards = []
                     joints = []
+                    fall = []
 
                     algos_found = []
 
@@ -161,36 +159,42 @@ def main_running():
                             tmp_joints_r = results[algo]['joints'][0]
                             tmp_joints_l = results[algo]['joints'][3]
                             joints.append((tmp_joints_r, tmp_joints_l))
+                            print(f"Falls in {algo} algorithm", results[algo]['falls'])
                         else:
                             # Handle the case where a result does not exist (e.g., missing algorithm folder)
                             print(f"Results for {algo} not found. Skipping.")
 
                     # Create the directory to save results if it doesn't exist
-                    save_exp = "Experiments/Results_own/"
+                    save_exp = f"Experiments/Results_own/{env_name}"
                     os.makedirs(save_exp, exist_ok=True)
 
                     # Perform energy comparison using vertical bars
                     trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
-                                            units="Joules/s", save_folder=save_exp, auto_close=True)
+                                            units="Joules/s", save_folder=save_exp, auto_close=auto_close)
 
                     # Perform distance comparison using horizontal bars
                     trials.compare_horizontal(data=distances, algos=algos_found, data_name="Distance Travelled",
-                                              units="Mts", save_folder=save_exp, auto_close=True)
+                                              units="Mts", save_folder=save_exp, auto_close=auto_close)
 
                     # Perform reward comparison using vertical bars
-                    trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=True)
+                    trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=auto_close)
 
-                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=True)
+                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close)
 
                     # Perform velocity comparison
                     trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp,
-                                            auto_close=True)
+                                            auto_close=auto_close)
 
                 else:
                     print(f"Not enough results found for comparison. Expected at least 2 results.")
             else:
+                path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
+
+                if cpg_flag:
+                    cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
+                    env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
                 logger.log(f"\nRunning experiments for algorithm: {algorithm} in folder: {path}")
-                agent, _ = Adaptive_RL.load_agent(config, path, env)
+                agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag=muscle_flag)
                 results = trials.evaluate_experiment(agent, env, algorithm, episodes_num=num_episodes,
                                            env_name=save_folder, cpg=cpg_flag)
                 velocities=results['velocity']
@@ -206,30 +210,28 @@ def main_running():
                 right_hip_movement_clean = trials.cut_values_at_zero(right_hip_movement_clean)
                 left_hip_movement_clean = trials.cut_values_at_zero(left_hip_movement_clean)
 
-                trials.get_energy_per_meter(energies, distances, avg_energies, plot_fig=True)
+                trials.get_energy_per_meter(energies, distances, avg_energies, plot_fig=True, save_folder=save_folder)
                 trials.statistical_analysis(data=velocities, y_axis_name="Velocity(m/s)", x_axis_name="Time",
-                                            title="Velocity across time", mean_calc=True)
-                trials.plot_phase(right_hip_movement_clean, left_hip_movement_clean, algo=algorithm, name="Joint Motion")
-                trials.perform_autocorrelation(right_hip_movement, left_hip_movement, "Hips")
+                                            title="Velocity across time", mean_calc=True, save_folder=save_folder)
+                trials.plot_phase(right_hip_movement_clean, left_hip_movement_clean, algo=algorithm, name="Joint Motion", save_folder=save_folder)
+                trials.perform_autocorrelation(right_hip_movement, left_hip_movement, "Hips", save_folder=save_folder)
                 print("Reward: ", np.mean(rewards), "\n Distance: ", np.mean(distances))
-
-
 
         else:
             """ load network weights """
-            agent, _ = Adaptive_RL.load_agent(config, path, env)
+            path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=(not last_checkpoint))
 
+            if cpg_flag:
+                cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a = trials.retrieve_cpg(config)
+                env = Adaptive_RL.wrap_cpg(env, env_name, cpg_oscillators, cpg_neurons, cpg_tau_r, cpg_tau_a, hh)
+                print(env.cpg_model.print_characteristics())
+            agent, _ = Adaptive_RL.load_agent(config, path, env, muscle_flag)
             print("Loaded weights from {} algorithm, path: {}".format(algorithm, path))
             trials.evaluate(agent, env=env, algorithm=algorithm, num_episodes=num_episodes, max_episode_steps=500, no_done=False)
     else:
         algorithm = "random"
         if cpg_flag:
-            amplitude = env.action_space.high
-            min_value = env.action_space.low
-            cpg_model = MatsuokaNetworkWithNN(num_oscillators=2,
-                                              da=env.action_space.shape[0],
-                                              neuron_number=2, hh=hh, max_value=amplitude, min_value=min_value)
-            env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
+            env = Adaptive_RL.wrap_cpg(env, env_name, 2, 2, hh)
         trials.evaluate(env=env, algorithm=algorithm, num_episodes=num_episodes, no_done=True, max_episode_steps=500)
     env.close()
 

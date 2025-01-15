@@ -1,5 +1,4 @@
 import torch
-from MatsuokaOscillator import MatsuokaNetworkWithNN
 import Adaptive_RL
 from Adaptive_RL import SAC, DDPG, MPO, PPO
 import Experiments.experiments_utils as trials
@@ -18,6 +17,7 @@ def parse_args():
     parser.add_argument('--f', type=str, default=None, help='Folder to save logs, models, and results.')
     parser.add_argument('--params', type=str, default=None, help='Parameters to load from a file.')
     parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
+    parser.add_argument('--muscles', action='store_true', help='The use of DEP to map and create muscles.')
     parser.add_argument('--P', action='store_true', help='Whether to show complete progress bar.')
 
     # General Paramenters
@@ -56,7 +56,7 @@ def parse_args():
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
-        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False, device='cuda'):
+        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False, muscle_flag=False, device='cuda'):
     """
     :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
@@ -92,6 +92,7 @@ def train_agent(
     checkpoint_path = None
     checkpoint_folder = None
     config = {}
+    dep_params = Adaptive_RL.default_params()
 
     if path:
         # Load last checkpoint, not best
@@ -112,29 +113,45 @@ def train_agent(
             cpg_tau_r = config.cpg_tau_r or cpg_tau_r
             cpg_tau_a = config.cpg_tau_a or cpg_tau_a
 
+            # Set DEP parameters
+            if hasattr(agent, "expl") and "DEP" in config:
+               dep_params = config.DEP
+
             print("Loaded Config")
 
     # Build the training environment.
+    myo_flag = False
+    _environment = f"'{environment}', render_mode='rgb_array'"
     if 'myo' in env_name:
-        _environment = Adaptive_RL.MyoSuite(environment)
-    else:
-        _environment = Adaptive_RL.Gym(environment)
+        myo_flag = True
+        _environment = f"'{environment}', reset_type='random', scaled_actions=False"
     cpg_model = None
     if cpg_flag:
-        amplitude = max(_environment.action_space.high)
-        min_value = min(_environment.action_space.low)
-        cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
-                                          da=_environment.action_space.shape[0],
-                                          neuron_number=cpg_neurons, hh=hh, max_value=amplitude, min_value=min_value,
-                                          tau_a=cpg_tau_a, tau_r=cpg_tau_r)
-        print(cpg_model.print_characteristics())
-        _environment = Adaptive_RL.CPGWrapper(_environment, cpg_model=cpg_model, use_cpg=cpg_flag)
-    environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential)
-    environment.initialize()
+        cpg_model = Adaptive_RL.get_cpg_model(env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,cpg_tau_a, hh)
+    # Apply DEP Wrapper and load parameters
+    if muscle_flag:
+        agent.expl.params = dep_params
+    # environment.initialize(seed=tonic_conf["seed"])
+    # _environment = "deprl.environments.CPGWrapper(deprl.environments.Gym('myoAmp1DoFWalk-v0', reset_type='random', scaled_actions=False), cpg_model=MatsuokaOscillator.MatsuokaNetworkWithNN(num_oscillators=2, tau_r=8.0, tau_a=48.0, da=70, neuron_number=2, hh=False, max_value=1, min_value=0), use_cpg=True)"
+
+
+    environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential, cpg_flag=cpg_flag,
+                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+    environment.initialize(seed=seed)
 
     # Build the testing environment.
-    test_environment = Adaptive_RL.parallelize.distribute(_environment)
-    test_environment.initialize()
+    test_environment = Adaptive_RL.parallelize.distribute(_environment, cpg_flag=cpg_flag,
+                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+    test_environment.initialize(seed=seed + 1000000)
+    # _test_environment = _environment
+    # test_environment = deprl.custom_distributed.distribute(
+    #     environment=_test_environment,
+    #     tonic_conf=tonic_conf,
+    #     env_args={},
+    #     parallel=1,
+    #     sequential=1,
+    # )
+
 
 
     # Build the agent.
@@ -143,27 +160,38 @@ def train_agent(
 
     # Load the weights of the agent form a checkpoint.
     step_number = 0
-    buffer_data = None
     if checkpoint_path:
-        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=_environment)
+        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=environment, muscle_flag=muscle_flag)
     else:
         agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                          seed=seed)
+    if muscle_flag:
+        agent.expl.get_params(get_print=True)
+    if cpg_flag:
+        print(environment.cpg_model.print_characteristics())
     args['agent'] = agent.get_config(print_conf=True)
     args['trainer'] = trainer.dump_trainer()
     # Initialize the logger to save data to the path
     Adaptive_RL.logger.initialize(path=path, config=args, progress=progress)
 
     # Build the trainer.
+    # trainer_1 = deprl.custom_trainer.Trainer(steps=int(4e7), epoch_steps=int(1e5), save_steps=int(2e5))
+    # trainer_1.initialize(
+    #     agent=agent,
+    #     environment=environment,
+    #     test_environment=test_environment,
+    #     # full_save=tonic_conf["full_save"],
+    # )
+    # trainer_1.run(config, steps=0, epochs=0, episodes=0)
     trainer.initialize(
         agent=agent, environment=environment,
-        test_environment=test_environment, step_saved=step_number)
-    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay_buffer=agent.replay_buffer,
+        test_environment=test_environment, step_saved=step_number, muscle_flag=muscle_flag)
+    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay=agent.replay,
                        save_path=checkpoint_folder)
     # Train.
     trainer.run()
-    agent = trainer.agent
-    return agent
+    # agent = trainer.agent
+    # return agent
 
 
 if __name__ == "__main__":
@@ -180,6 +208,7 @@ if __name__ == "__main__":
     cpg_flag = args.cpg
     hh = args.hh
     experiment_number = args.experiment_number
+    muscle_flag = args.muscles
     progress = args.P
 
     save_folder = args.f
@@ -193,7 +222,7 @@ if __name__ == "__main__":
         args, cpg_args = Adaptive_RL.file_to_hyperparameters(args.params, env_name, training_algorithm)
         # Hyperparameters
         learning_rate = args['training']['learning_rate']
-        lr_critic = args['training'].get('lr_critic', 0.0)
+        lr_critic = args['training'].get('lr_critic', None)
         ent_coeff = args['training'].get('ent_coeff', 0.0)
         clip_range = args['training'].get('clip_range', 0.0)
         lr_dual = args['training'].get('lr_dual', 0.0)
@@ -240,8 +269,8 @@ if __name__ == "__main__":
         cpg_neurons = args.cpg_neurons
         cpg_tau_r = args.cpg_tau_r
         cpg_tau_a = args.cpg_tau_a
-    epochs = int(max_steps / 1000)
-    save_steps = int(max_steps / 500)
+    save_steps = int(max_steps / 200)
+    epochs = save_steps//2
 
     normalizer_flag = False
     if decay_lr is not None:
@@ -253,55 +282,64 @@ if __name__ == "__main__":
                                                                  external_folder=save_folder, hh_neuron=hh)
 
     if training_algorithm == "MPO":
-        agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, MPO())(lr_actor=learning_rate,
+                                                lr_critic=lr_critic, lr_dual=lr_dual,
+                                                hidden_size=neuron_number,
+                                                discount_factor=gamma, replay_buffer_size=replay_buffer_size,
+                                                hidden_layers=layers_number,
+                                                batch_size=batch_size, epsilon=epsilon, gradient_clip=clip_range)
+        else:
+            agent = MPO(lr_actor=learning_rate, lr_critic=lr_critic, lr_dual=lr_dual, hidden_size=neuron_number,
                     discount_factor=gamma, replay_buffer_size=replay_buffer_size, hidden_layers=layers_number,
                     batch_size=batch_size, epsilon=epsilon, gradient_clip=clip_range)
     elif training_algorithm == "SAC":
-        agent = SAC(learning_rate=learning_rate, hidden_size=neuron_number, discount_factor=gamma,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, SAC())(learning_rate=learning_rate,
+                                                                 lr_critic=lr_critic,
+                                                                 hidden_size=neuron_number, discount_factor=gamma,
+                                                                 hidden_layers=layers_number,
+                                                                 replay_buffer_size=replay_buffer_size,
+                                                                 batch_size=batch_size,
+                                                                 learning_starts=learning_starts)
+        else:
+            agent = SAC(learning_rate=learning_rate, lr_critic=lr_critic, hidden_size=neuron_number, discount_factor=gamma,
                     hidden_layers=layers_number, replay_buffer_size=replay_buffer_size, batch_size=batch_size,
                     learning_starts=learning_starts)
+
     elif training_algorithm == "PPO":
-        agent = PPO(learning_rate=learning_rate, hidden_size=neuron_number, hidden_layers=layers_number,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, PPO())(learning_rate=learning_rate, lr_critic=lr_critic,
+                                            hidden_size=neuron_number, hidden_layers=layers_number,
+                                            gamma=gamma, decay_lr=decay_lr, normalizer=normalizer_flag,
+                                            batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
+        else:
+            agent = PPO(learning_rate=learning_rate, lr_critic=lr_critic, hidden_size=neuron_number, hidden_layers=layers_number,
                     gamma=gamma, decay_lr=decay_lr, normalizer=normalizer_flag,
                     batch_size=batch_size, entropy_coeff=ent_coeff, clip_range=clip_range)
     elif training_algorithm == "DDPG":
-        agent = DDPG(learning_rate=learning_rate, batch_size=batch_size, learning_starts=learning_starts,
+        if muscle_flag:
+            agent = Adaptive_RL.dep_agents.dep_factory(3, DDPG())(learning_rate=learning_rate, lr_critic=lr_critic,
+                                        batch_size=batch_size, learning_starts=learning_starts,
+                                         noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number,
+                                         replay_buffer_size=replay_buffer_size)
+        else:
+            agent = DDPG(learning_rate=learning_rate, lr_critic=lr_critic, batch_size=batch_size, learning_starts=learning_starts,
                      noise_std=noise_std, hidden_size=neuron_number, hidden_layers=layers_number,
                      replay_buffer_size=replay_buffer_size)
     else:
         agent = None
 
     if agent is not None:
-        agent = train_agent(agent=agent,
-                            environment=env_name,
-                            sequential=sequential, parallel=parallel,
-                            trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
-                                                        early_stopping=early_stopping),
-                            path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
-                            cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r)
+        train_agent(agent=agent,
+                    environment=env_name,
+                    sequential=sequential, parallel=parallel,
+                    trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
+                                                early_stopping=early_stopping),
+                    path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
+                    cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r, muscle_flag=muscle_flag)
 
-
-        if 'myo' in env_name:
-            env = Adaptive_RL.MyoSuite(env_name)
-        else:
-            env = Adaptive_RL.Gym(env_name, render_mode="human")
-
-        cpg_model = None
-        if cpg_flag:
-            max_value = env.action_space.high + cpg_oscillator*cpg_neurons
-            min_value = env.action_space.low + cpg_oscillator*cpg_neurons
-            cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillator,
-                                              da=env.action_space.shape[0],
-                                              neuron_number=cpg_neurons, max_value=max_value, min_value=min_value, hh=hh)
-        env = Adaptive_RL.CPGWrapper(env, cpg_model=cpg_model, use_cpg=cpg_flag)
-
-        path, config, _ = Adaptive_RL.get_last_checkpoint(path=log_dir, best=False)
-        agent_test, _ = Adaptive_RL.load_agent(config, path, env)
-
-        # print("Starting Evaluation")
-        trials.evaluate(agent_test, env, algorithm=training_algorithm, num_episodes=3)
-
-        env.close()
+        print("Training Done")
     else:
         print("No agent specified, finishing program")
-        exit()
+    exit()

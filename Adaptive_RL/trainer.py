@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import platform
 from playsound import playsound
+import gc
 
 from Adaptive_RL import logger
 
@@ -13,7 +14,7 @@ class Trainer:
 
     def __init__(
         self, steps=int(1e7), epoch_steps=int(2e4), save_steps=int(5e5),
-        test_episodes=5, show_progress=True, replace_checkpoint=False, early_stopping=False,
+        test_episodes=20, show_progress=True, replace_checkpoint=False, early_stopping=False,
     ):
         self.max_steps = steps
         self.epoch_steps = epoch_steps
@@ -27,6 +28,7 @@ class Trainer:
         self.test_environment = None
         self.environment = None
         self.agent = None
+        self.muscle_flag=False
 
         # Early Stop Parameters
         self.best_reward = -float('inf')
@@ -35,12 +37,13 @@ class Trainer:
         self.early_stopping = early_stopping
         self.decay_counter = 0
 
-    def initialize(self, agent, environment, test_environment=None, step_saved=None):
+    def initialize(self, agent, environment, test_environment=None, step_saved=None, muscle_flag=False):
         self.agent = agent
         self.environment = environment
         self.test_environment = test_environment
         if step_saved is not None:
             self.steps = step_saved
+        self.muscle_flag = muscle_flag
 
     def dump_trainer(self):
         trainer_data = {
@@ -58,22 +61,42 @@ class Trainer:
         start_time = last_epoch_time = time.time()
 
         # Start the environments.
-        observations = self.environment.start()
+        if self.muscle_flag:
+            observations, muscle_states = self.environment.start()
+        else:
+            observations = self.environment.start()
         num_workers = len(observations)
         scores = np.zeros(num_workers)
         lengths = np.zeros(num_workers, int)
-        self.steps, epoch_steps, epochs, episodes = self.steps, self.steps, self.steps, self.steps
+        self.steps, epoch_steps, epochs, episodes = self.steps, 0, 0, 0
         steps_since_save = self.steps
         stop_training = False
 
         while not stop_training:
-            # Select actions.
-            actions = self.agent.step(observations, self.steps)
-            assert not np.isnan(actions.sum())
+            # Select actions, if using DEP, means balance between DEP and RL exploration.
+            if self.muscle_flag:
+                if hasattr(self.agent, "expl"):
+                    greedy_episode = (
+                        not episodes % self.agent.expl.test_episode_every
+                    )
+                else:
+                    greedy_episode = None
+                assert not np.isnan(observations.sum())
+
+                actions = self.agent.step(observations, self.steps, muscle_states, greedy_episode)
+            else:
+                actions = self.agent.step(observations, self.steps)
+
+            assert not np.isnan(actions).any(), "NaN in actions!"
             logger.store('train/action', actions, stats=True)
 
             # Take a step in the environments.
-            observations, infos = self.environment.step(actions)
+            if self.muscle_flag:
+                observations, muscle_states, infos = self.environment.step(actions)
+                if "env_infos" in infos:
+                    infos.pop("env_infos")
+            else:
+                observations, infos = self.environment.step(actions)
             self.agent.update(**infos, steps=self.steps)
             scores += infos['rewards']
             lengths += 1
@@ -98,7 +121,7 @@ class Trainer:
             if epoch_steps >= self.epoch_steps:
                 # Evaluate the agent on the test environment.
                 if self.test_environment:
-                    self._test()
+                    self._test(env=self.test_environment, agent=self.agent, steps=self.steps, test_episodes=self.test_episodes)
 
                 # Log the data.
                 epochs += 1
@@ -117,8 +140,13 @@ class Trainer:
                 last_epoch_time = time.time()
                 epoch_steps = 0
 
+                # Clear memory
+                gc.collect()
+                torch.cuda.empty_cache()
+
             # End of training.
             stop_training = self.steps >= self.max_steps
+
             # Check if no improvement for 'patience' number of epochs
             if self.no_improvement_counter >= self.patience and self.early_stopping:
                 print(f"Early stopping at epoch {epochs}")
@@ -138,7 +166,7 @@ class Trainer:
 
                 tmp_score = 0
                 if self.test_environment:
-                    tmp_score = self._test()
+                    tmp_score = self._test(env=self.test_environment, agent=self.agent, steps=self.steps, test_episodes=int(self.test_episodes/2))
                 if tmp_score > self.best_reward:
                     self.best_reward = tmp_score
                     self.no_improvement_counter = 0  # Reset counter if there's an improvement
@@ -150,12 +178,17 @@ class Trainer:
                 else:
                     self.no_improvement_counter += 1
 
+                # Clear memory
+                gc.collect()
+                torch.cuda.empty_cache()
+
                 self.save_cycles += 1
-                if self.save_cycles % 10 == 0:  # Saving everything only every 10% of the total training
+                if self.save_cycles % 20 == 0:  # Saving everything only every 20% of saved epochs
                     self.save_cycles = 1
-                    save_model_path = os.path.join(path, "model_checkpoint.pth")
-                    self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay_buffer,
-                                    save_model_path)
+                    # save_model_path = os.path.join(path, "model_checkpoint.pth")
+                    # self.save_model(self.agent.model, self.agent.actor_updater.optimizer, self.agent.replay,
+                    #                 save_model_path)
+                    self.agent.replay.clean_buffer()
 
                 if self.no_improvement_counter >= self.patience * 0.6:
                     self.agent.decay_flag = True  # start decaying the noise
@@ -164,35 +197,52 @@ class Trainer:
                     if self.decay_counter >= self.patience * 0.1:
                         self.agent.decay_flag = False
                         self.decay_counter = 0
-        play_system_sound(time="end")
 
-    def _test(self):
+            if stop_training:
+                play_system_sound(time="end")
+                self.close_mp_envs()
+
+
+    def close_mp_envs(self):
+        for index in range(len(self.environment.processes)):
+            self.environment.processes[index].terminate()
+            self.environment.action_pipes[index].close()
+        self.environment.output_queue.close()
+
+
+    def _test(self, env, agent, steps, test_episodes):
         """Tests the agent on the test environment."""
 
         # Start the environment.
-        if not hasattr(self, 'test_observations'):
-            self.test_observations = self.test_environment.start()
-            assert len(self.test_observations) == 1
+        if not hasattr(env, 'test_observations'):
+            if self.muscle_flag:
+                env.test_observations, _ = env.start()
+            else:
+                env.test_observations = env.start()
+            assert len(env.test_observations) == 1
 
         # Test loop.
-        for _ in range(self.test_episodes):
+        for _ in range(test_episodes):
             score, length = 0, 0
-
-            while True:
+            done = False
+            while not done:
                 # Select an action.
-                actions = self.agent.test_step(self.test_observations)
+                actions = agent.test_step(env.test_observations, steps)
                 assert not np.isnan(actions.sum())
                 logger.store('test/action', actions, stats=True)
 
                 # Take a step in the environment.
-                self.test_observations, infos = self.test_environment.step(actions)
-                self.agent.test_update(**infos, steps=self.steps)
+                if self.muscle_flag:
+                    env.test_observations, _, infos = env.step(actions)
+                else:
+                    env.test_observations, infos = env.step(actions)
+                # self.agent.test_update(**infos, steps=self.steps)
 
                 score += infos['rewards'][0]
                 length += 1
 
                 if infos['resets'][0]:
-                    break
+                    done = True
 
             # Log the data.
             logger.store('test/episode_score', score, stats=True)
@@ -200,18 +250,18 @@ class Trainer:
             return score
 
     @staticmethod
-    def save_model(agent, optimizer, replay_buffer, save_path):
+    def save_model(agent, optimizer, replay, save_path):
         save_data = {
             'model_state_dict': agent.state_dict(),  # Save model weights
             'optimizer_state_dict': optimizer.state_dict(),  # Save optimizer state
-            'replay_buffer': replay_buffer,  # Save replay buffer
+            'replay_buffer': replay,  # Save replay buffer
         }
         # Save the entire state in a single file
         torch.save(save_data, save_path)
         logger.log(f"Model, optimizer, and replay buffer saved at {save_path}")
 
     @staticmethod
-    def load_model(agent, actor_updater, replay_buffer, save_path):
+    def load_model(agent, actor_updater, replay, save_path):
         try:
             # Load the saved data from the file
             save_path = save_path + '/model_checkpoint.pth'
@@ -226,10 +276,10 @@ class Trainer:
 
             # Load replay buffer (optional)
             if 'replay_buffer' in checkpoint:
-                replay_buffer = checkpoint['replay_buffer']
+                replay = checkpoint['replay_buffer']
 
             logger.log(f"Model, optimizer, and replay buffer loaded from {save_path}")
-            return replay_buffer
+            return replay
         except FileNotFoundError:
             print(f"Checkpoint not found at {save_path}")
         except KeyError as e:

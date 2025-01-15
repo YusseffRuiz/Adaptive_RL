@@ -10,6 +10,7 @@ from sklearn.metrics import mean_squared_error
 import os
 from scipy.signal import savgol_filter
 import seaborn as sns
+from sympy.codegen.ast import float32
 
 
 def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False, external_folder=None,
@@ -61,6 +62,10 @@ def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number
 
 # Define function to search for trained algorithms in specified folders
 def search_trained_algorithms(env_name, algorithms_list, save_folder="training", experiment_number=0):
+    """
+    The folder to look for the algorithms must be in the form: save_folder/environment_name-algorithm
+    logs/checkpoints folder must be inside environment_name-algorithm
+    """
     if save_folder is None:
         save_folder = "training"
     # List of algorithms to look for
@@ -76,7 +81,6 @@ def search_trained_algorithms(env_name, algorithms_list, save_folder="training",
             possible_folders = [
                 os.path.join(f"{save_folder}/{env_name}-{algo}"),
             ]
-
         for folder in possible_folders:
             if os.path.exists(folder):
                 algorithms_found.append((algo, folder))
@@ -90,8 +94,14 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     total_rewards = []
     range_episodes = num_episodes
     mujoco_env = hasattr(env, "sim")
-    for i in range(range_episodes):
-        obs, *_ = env.reset()
+    muscle_flag = hasattr(env, "muscles_enable")
+    for step in range(range_episodes):
+        if mujoco_env:
+            obs = env.reset()
+        else:
+            obs = env.reset()[0]
+        if muscle_flag:
+            muscle_states = env.muscle_states
         done = False
         episode_reward = 0
         cnt = 0
@@ -101,18 +111,26 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             cnt += 1
             with torch.no_grad():
                 if algorithm != "random":
-                    action = model.test_step(obs)
+                    if muscle_flag:
+                        action = model.test_step(observations=obs, muscle_states=muscle_states, steps=step)
+                    else:
+                        action = model.test_step(observations=obs, steps=step)
                 else:
                     action = env.action_space.sample()
-            obs, reward, done, info, *_ = env.step(action)
+            if len(action.shape) > 1:
+                action = action[0, :]
+            obs, reward, done, info, _ = env.step(action)
+            if muscle_flag:
+                muscle_states = env.muscle_states
             # phase_1 = obs[0]
             # phase_2 = obs[3]
-            phase_1, phase_2 = env.get_osc_output()
-            phases_1.append(phase_1)
-            phases_2.append(phase_2)
+            # phase_1, phase_2 = env.get_osc_output()
+            # phases_1.append(phase_1)
+            # phases_2.append(phase_2)
             # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
+                # extras = env.extras
                 env.sim.renderer.render_to_window()
             episode_reward += reward
             if no_done:
@@ -120,9 +138,9 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
+        # plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
         total_rewards.append(episode_reward)
-        print(f"Episode {i + 1}/{range_episodes}: Reward = {episode_reward}")
+        print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
     env.close()
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
@@ -136,8 +154,11 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     successful_episodes = 0
     max_attempts_per_episode = 50  # Maximum retries per episode
     min_reward = 400
+    muscle_flag = hasattr(env, "muscle_states")
     if alg == "PPO" or alg == "PPO-CPG":
         min_reward = 100
+    if action_dim == 70:
+        min_reward = 5000
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -149,6 +170,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_error = []
     total_distance = []
     dt = 5  # Steps per dt
+    ep_fall = 0
 
     while successful_episodes < episodes_num:
         attempts = 0
@@ -157,9 +179,16 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
             attempts += 1
             # print(f"Starting episode {successful_episodes + 1}, attempt {attempts}")
             if alg == "random":
-                obs = env.reset()
+                if muscle_flag:
+                    obs = env.reset()
+                else:
+                    obs = env.reset()[0]
             else:
-                obs, *_ = env.reset()
+                if muscle_flag:
+                    obs = env.reset()
+                    muscle_states = env.muscle_states
+                else:
+                    obs, *_ = env.reset()
             lstm_states = None
             reward = 0
             ep_energy = []
@@ -177,7 +206,10 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
 
             for step in range(duration):
                 if alg != "random":
-                    action = agent.test_step(obs)
+                    if muscle_flag:
+                        action = agent.test_step(observations=obs, muscle_states=muscle_states, steps=step)
+                    else:
+                        action = agent.test_step(obs, step=step)
                 else:
                     action, lstm_states = agent.predict(
                         obs,
@@ -185,12 +217,16 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                         episode_start=np.ones((env.num_envs,), dtype=bool),
                         deterministic=deterministic,
                     )
+                if len(action.shape) > 1:
+                    action = action[0, :]
                 if alg == "random":
                     obs, rw, done, info = env.step(action)
                     position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
                 else:
                     obs, rw, done, info, extras = env.step(action)
-                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras)
+                    if muscle_flag:
+                        muscle_states = env.muscle_states
+                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras, muscles=muscle_flag)
 
                 if done and not fall:
                     ending_step = step
@@ -223,6 +259,8 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 total_velocity.append(np.array(ep_velocity))
                 total_accelerations.append(np.array(ep_acceleration))
                 total_error.append(np.array(ep_error))
+                if fall:
+                    ep_fall += 1
                 print(f"Episode {successful_episodes} successful with reward {reward:.2f}")
 
         if not success:
@@ -259,6 +297,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
         'total_energy': total_energy,
         'energy': average_energy,
         'joints': joints,
+        'falls' : ep_fall,
     }
 
     return results_dict
@@ -429,7 +468,7 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
         plt.close()
 
 
-def get_data(info):
+def get_data(info, muscles=False):
     """
     Get data from info dictionary.
     :param info: is separated into what the environment is giving:
@@ -459,12 +498,20 @@ def get_data(info):
     "total_energy": np.sum(action) in N/m
     :return: specific values
     """
-    position = info["distance_from_origin"]
-    velocity = info["x_velocity"]
-    joint_angles = info["joint_angles"] * 180/math.pi
-    joint_velocity = info["joint_velocities"] * 180 / math.pi
-    torques = info["torques"]
-    step_energy = torques*info["joint_velocities"]
+    if not muscles:
+        position = info["distance_from_origin"]
+        velocity = info["x_velocity"]
+        joint_angles = info["joint_angles"] * 180/math.pi
+        joint_velocity = info["joint_velocities"] * 180 / math.pi
+        torques = info["torques"]
+        step_energy = torques*info["joint_velocities"]
+    else:
+        position = info["distance_from_origin"]
+        velocity = info["velocity"]
+        joint_angles = info["joint_angles"] * 180 / math.pi
+        joint_velocity = info["joint_velocities"] * 180 / math.pi
+        torques = info["torques"]
+        step_energy = torques * info["joint_velocities"]
 
     return position, velocity, joint_angles, joint_velocity, torques, step_energy
 
@@ -486,10 +533,17 @@ def separate_joints(joint_list, action_dim):
         right_knee = joint_list[:, :, 3]  # Extract right knee
         left_hip = joint_list[:, :, 6]  # Extract left hip
         left_knee = joint_list[:, :, 7]  # Extract left knee
+        none_value = np.zeros_like(right_hip)
 
-        return np.array(right_hip), np.array(right_knee), None, np.array(left_hip), np.array(left_knee), None
+        return np.array(right_hip), np.array(right_knee), none_value, np.array(left_hip), np.array(left_knee), none_value
     elif action_dim == 70:
-        pass
+        right_hip = joint_list[:, :, 0, 1]  # Extract right hip
+        right_ankle = joint_list[:, :, 1, 1]  # Extract right ankle
+        left_hip = joint_list[:, :, 0, 0]  # Extract left hip
+        left_ankle = joint_list[:, :, 1, 0]  # Extract left ankle
+        none_value = np.zeros_like(right_hip)
+
+        return np.array(right_hip), none_value, np.array(right_ankle), np.array(left_hip), none_value, np.array(left_ankle)
     else:
         print("Not implemented Action Space")
 
@@ -677,13 +731,13 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False
     plt.close()
 
 
-def plot_phase(data, data2=None, algo=None, save_folder=None, name="Phase Error"):
+def plot_phase(data, data2=None, algo=None, save_folder=None, name="Phase"):
     plt.plot(data)
     if data2 is not None:
         plt.plot(data2)
     plt.xlabel('Steps')
     plt.ylabel(name)
-    plt.title(f'{name} for PID in {algo} algorithm')
+    plt.title(f'{name} for joints in {algo} algorithm')
     if save_folder is not None:
         # Define the path where the image will be saved
         image_path = os.path.join(save_folder, f"{name}_{algo}.png")

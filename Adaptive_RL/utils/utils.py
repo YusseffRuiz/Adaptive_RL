@@ -1,6 +1,9 @@
 import os
 from Adaptive_RL.agents import SAC, PPO, MPO, DDPG
+from Adaptive_RL import CPGWrapper, MyoSuite, Gym
+from MatsuokaOscillator import MatsuokaNetworkWithNN
 from Adaptive_RL.utils import logger
+from Adaptive_RL.dep_search.dep_agents import dep_factory
 from gymnasium.envs.registration import register
 import yaml
 import argparse
@@ -89,35 +92,109 @@ def load_checkpoint(checkpoint, path):
     return checkpoint_path
 
 
-def load_agent(config, path, env):
+def load_agent(config, path, env, muscle_flag=False):
     if config.agent["agent"] == "DDPG":
-        agent = DDPG(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
-                     learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
-                     hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                     replay_buffer_size=config.agent["replay_buffer_size"], )
+        if muscle_flag:
+            agent = dep_factory(3, DDPG())(learning_rate=config.agent["learning_rate"],
+                                           lr_critic=config.agent["lr_critic"],
+                                         batch_size=config.agent["batch_size"],
+                                         learning_starts=config.agent["learning_starts"],
+                                         noise_std=config.agent["noise_std"],
+                                         hidden_layers=config.agent["hidden_layers"],
+                                         hidden_size=config.agent["hidden_size"],
+                                         replay_buffer_size=config.agent["replay_buffer_size"], )
+        else:
+            agent = DDPG(learning_rate=config.agent["learning_rate"],
+                         lr_critic=config.agent["lr_critic"], batch_size=config.agent["batch_size"],
+                         learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                         hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
+                         replay_buffer_size=config.agent["replay_buffer_size"], )
     elif config.agent["agent"] == "MPO":
-        agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
-                    lr_dual=config.agent["lr_dual"],
-                    hidden_size=config.agent["hidden_size"], discount_factor=config.agent["gamma"],
-                    replay_buffer_size=config.agent["replay_buffer_size"], hidden_layers=config.agent["hidden_layers"])
+        if muscle_flag:
+            agent = dep_factory(3, MPO())(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
+                                        lr_dual=config.agent["lr_dual"],
+                                        hidden_size=config.agent["hidden_size"],
+                                        discount_factor=config.agent["gamma"],
+                                        replay_buffer_size=config.agent["replay_buffer_size"],
+                                        hidden_layers=config.agent["hidden_layers"])
+        else:
+            agent = MPO(lr_actor=config.agent["lr_actor"], lr_critic=config.agent["lr_critic"],
+                        lr_dual=config.agent["lr_dual"],
+                        hidden_size=config.agent["hidden_size"], discount_factor=config.agent["gamma"],
+                        replay_buffer_size=config.agent["replay_buffer_size"],
+                        hidden_layers=config.agent["hidden_layers"])
     elif config.agent["agent"] == "SAC":
-        agent = SAC(learning_rate=config.agent["learning_rate"], batch_size=config.agent["batch_size"],
-                    learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
-                    hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
-                    replay_buffer_size=config.agent["replay_buffer_size"],
-                    discount_factor=config.agent["discount_factor"], )
+        if muscle_flag:
+            agent = dep_factory(3, SAC())(learning_rate=config.agent["learning_rate"],
+                                          lr_critic=config.agent["lr_critic"],
+                                      batch_size=config.agent["batch_size"],
+                                      learning_starts=config.agent["learning_starts"],
+                                      noise_std=config.agent["noise_std"],
+                                      hidden_layers=config.agent["hidden_layers"],
+                                      hidden_size=config.agent["hidden_size"],
+                                      replay_buffer_size=config.agent["replay_buffer_size"],
+                                      discount_factor=config.agent["discount_factor"], )
+        else:
+            agent = SAC(learning_rate=config.agent["learning_rate"],
+                        lr_critic=config.agent["lr_critic"], batch_size=config.agent["batch_size"],
+                        learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
+                        hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
+                        replay_buffer_size=config.agent["replay_buffer_size"],
+                        discount_factor=config.agent["discount_factor"], )
     elif config.agent["agent"] == "PPO":
-        agent = PPO(learning_rate=config.agent["learning_rate"], hidden_size=config.agent["hidden_size"],
-                    hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
-                    batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
-                    clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"],
-                    normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
+        if muscle_flag:
+            agent = dep_factory(3, PPO())(learning_rate=config.agent["learning_rate"],
+                                          lr_critic=config.agent["lr_critic"],
+                                        hidden_size=config.agent["hidden_size"],
+                                        hidden_layers=config.agent["hidden_layers"],
+                                        discount_factor=config.agent["discount_factor"],
+                                        batch_size=config.agent["batch_size"],
+                                        entropy_coeff=config.agent["entropy_coeff"],
+                                        clip_range=config.agent["clip_range"],
+                                        replay_buffer_size=config.agent["replay_buffer_size"],
+                                        normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
+        else:
+            agent = PPO(learning_rate=config.agent["learning_rate"],
+                        lr_critic=config.agent["lr_critic"], hidden_size=config.agent["hidden_size"],
+                        hidden_layers=config.agent["hidden_layers"], discount_factor=config.agent["discount_factor"],
+                        batch_size=config.agent["batch_size"], entropy_coeff=config.agent["entropy_coeff"],
+                        clip_range=config.agent["clip_range"], replay_buffer_size=config.agent["replay_buffer_size"],
+                        normalizer=config.agent["normalizer"], decay_lr=config.agent["discount_factor"])
     else:
         agent = None
     agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
     step = agent.load(path)
     agent.get_config(print_conf=True)
     return agent, step
+
+
+def wrap_cpg(env, env_name, cpg_oscillators=2, cpg_neurons=2, cpg_tau_r=2, cpg_tau_a=12, hh=False):
+    amplitude = max(env.action_space.high)
+    if 'myo' in env_name:
+        min_value = 0
+    else:
+        min_value = min(env.action_space.low)
+    cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                      da=env.action_space.shape[0],
+                                      neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                      tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
+    env = CPGWrapper(env, cpg_model=cpg_model, use_cpg=True)
+    return env
+
+def get_cpg_model(env_name, cpg_oscillators=2, cpg_neurons=2, cpg_tau_r=2, cpg_tau_a=12, hh=False):
+    if 'myo' in env_name:
+        dummy_env = MyoSuite(env_name, reset_type='random', scaled_actions=False)
+        min_value = 0
+    else:
+        dummy_env = Gym(env_name)
+        min_value = min(dummy_env.action_space.low)
+    amplitude = max(dummy_env.action_space.high)
+    cpg_model = MatsuokaNetworkWithNN(num_oscillators=cpg_oscillators,
+                                      da=dummy_env.action_space.shape[0],
+                                      neuron_number=cpg_neurons, tau_r=cpg_tau_r,
+                                      tau_a=cpg_tau_a, hh=hh, max_value=amplitude, min_value=min_value)
+    del dummy_env
+    return cpg_model
 
 
 def record_video(env, video_folder, alg, agent, env_name):

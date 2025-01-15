@@ -1,5 +1,7 @@
 import gymnasium as gym
 import numpy as np
+from abc import ABC, abstractmethod
+
 
 
 class ActionRescaler(gym.ActionWrapper):
@@ -53,79 +55,144 @@ class TimeFeature(gym.Wrapper):
         return observation, reward, done, info
 
 
-class CPGWrapper(gym.Wrapper):
-    def __init__(self, env, cpg_model=None, use_cpg=False):
-        super(CPGWrapper, self).__init__(env)
-        self.use_cpg = use_cpg
-        if use_cpg:
-            self.cpg_model = cpg_model  # The CPG model should be passed in as an argument
-            self.da = len(env.action_space.low)
-            self.original_action_space = env.action_space  # Store the original action space
-            oscillators = cpg_model.num_oscillators
-            neurons = cpg_model.neuron_number
-            self.params = oscillators*neurons
-            # Extend the action space
-            low = np.concatenate([env.action_space.low, np.full((self.params,), -1)])
-            high = np.concatenate([env.action_space.high, np.full((self.params,), 1)])
-            self.action_space = gym.spaces.Box(low=low, high=high, dtype=np.float32)
+class AbstractWrapper(gym.Wrapper, ABC):
+    def merge_args(self, args):
+        if args is not None:
+            for k, v in args.items():
+                setattr(self.unwrapped, k, v)
 
+    def apply_args(self):
+        pass
+
+    def render(self, *args, **kwargs):
+        pass
+
+    @property
+    def force_scale(self):
+        if not hasattr(self, "_force_scale"):
+            self._force_scale = 0
+        return self._force_scale
+
+    @force_scale.setter
+    def force_scale(self, force_scale):
+        assert force_scale >= 0, f"expected positive value, got {force_scale}"
+        self._force_scale = force_scale
+
+    @abstractmethod
+    def muscle_lengths(self):
+        pass
+
+    @abstractmethod
+    def muscle_forces(self):
+        pass
+
+    @property
+    def muscle_states(self):
+        """
+        Computes the DEP input. We assume an input
+        muscle_length + force_scale * muscle_force
+        where force_scale is chosen by the user and the other
+        variables are normalized by the encountered max and min
+        values.
+        """
+        lce = self.muscle_lengths()
+        f = self.muscle_forces()
+        if not hasattr(self, "max_muscle"):
+            self.max_muscle = np.zeros_like(lce)
+            self.min_muscle = np.ones_like(lce) * 100.0
+            self.max_force = -np.ones_like(f) * 100.0
+            self.min_force = np.ones_like(f) * 100.0
+        if not np.any(np.isnan(lce)):
+            self.max_muscle = np.maximum(lce, self.max_muscle)
+            self.min_muscle = np.minimum(lce, self.min_muscle)
+        if not np.any(np.isnan(f)):
+            self.max_force = np.maximum(f, self.max_force)
+            self.min_force = np.minimum(f, self.min_force)
+        return (
+            1.0
+            * (
+                (
+                    (lce - self.min_muscle)
+                    / (self.max_muscle - self.min_muscle + 0.1)
+                )
+                - 0.5
+            )
+            * 2.0
+            + self.force_scale
+            * ((f - self.min_force) / (self.max_force - self.min_force + 0.1))
+        ).copy()
+
+
+class ExceptionWrapper(AbstractWrapper):
+    """
+    Catches MuJoCo related exception thrown mostly by instabilities in the simulation.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def reset(self, seed=None, options=None):
+        observation = super().reset(seed=seed, options=options)[0]
+        if not np.any(np.isnan(observation)):
+            self.last_observation = observation.copy()
+        else:
+            return self.reset(seed=seed, options=options)
+        return observation
 
     def step(self, action):
-        if self.use_cpg:
-            osc_weights, u_value, action = env_selection(self.da, action, self.params, self.public_obs())
-            action = self.cpg_model.step(action, osc_weights, u_value)
-        return self.env.step(action)
+        try:
+            observation, reward, done, info, extras = self._inner_step(action)
+            if np.any(np.isnan(observation)):
+                observation[np.isnan(observation)] = 0.0
+                reward = 0
+                done = 1
+                info = {}
+                extras = {}
+                self.reset()
+                print("NaN detected! Resetting.")
 
-    def reset(self, **kwargs):
-        # Pass seed and other arguments down to the wrapped environment
-        if self.use_cpg:
-            self.cpg_model.reset()
-        return self.env.reset(**kwargs)
+        except Exception as e:
+            # logger.log(f"Simulator exception thrown: {e}")
+            print(f"Simulator exception thrown: {e}")
+            observation = self.last_observation
+            reward = 0
+            done = 1
+            info = {}
+            extras = {}
+            self.reset()
+        return observation, reward, done, info, extras
 
-    def get_osc_output(self):
-        # 2 values: left and right
-        return self.cpg_model.osc_output
+    def _inner_step(self, action):
+        return super().step(action)
 
 
-def env_selection(action_dim, weights, params, obs):
+class GymWrapper(ExceptionWrapper):
+    """Wrapper for OpenAI Gym and MuJoCo, compatible with
+    gym=0.13.
     """
-    Returns the separation into oscillator weights, original actions and u_feedback coming from the movement on the legs
-    :param action_dim: action dimension for the different enviroments
-    :param weights: weights comming from the DRL algorithm
-    :param params: parameters of the CPG
-    :param obs: observations from the environment for the u_feedback
-    :return: weights for oscillator, the u_feedback and the weights for the actual actions.
-    """
-    osc_weights = weights[-params:]
-    action_weights = weights[:-params]
-    if action_dim == 6:
-        u_values = weight_conversion_walker(obs)
-    elif action_dim == 17:
-        u_values = weight_conversion_humanoid(obs)
-    elif action_dim == 70:
-        u_values = weight_conversion_myoleg(obs)
-    else:
-        print("Not an implemented environment")
-        return None
 
-    return osc_weights, u_values, action_weights
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.muscles_enable=True
 
+    def render(self, *args, **kwargs):
+        kwargs["mode"] = "window"
+        self.unwrapped.sim.render(*args, **kwargs)
 
-def weight_conversion_walker(observation):
-    return np.array([observation[3], observation[5]])  #[observation[0], observation[2],
+    def muscle_lengths(self):
+        length = self.unwrapped.sim.data.actuator_length
 
+        return length
 
-def weight_conversion_humanoid(obs):
-    return np.array([obs[10], obs[14]])
+    def muscle_forces(self):
+        return self.unwrapped.sim.data.actuator_force
 
+    def muscle_velocities(self):
+        return self.unwrapped.sim.data.actuator_velocity
 
-# Define muscle groups and their corresponding neurons/oscillators
-def weight_conversion_myoleg(obs):
-    # hip_flex_r = np.array([obs[5], obs[21]])  # Feedback to muscles controlling hip
-    # knee_rot_r = np.array([obs[9], obs[26]])  # Feedback to muscles controlling knee
-    ankle_flex_r = np.array([obs[17], obs[29]])  # Feedback to muscles controlling ankle right
+    def muscle_activity(self):
+        return self.unwrapped.sim.data.act
 
-    # u_feedback = np.concatenate([hip_flex_r, ankle_flex_r])
-    u_feedback = np.array(ankle_flex_r)
-    return u_feedback
-
+    @property
+    def _max_episode_steps(self):
+        return self.unwrapped.max_episode_steps

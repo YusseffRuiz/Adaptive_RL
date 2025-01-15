@@ -284,10 +284,19 @@ class BaseModel(torch.nn.Module):
         if hidden_layers > 1:
             if isinstance(hidden_size, int):
                 self.neuron_shape = [hidden_size] * hidden_layers
+            elif isinstance(hidden_size, list):
+                if len(hidden_size) == 1 and hidden_layers > 1:
+                    # Si es una lista con un solo valor y hay más de una capa, repite el valor
+                    self.neuron_shape = hidden_size * hidden_layers
+                else:
+                    # Si ya tiene la longitud correcta, úsalo tal cual
+                    self.neuron_shape = hidden_size
             else:
                 self.neuron_shape = hidden_size
         else:
-            if len(hidden_size > 1 and hidden_layers == 1):
+            if isinstance(hidden_size, list):
+                self.neuron_shape = hidden_size
+            elif len(hidden_size > 1 and hidden_layers == 1):
                 self.neuron_shape = hidden_size*2
             self.neuron_shape = hidden_size
         self.activation_fn = activation_fn

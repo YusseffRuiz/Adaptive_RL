@@ -2,7 +2,7 @@ import torch
 from Adaptive_RL import logger, neural_networks
 from Adaptive_RL.agents import base_agent
 from Adaptive_RL.neural_networks import MaximumAPosterioriPolicyOptimization
-from Adaptive_RL.utils import ReplayBuffer, utils
+from Adaptive_RL.utils import ReplayBuffer
 
 
 class MPO(base_agent.BaseAgent):
@@ -16,10 +16,10 @@ class MPO(base_agent.BaseAgent):
         self, hidden_size=256, hidden_layers=2, lr_actor=3e-4, lr_dual=3e-4, lr_critic=3e-4,
             discount_factor=0.99, epsilon=0.1, epsilon_mean=1e-3, epsilon_std=1e-5, initial_log_temperature=1.,
             initial_log_alpha_mean=1., initial_log_alpha_std=10., min_log_dual=-18., per_dim_constraining=True,
-            action_penalization=True, gradient_clip=0.1, batch_size=128, return_step=5, steps_between_batches=20,
+            action_penalization=True, gradient_clip=0.1, batch_size=256, return_step=3, steps_between_batches=30,
             replay_buffer_size=10e5, decay_lr=0.98):
         self.model = neural_networks.BaseModel(hidden_size=hidden_size, hidden_layers=hidden_layers).get_model()
-        self.replay_buffer = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
+        self.replay = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches,
                                           size=int(replay_buffer_size))
         self.actor_updater = MaximumAPosterioriPolicyOptimization(lr_actor=lr_actor, lr_dual=lr_dual, epsilon=epsilon,
@@ -49,6 +49,7 @@ class MPO(base_agent.BaseAgent):
 
     def initialize(self, observation_space, action_space, seed=None):
         self.model.initialize(observation_space, action_space)
+        self.replay.initialize()
         self.actor_updater.initialize(self.model, action_space)
         self.critic_updater.initialize(self.model)
         self.decay_flag = False
@@ -63,13 +64,13 @@ class MPO(base_agent.BaseAgent):
 
         return actions
 
-    def test_step(self, observations):
+    def test_step(self, observations, steps=None):
         # Sample actions for testing.
         return self._test_step(observations).cpu().numpy()
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store the last transitions in the replay.
-        self.replay_buffer.push(observations=self.last_observations,
+        self.replay.push(observations=self.last_observations,
                                 actions=self.last_actions,
                                 next_observations=observations,
                                 rewards=rewards,
@@ -82,7 +83,7 @@ class MPO(base_agent.BaseAgent):
             self.model.return_normalizer.record(rewards)
 
         # Update the model if the replay is ready.
-        if self.replay_buffer.ready(steps):
+        if self.replay.ready(steps):
             self._update(steps)
 
         if self.decay_flag:  # Reducing noise to stabilize training
@@ -104,7 +105,7 @@ class MPO(base_agent.BaseAgent):
                 'discounts')
 
         # Update both the actor and the critic multiple times.
-        for batch in self.replay_buffer.get(*keys, steps=steps):
+        for batch in self.replay.get(*keys, steps=steps):
             batch = {k: torch.as_tensor(v) for k, v in batch.items()}
             infos = self._update_actor_critic(**batch)
 

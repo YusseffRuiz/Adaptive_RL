@@ -3,6 +3,8 @@ import torch
 import os
 from Adaptive_RL import logger
 import re
+import numpy as np
+import random
 
 
 class BaseAgent(abc.ABC):
@@ -12,8 +14,11 @@ class BaseAgent(abc.ABC):
     """
 
     def initialize(self, observation_space, action_space, seed=None):
-        self.model = None
-        self.config = None
+        if seed is None:
+            seed = random.randint(1, 10000)
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
 
     @abc.abstractmethod
     def step(self, observations, steps):
@@ -37,12 +42,15 @@ class BaseAgent(abc.ABC):
         """Informs the agent of the latest transitions during testing."""
         pass
 
-    def save(self, path):
+    def save(self, path, full_save=False):
         """Saves the agent weights during training."""
         path = path + '.pt'
         logger.log(f'\nSaving weights to {path}')
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.model.state_dict(), path)
+        if full_save:
+            torch.save(self.model, path)
+        else:
+            torch.save(self.model.state_dict(), path)
 
     def load(self, path):
         """Reloads the agent weights from a checkpoint, and returns the step number."""
@@ -55,6 +63,7 @@ class BaseAgent(abc.ABC):
             step_number = int(match.group(1))
 
         self.model.load_state_dict(torch.load(path, weights_only=True))
+        self.model.eval()
 
         return step_number
 
@@ -63,6 +72,7 @@ class BaseAgent(abc.ABC):
         Print all configuration, if required, can be saved in variable
         """
         if print_conf:
+            print("######## AGENT CONFIGURATION ########")
             for key, value in self.config.items():
                 print(f"{key}: {value}")
         return self.config

@@ -1,0 +1,38 @@
+{
+ "tonic": {
+    "header": "import deprl, gym, myosuite, Adaptive_RL",
+    "agent": "deprl.custom_agents.dep_factory(3, Adaptive_RL.agents.sac_agent.SAC(hidden_size=1024, learning_rate= 3.53e-4, learning_starts=1000, noise_std=0.1))()",
+    "environment": "deprl.environments.CPGWrapper(deprl.environments.Gym('myoOSLHillyTerrainWalk-v0', reset_type='random', scaled_actions=False), cpg_model=MatsuokaOscillator.MatsuokaNetworkWithNN(num_oscillators=2, da=70, neuron_number=2, hh=False, max_value=1, min_value=0), use_cpg=True)",
+    "test_environment": null,
+    "trainer": "deprl.custom_trainer.Trainer(steps=int(4e7), epoch_steps=int(1e5), save_steps=int(2e5))",
+    "before_training": "",
+    "after_training": "",
+    "parallel": 8,
+    "sequential": 8,
+    "seed": 0,
+    "name": "myoAmp_CPG_SAC_Hill",
+    "environment_name": "myoAmpWalk",
+    "checkpoint": "last",
+    "path": ""
+  },
+  "working_dir": "./training",
+  "id": 0,
+  "env_args":{},
+  "DEP":{
+    "test_episode_every": 3,
+    "kappa": 1169.7,
+    "tau": 40,
+    "buffer_size": 200,
+    "bias_rate": 0.002,
+    "s4avg": 2,
+    "time_dist": 5,
+    "normalization":  "independent",
+    "sensor_delay": 1,
+    "regularization": 32,
+    "with_learning": true,
+    "q_norm_selector": "l2",
+    "intervention_length": 5,
+    "intervention_proba": 0.0004
+  }
+}
+
