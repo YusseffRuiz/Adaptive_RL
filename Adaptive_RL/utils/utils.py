@@ -92,7 +92,10 @@ def load_checkpoint(checkpoint, path):
     return checkpoint_path
 
 
-def load_agent(config, path, env, muscle_flag=False):
+def load_agent(config, path, env, muscle_flag=False, residual=None):
+    r = False
+    if residual is not None:
+        r = True
     if config.agent["agent"] == "DDPG":
         if muscle_flag:
             agent = dep_factory(3, DDPG())(learning_rate=config.agent["learning_rate"],
@@ -133,14 +136,14 @@ def load_agent(config, path, env, muscle_flag=False):
                                       hidden_layers=config.agent["hidden_layers"],
                                       hidden_size=config.agent["hidden_size"],
                                       replay_buffer_size=config.agent["replay_buffer_size"],
-                                      discount_factor=config.agent["discount_factor"], )
+                                      discount_factor=config.agent["discount_factor"], residual=r)
         else:
             agent = SAC(learning_rate=config.agent["learning_rate"],
                         lr_critic=config.agent["lr_critic"], batch_size=config.agent["batch_size"],
                         learning_starts=config.agent["learning_starts"], noise_std=config.agent["noise_std"],
                         hidden_layers=config.agent["hidden_layers"], hidden_size=config.agent["hidden_size"],
                         replay_buffer_size=config.agent["replay_buffer_size"],
-                        discount_factor=config.agent["discount_factor"], )
+                        discount_factor=config.agent["discount_factor"], residual=r)
     elif config.agent["agent"] == "PPO":
         if muscle_flag:
             agent = dep_factory(3, PPO())(learning_rate=config.agent["learning_rate"],
@@ -164,6 +167,8 @@ def load_agent(config, path, env, muscle_flag=False):
         agent = None
     agent.initialize(observation_space=env.observation_space, action_space=env.action_space)
     step = agent.load(path)
+    if residual:
+        step = 0
     agent.get_config(print_conf=True)
     return agent, step
 

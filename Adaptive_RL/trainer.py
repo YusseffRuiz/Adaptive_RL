@@ -31,6 +31,7 @@ class Trainer:
         self.muscle_flag=False
 
         # Early Stop Parameters
+        # TBD Remove best_reward
         self.best_reward = -float('inf')
         self.patience = 500  # 500 episodes limit if there is no improvement
         self.no_improvement_counter = 0
@@ -192,6 +193,7 @@ class Trainer:
 
                 if self.no_improvement_counter >= self.patience * 0.6:
                     self.agent.decay_flag = True  # start decaying the noise
+                    print("Decay happening")
                 if self.agent.decay_flag:
                     self.decay_counter += 1
                     if self.decay_counter >= self.patience * 0.1:

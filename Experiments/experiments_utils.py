@@ -10,8 +10,7 @@ from sklearn.metrics import mean_squared_error
 import os
 from scipy.signal import savgol_filter
 import seaborn as sns
-from sympy.codegen.ast import float32
-
+from scipy import stats
 
 def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False, external_folder=None,
                          hh_neuron=False):
@@ -107,6 +106,8 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
         cnt = 0
         phases_1 = []
         phases_2 = []
+        phases_3 = []
+        phases_4 = []
         while not done:
             cnt += 1
             with torch.no_grad():
@@ -124,9 +125,11 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
                 muscle_states = env.muscle_states
             # phase_1 = obs[0]
             # phase_2 = obs[3]
-            # phase_1, phase_2 = env.get_osc_output()
-            # phases_1.append(phase_1)
-            # phases_2.append(phase_2)
+            phase_1, phase_2, phase_3, phase_4 = env.get_osc_output()
+            phases_1.append(phase_1)
+            phases_2.append(phase_2)
+            phases_3.append(phase_3)
+            phases_4.append(phase_4)
             # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
@@ -138,7 +141,8 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        # plot_data(phases_1, phases_2, data1_name="phase_1", data2_name="phase_2")
+        plot_data(phases_1, phases_2, data1_name="knee_r", data2_name="knee_l", title="Knee Motion")
+        plot_data(phases_3, phases_4, data1_name="ankle_r", data2_name="ankle_l", title="Ankle Motion")
         total_rewards.append(episode_reward)
         print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
@@ -209,7 +213,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                     if muscle_flag:
                         action = agent.test_step(observations=obs, muscle_states=muscle_states, steps=step)
                     else:
-                        action = agent.test_step(obs, step=step)
+                        action = agent.test_step(obs, steps=step)
                 else:
                     action, lstm_states = agent.predict(
                         obs,
@@ -529,10 +533,10 @@ def separate_joints(joint_list, action_dim):
         return (np.array(right_hip), np.array(right_knee), np.array(right_ankle), np.array(left_hip),
                 np.array(left_knee), np.array(left_ankle))
     elif action_dim == 17:  #Humanoid-v4
-        right_hip = joint_list[:, :, 2]  # Extract right hip
-        right_knee = joint_list[:, :, 3]  # Extract right knee
-        left_hip = joint_list[:, :, 6]  # Extract left hip
-        left_knee = joint_list[:, :, 7]  # Extract left knee
+        right_hip = joint_list[:, :, 0]  # Extract right hip
+        right_knee = joint_list[:, :, 1]  # Extract right knee
+        left_hip = joint_list[:, :, 2]  # Extract left hip
+        left_knee = joint_list[:, :, 3]  # Extract left knee
         none_value = np.zeros_like(right_hip)
 
         return np.array(right_hip), np.array(right_knee), none_value, np.array(left_hip), np.array(left_knee), none_value
@@ -542,7 +546,7 @@ def separate_joints(joint_list, action_dim):
         left_hip = joint_list[:, :, 0, 0]  # Extract left hip
         left_ankle = joint_list[:, :, 1, 0]  # Extract left ankle
         none_value = np.zeros_like(right_hip)
-
+        # 0 right_hip, 1 none, 2 right_ankle, 3 left hip, 4 none, 5 left ankle
         return np.array(right_hip), none_value, np.array(right_ankle), np.array(left_hip), none_value, np.array(left_ankle)
     else:
         print("Not implemented Action Space")
@@ -617,6 +621,7 @@ def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="D
     plt.show(block=False)
     plt.waitforbuttonpress()
     plt.close()
+    return x, mean_data, std_dev, var
 
 
 def get_acceleration(previous_velocity, velocity, dt):
@@ -681,7 +686,7 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False
         :param dt: Time step between velocity measurements.
         :param save_folder:
     """
-    colors = plt.colormaps.get_cmap("tab20").colors  # Default color cycle
+    colors = plt.colormaps.get_cmap("tab10").colors  # Default color cycle
 
     for i, velocity in enumerate(velocities):
         # Cut the arrays after the first occurrence of zero
@@ -726,8 +731,8 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False
         image_path = os.path.join(save_folder, f"velocities_comparison.png")
         plt.savefig(image_path)
     plt.show(block=False)
-    # if not auto_close:
-    plt.waitforbuttonpress()
+    if not auto_close:
+        plt.waitforbuttonpress()
     plt.close()
 
 
@@ -786,7 +791,7 @@ def compare_motion(data):
     return lags, cross_corr, rmse, lag_of_peak
 
 
-def compare_motion_pair(results, algos, save_folder=None, auto_close=False):
+def compare_motion_pair(results, algos, save_folder=None, auto_close=False, place='knee'):
     """
     Compare autocorrelations between normal and CPG-based algorithms on the same graph,
     and plot separate graphs for other algorithm comparisons.
@@ -796,9 +801,18 @@ def compare_motion_pair(results, algos, save_folder=None, auto_close=False):
     - results: Dictionary containing the results for each algorithm.
     - joint: Joint name for the comparison (default: "Hip").
     - save_folder: Folder to save plots (optional).
+    - auto_close:
+    - place: knee or ankle comparison
     """
     normal_vs_cpg_pairs = []
     others = []
+    if place == 'knee':
+        indexes = [0,3]
+    elif place == 'ankle':
+        indexes = [2,5]
+    else:
+        indexes = [1,4]
+        print("not implemented")
 
     # Separate algorithms into "Normal vs CPG" pairs and others
     for algo in algos:
@@ -813,8 +827,8 @@ def compare_motion_pair(results, algos, save_folder=None, auto_close=False):
     for base_algo, cpg_algo in normal_vs_cpg_pairs:
         if base_algo in results and cpg_algo in results:
             # Get joint data
-            base_values = results[base_algo]['joints'][0], results[base_algo]['joints'][3]
-            cpg_values = results[cpg_algo]['joints'][0], results[cpg_algo]['joints'][3]
+            base_values = results[base_algo]['joints'][indexes[0]], results[base_algo]['joints'][indexes[1]]
+            cpg_values = results[cpg_algo]['joints'][indexes[0]], results[cpg_algo]['joints'][indexes[1]]
 
             # Calculate cross-correlation for each
             lags_base, cross_corr_base, rmse_base, peak_lag_base = compare_motion(base_values)
@@ -825,10 +839,10 @@ def compare_motion_pair(results, algos, save_folder=None, auto_close=False):
             plt.plot(lags_cpg, cross_corr_cpg, label=f"{cpg_algo} (RMSE: {rmse_cpg:.2f}, Lag: {peak_lag_cpg})")
             plt.xlabel('Lag')
             plt.ylabel('Cross-Correlation')
-            plt.title(f"Autocorrelation Comparison: {base_algo} vs {cpg_algo}")
+            plt.title(f"Autocorrelation Comparison at the {place} joint: {base_algo} vs {cpg_algo}")
             plt.legend()
             if save_folder:
-                plt.savefig(f"{save_folder}/{base_algo}_vs_{cpg_algo}_autocorrelation.png")
+                plt.savefig(f"{save_folder}/{place}_{base_algo}_vs_{cpg_algo}_autocorrelation.png")
             plt.show(block=False)
             if not auto_close:
                 plt.waitforbuttonpress()
@@ -899,6 +913,16 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
     if not auto_close:
         plt.waitforbuttonpress()
     plt.close()
+
+
+def statistical_test(cpg_data, base_data):
+    t_stat, p_value = stats.ttest_ind(cpg_data, base_data)
+    print("The t-test statistic is", t_stat, "and the p-value is", p_value)
+    if p_value < 0.05:
+        print("P-value < 0.05, showing significant difference between groups, rejecting null Hypothesis")
+    else:
+        print("P-value >= 0.05, Fail to reject null Hypothesis")
+    return t_stat, p_value
 
 
 def retrieve_cpg(config):

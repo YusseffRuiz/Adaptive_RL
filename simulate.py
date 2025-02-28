@@ -143,8 +143,8 @@ def main_running():
                     energies = []
                     distances = []
                     rewards = []
-                    joints = []
-                    fall = []
+                    joints_hip = []
+                    joints_ankle = []
 
                     algos_found = []
 
@@ -158,7 +158,11 @@ def main_running():
                             rewards.append(results[algo]['reward'])
                             tmp_joints_r = results[algo]['joints'][0]
                             tmp_joints_l = results[algo]['joints'][3]
-                            joints.append((tmp_joints_r, tmp_joints_l))
+                            joints_hip.append((tmp_joints_r, tmp_joints_l))
+                            if muscle_flag:
+                                tmp_joints_r = results[algo]['joints'][2]
+                                tmp_joints_l = results[algo]['joints'][5]
+                                joints_ankle.append((tmp_joints_r, tmp_joints_l))
                             print(f"Falls in {algo} algorithm", results[algo]['falls'])
                         else:
                             # Handle the case where a result does not exist (e.g., missing algorithm folder)
@@ -179,7 +183,10 @@ def main_running():
                     # Perform reward comparison using vertical bars
                     trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=auto_close)
 
-                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close)
+                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close, place='knee')
+
+                    if muscle_flag:
+                        trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close, place='ankle')
 
                     # Perform velocity comparison
                     trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp,

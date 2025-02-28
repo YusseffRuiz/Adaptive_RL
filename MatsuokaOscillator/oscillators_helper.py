@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-W_osc = 0.5
+W_osc = 0.4
 W_drl = 1-W_osc
 
 
@@ -127,12 +127,12 @@ def weight_conversion_walker(weights, device, output=None):
 
 def weight_conversion_humanoid(weights, device, output=None):
     if output is None:
-        weights_tmp = torch.tensor([weights[5], weights[9]], dtype=torch.float32, device=device)
+        weights_tmp = torch.tensor([weights[3], weights[7]], dtype=torch.float32, device=device)
         return weights_tmp
     else:
         output_tensor = weights
-        output_tensor[5] = weights_output_helper_myosim(weights[5], output[0].item())
-        output_tensor[9] = weights_output_helper_myosim(weights[9], output[1].item())
+        output_tensor[3] = weights_output_helper_myosim(weights[3], output[0].item())
+        output_tensor[7] = weights_output_helper_myosim(weights[7], output[1].item())
         # output_tensor[6] = output[1, 0].item()
         # output_tensor[10] = output[1, 1].item()
         return output_tensor
@@ -141,15 +141,15 @@ def weight_conversion_humanoid(weights, device, output=None):
 # Define muscle groups and their corresponding neurons/oscillators
 MUSCLE_GROUP_MYOSIM = {
     'quadriceps_right': [21, 26, 27, 28],  # recfem_r, vasint_r, vaslat_r, vasmed_r
-    'hamstrings_right': [6, 7, 23, 24],  # semimem_r, semiten_r
+    'hamstrings_right': [6, 23, 24],  # bflh_r, semimem_r, semiten_r
     'hip_flexors_right': [18, 20, 22],  # iliacus_r, psoas_r, sart_r
-    'hip_extensors_right': [0, 1, 8, 9, 10],  # addbrev_r, addlong_r, glmax1_r, glmax2_r, glmax3_r
+    'hip_extensors_right': [8, 9, 10],  # glmax1_r, glmax2_r, glmax3_r
     'ankle_motor_right': [69],  #
 
     'quadriceps_left': [58, 66, 67, 68],  # recfem_l, vasint_l, vaslat_l, vasmed_l
-    'hamstrings_left': [35, 36, 60, 61],  # bflh_l, bfsh_l, semimem_l, semiten_l
+    'hamstrings_left': [35, 60, 61],  # bflh_l, bfsh_l, semimem_l, semiten_l
     'hip_flexors_left': [53, 57, 59],  # iliacus_l, psoas_l, sart_l
-    'hip_extensors_left': [29, 30, 43, 44, 45],  # addbrev_l, addlong_l, glmax1_l, glmax2_l, glmax3_l
+    'hip_extensors_left': [43, 44, 45],  # glmax1_l, glmax2_l, glmax3_l
     'ankle_dorsiflexors_left': [37, 38, 64],  # edl, ehl, tib_ant (right dorsiflexors)
     'ankle_plantarflexors_left': [39, 40, 41, 42, 54, 55, 62, 65],  # fdl, fhl, gast_lat, gas_med, per_brev, per_long, soleus, tib_post (right plantarflexors)
 }
@@ -170,14 +170,40 @@ def weight_conversion_myoleg(weights, device, output=None):
     if output is None:
         weight_motor = weights[MUSCLE_GROUP_MYOSIM['ankle_motor_right']].item()
         # Ankle decision based on absolute value of weights
-        dorsiflexor_strength = (weights[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']]).sum()
-        plantarflexor_strength = (weights[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']]).sum()
+        dorsiflexor_strength = (weights[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']]).mean()
+        plantarflexor_strength = (weights[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']]).mean()
 
         if dorsiflexor_strength > plantarflexor_strength:
             weight_ankle = dorsiflexor_strength
         else:
             weight_ankle = -plantarflexor_strength
-        weights_tmp = torch.tensor([weight_motor, weight_ankle], dtype=torch.float32, device=device)
+
+        # Hip Dvalues based on absolute value of weights
+        hip_flexor_r_value = (weights[MUSCLE_GROUP_MYOSIM['hip_flexors_right']]).mean()
+        hip_extensor_r_value = (weights[MUSCLE_GROUP_MYOSIM['hip_extensors_right']]).mean()
+        # hamstrings_r_value = (weights[MUSCLE_GROUP_MYOSIM['hamstrings_right']]).mean()
+
+        if hip_flexor_r_value > hip_extensor_r_value:
+            # weight_hip_r = (hip_flexor_r_value + hamstrings_r_value)/2
+            weight_hip_r = hip_flexor_r_value
+        else:
+            # weight_hip_r = - (hip_extensor_r_value + hamstrings_r_value)/2
+            weight_hip_r = - hip_extensor_r_value
+
+        hip_flexor_l_value = (weights[MUSCLE_GROUP_MYOSIM['hip_flexors_left']]).mean()
+        hip_extensor_l_value = (weights[MUSCLE_GROUP_MYOSIM['hip_extensors_left']]).mean()
+        # hamstrings_l_value = (weights[MUSCLE_GROUP_MYOSIM['hamstrings_left']]).mean()
+
+        if hip_flexor_l_value > hip_extensor_l_value:
+            # weight_hip_l = (hip_flexor_l_value + hamstrings_l_value)/2
+            weight_hip_l = hip_flexor_l_value
+        else:
+            # weight_hip_l = -(hip_extensor_l_value + hamstrings_l_value)/2
+            weight_hip_l = -hip_extensor_l_value
+
+
+        weights_tmp = torch.tensor([[weight_hip_r, weight_hip_l],[weight_motor, weight_ankle]],
+                                   dtype=torch.float32, device=device)
         return weights_tmp
     else:
 
@@ -190,7 +216,8 @@ def weight_conversion_myoleg(weights, device, output=None):
         # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']], output[1,0])
         output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']], hip_flexor_value)
         output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']], hip_extensor_value)
-        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']]*2.88, output[1,0].item()*2.88)
+        # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']], hip_extensor_value)
+        output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_motor_right']], output[1,0].item())
 
         # Left ankle dorsiflexor and plantarflexor muscles
         hip_flexor_value = max(output[0,1].item(), 0)  # Positive values for dorsiflexion.
@@ -201,6 +228,8 @@ def weight_conversion_myoleg(weights, device, output=None):
         # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']], output[1,1])
         output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']], hip_flexor_value)
         output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']], hip_extensor_value)
+        # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']] = weights_output_helper_myosim(
+        #     output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']], hip_extensor_value)
         output_tensor[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_dorsiflexors_left']], dorsiflexor_value)
         output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']], plantarflexor_value)
         return output_tensor

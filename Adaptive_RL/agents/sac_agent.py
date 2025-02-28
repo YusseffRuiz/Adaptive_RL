@@ -1,7 +1,7 @@
 import torch
 from Adaptive_RL import neural_networks
 from Adaptive_RL.agents import DDPG
-from Adaptive_RL.neural_networks import TwinCriticSoftDeterministicPolicyGradient, TwinCriticSoftQLearning
+from Adaptive_RL.neural_networks import TwinCriticSoftDeterministicPolicyGradient, TwinCriticSoftQLearning, ResidualSACModel
 from Adaptive_RL.utils import explorations, ReplayBuffer
 
 
@@ -39,13 +39,15 @@ class SAC(DDPG):
                  entropy_coeff=0.001, tau=0.005,
                  batch_size=256, return_step=3,
                  discount_factor=0.99, steps_between_batches=30, replay_buffer_size=10e5, noise_std=0.1,
-                 learning_starts=20000):
+                 learning_starts=20000, residual=False):
         super().__init__(hidden_size, hidden_layers, learning_rate, lr_critic, batch_size, return_step,
                          discount_factor, steps_between_batches, replay_buffer_size, noise_std, learning_starts)
         if lr_critic is None:
             lr_critic = learning_rate
         self.model = neural_networks.ActorTwinCriticsModelNetwork(hidden_size=hidden_size,
                                                                  hidden_layers=hidden_layers).get_model()
+        if residual:
+            self.model = ResidualSACModel(self.model).get_model()
         self.exploration = explorations.NoNoiseExploration(start_steps=learning_starts)
         self.replay = ReplayBuffer(return_steps=return_step, discount_factor=discount_factor,
                                           batch_size=batch_size, steps_between_batches=steps_between_batches

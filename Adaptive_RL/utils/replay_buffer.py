@@ -227,6 +227,15 @@ class Segment:
             discount_factor=self.discount_factor,
             trace_decay=self.trace_decay)
 
+    def clean_buffer(self):
+        """
+        Clears the replay buffer to release memory.
+        """
+        self.buffers = None
+        self.index = 0
+        torch.cuda.empty_cache()  # Clear CUDA memory if needed
+        print("Replay buffer cleared.")
+
 
 def lambda_returns(values, next_values, rewards, resets, terminations, discount_factor, trace_decay):
     """
