@@ -68,7 +68,7 @@ class MatsuokaNetwork:
 class MatsuokaOscillator:
     def __init__(self, num_oscillators=1, amplitude=1.0, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=1.0,
                  tau_a=6.0, weights=None, u=None,
-                 beta=2.5, dt=2.0, isMuscular=False, device="cpu"):
+                 beta=2.5, dt=2.0, isMuscular=False, device="cuda"):
         """
                 Initialize the Matsuoka Oscillator.
 
@@ -94,21 +94,25 @@ class MatsuokaOscillator:
         self.neuron_number = neuron_number
         self.param_dim = neuron_number * num_oscillators
         self.num_oscillators = num_oscillators
-        self.tau_r = tau_r
-        self.or_tau_r = tau_r
-        self.tau_a = tau_a
-        self.or_tau_a = tau_a
+        self.tau_r = torch.tensor(tau_r, device=self.device)
+        self.tau_a = torch.tensor(tau_a, device=self.device)
         self.beta = beta
         self.dt = dt
         self.excitation_signal = 2.5
         self.escalated_number = 0.1
-        self.w = 0.7 # Relevance of direct weights
-        self.o = 0.3 # Relevance of Oscillator
+        self.isMuscular = isMuscular
+
         self.x = torch.arange(-self.param_dim/2, self.param_dim/2, 1, dtype=torch.float32).to(self.device)
         if isMuscular:
             self.activation_function = torch.tanh
+            oscillators_helper.W_osc = 0.3
         else:
             self.activation_function = torch.tanh
+            oscillators_helper.W_osc = 0.3
+
+        oscillators_helper.W_drl = 1-oscillators_helper.W_osc
+        self.w = oscillators_helper.W_drl  # Relevance of direct weights
+        self.o = oscillators_helper.W_osc  # Relevance of Oscillator
 
         if num_oscillators > 1:
             self.x = self.x.view(num_oscillators, neuron_number)
@@ -190,22 +194,29 @@ class MatsuokaOscillator:
                 f"Weights must be a matrix with size equal to the number of neurons, right now is {self.weights.shape}."
             y_prev = torch.roll(self.y, shifts=1, dims=0)
         dx = (-self.x - weights_tmp * y_prev + self.u - self.beta * self.z) * self.dt / self.tau_r
-
         self.x += dx
-        torch.clamp(self.x, min=-self.amplitude, max=self.amplitude)
+        # torch.clamp(self.x, min=-self.amplitude, max=self.amplitude)
 
         # Update adaptation variables
         dz = (self.y - self.z) * self.dt / self.tau_a
         self.z += dz
         torch.clamp(self.z, min=-10, max=10)
+        tmp_output = self.activation_function(self.x - torch.mean(self.x))
 
-        if self.w != 0:
-            self.y = self.o * self.activation_function(self.x - torch.mean(self.x)) + self.w * weights_origin
+        if self.isMuscular: # PlaceHolder for amplitude modification
+            self.output = tmp_output
+            self.y = torch.clamp(self.output, min=-1, max=1)
         else:
-            self.y = self.activation_function(self.x - torch.mean(self.x))
+            self.output = self.amplitude * tmp_output
+            self.y = torch.clamp(self.output, min=-self.amplitude, max=self.amplitude)
 
-        self.y = torch.clamp(self.y, min=-self.amplitude, max=self.amplitude)
-        self.output = self.amplitude*self.y
+        if self.w != 0: # Just to update
+            self.y = self.o * self.output + self.w * weights_origin
+        else:
+            self.y = tmp_output
+
+
+
         return self.output
 
     def run(self, steps=1000, weights_seq=None):
@@ -303,7 +314,7 @@ class MatsuokaNetworkWithNN:
         self.num_oscillators = num_oscillators
         self.neuron_number = neuron_number
         self.action_dim = da
-        self.feedback_strength = 0.3
+        self.feedback_strength = 0.4
         self.parameters_dimension = self.num_oscillators * self.neuron_number
         self.min_value = np.min(min_value)
         self.max_value = np.max(max_value)
@@ -365,90 +376,22 @@ class MatsuokaNetworkWithNN:
         oscillators_input = oscillators_helper.scale_osc_weights(modifiers)
         y_prev, feedback_y = self.oscillators_feedback(self.oscillator.y)
         self.oscillator.u = self.update_u(feed_u, feedback_y, y_prev)
-        if self.isMuscular:
-            weights_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim,
-                                                             device=self.device)
-            oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
-            """
-            # Get the feedbacks
-            # y_prev_quad_l, feedback_quad_l = self.oscillators_feedback(self.oscillator_2['quadriceps_right'].y)
-            # y_prev_harm_l, feedback_harm_l = self.oscillators_feedback(self.oscillator_2['hamstrings_right'].y)
-            # y_prev_hflex_l, feedback_hflex_l = self.oscillators_feedback(self.oscillator_2['hip_flexors_right'].y)
-            # y_prev_hext_l, feedback_hext_l = self.oscillators_feedback(self.oscillator_2['hip_extensors_right'].y)
-            # y_prev_plan_l, feedback_plan_l = self.oscillators_feedback(self.oscillator_2['ankle_plantarflexors_left'].y)
-            # y_prev_dors_l, feedback_dors_l = self.oscillators_feedback(self.oscillator_2['ankle_dorsiflexors_left'].y)
-            # y_prev_ankle_l = (torch.mean(y_prev_plan_l) + torch.mean(y_prev_dors_l))/2
-            # feedback_ankle_l = (torch.mean(feedback_plan_l) + torch.mean(feedback_dors_l))/2
-            #
-            # y_prev_quad_r, feedback_quad_r = self.oscillators_feedback(self.oscillator['quadriceps_right'].y)
-            # y_prev_harm_r, feedback_harm_r = self.oscillators_feedback(self.oscillator['hamstrings_right'].y)
-            # y_prev_hflex_r, feedback_hflex_r = self.oscillators_feedback(self.oscillator['hip_flexors_right'].y)
-            # y_prev_hext_r, feedback_hext_r = self.oscillators_feedback(self.oscillator['hip_extensors_right'].y)
-            # y_prev_motor_r, feedback_motor_r = self.oscillators_feedback(self.oscillator['ankle_motor_right'].y)
-            #
-            # # Update Oscillators
-            # self.oscillator['quadriceps_right'].u = self.update_u(feed_u[1], feedback_quad_l, y_prev_quad_l)
-            # self.oscillator['quadriceps_right'].y += y_prev_quad_l * feedback_quad_l
-            # self.oscillator['hamstrings_right'].u = self.update_u(feed_u[1], feedback_harm_l, y_prev_harm_l)
-            # self.oscillator['hamstrings_right'].y += y_prev_harm_l * feedback_harm_l
-            # self.oscillator['hip_flexors_right'].u = self.update_u(feed_u[0], feedback_hflex_l, y_prev_hflex_l)
-            # self.oscillator['hip_flexors_right'].y += y_prev_hflex_l * feedback_hflex_l
-            # self.oscillator['hip_extensors_right'].u = self.update_u(feed_u[0], feedback_hext_l, y_prev_hext_l)
-            # self.oscillator['hip_extensors_right'].y += y_prev_hext_l * feedback_hext_l
-            # self.oscillator['ankle_motor_right'].u = self.update_u(feed_u[2], feedback_ankle_l, y_prev_ankle_l)
-            # self.oscillator['ankle_motor_right'].y += y_prev_ankle_l * feedback_ankle_l
-            #
-            # self.oscillator_2['quadriceps_left'].u = self.update_u(feed_u[4], feedback_quad_r, y_prev_quad_r)
-            # self.oscillator_2['quadriceps_left'].y += y_prev_quad_r * feedback_quad_r
-            # self.oscillator_2['hamstrings_left'].u = self.update_u(feed_u[4], feedback_harm_r, y_prev_harm_r)
-            # self.oscillator_2['hamstrings_left'].y += y_prev_harm_r * feedback_harm_r
-            # self.oscillator_2['hip_flexors_left'].u = self.update_u(feed_u[3], feedback_hflex_r, y_prev_hflex_r)
-            # self.oscillator_2['hip_flexors_left'].y += y_prev_hflex_r * feedback_hflex_r
-            # self.oscillator_2['hip_extensors_left'].u = self.update_u(feed_u[3], feedback_hext_r, y_prev_hext_r)
-            # self.oscillator_2['hip_extensors_left'].y += y_prev_hext_r * feedback_hext_r
-            # self.oscillator_2['ankle_dorsiflexors_left'].u = self.update_u(feed_u[5], feedback_motor_r, y_prev_motor_r)
-            # self.oscillator_2['ankle_dorsiflexors_left'].y += y_prev_motor_r * feedback_motor_r
-            # self.oscillator_2['ankle_plantarflexors_left'].u = self.update_u(feed_u[5], feedback_motor_r, y_prev_motor_r)
-            # self.oscillator_2['ankle_plantarflexors_left'].y += y_prev_motor_r * feedback_motor_r
-            #
-            #
-            # #Make oscillator Step
-            # oscillators_output.append(self.oscillator['quadriceps_right'].step(weights=oscillators_input[0],
-            #                                                                     weights_origin=weights_input[0]))
-            # oscillators_output.append(self.oscillator['hamstrings_right'].step(weights=oscillators_input[1],
-            #                                                                     weights_origin=weights_input[1]))
-            # oscillators_output.append(self.oscillator['hip_flexors_right'].step(weights=oscillators_input[2],
-            #                                                                     weights_origin=weights_input[2]))
-            # oscillators_output.append(self.oscillator['hip_extensors_right'].step(weights=oscillators_input[3],
-            #                                                                      weights_origin=weights_input[3]))
-            # oscillators_output.append(self.oscillator['ankle_motor_right'].step(weights=oscillators_input[4],
-            #                                                                        weights_origin=weights_input[4]))
-            # oscillators_output.append(self.oscillator_2['quadriceps_left'].step(weights=oscillators_input[5],
-            #                                                                     weights_origin=weights_input[5]))
-            # oscillators_output.append(self.oscillator_2['hamstrings_left'].step(weights=oscillators_input[6],
-            #                                                                     weights_origin=weights_input[6]))
-            # oscillators_output.append(self.oscillator_2['hip_flexors_left'].step(weights=oscillators_input[7],
-            #                                                                      weights_origin=weights_input[7]))
-            # oscillators_output.append(self.oscillator_2['hip_extensors_left'].step(weights=oscillators_input[8],
-            #                                                                        weights_origin=weights_input[8]))
-            # oscillators_output.append(self.oscillator_2['ankle_dorsiflexors_left'].step(weights=oscillators_input[9],
-            #                                                                      weights_origin=weights_input[9]))
-            # oscillators_output.append(self.oscillator_2['ankle_plantarflexors_left'].step(weights=oscillators_input[10],
-            #                                                                     weights_origin=weights_input[10]))
-            """
+        weights_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim,
+                                                         device=self.device)
+        oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
-        else:
-            weights_input = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim,
-                                                             device=self.device)
-            oscillators_output = self.oscillator.step(weights=oscillators_input, weights_origin=weights_input)
 
         self.osc_output = oscillators_output
+        # print(self.osc_output)
 
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
-        # output_actions = torch.clamp(output_actions, min=self.min_value, max=self.max_value)
-        output_actions = np.clip(output_actions, a_min=self.min_value, a_max=self.max_value*2.88)  #Except Ankle Motor
+        tmp_value = output_actions[-1]
+        output_actions = np.clip(output_actions, a_min=-self.max_value, a_max=self.max_value)  #Except Ankle Motor
+        if self.isMuscular:  # Ankle motor exception
+            output_actions[-1] = tmp_value
+            output_actions = np.clip(output_actions, a_min=-1, a_max=1)
         # Assert to check for NaNs in output_actions
         assert not np.any(np.isnan(output_actions)), f"Error: output_actions contains NaN values! {output_actions}"
 
@@ -492,67 +435,12 @@ class MatsuokaNetworkWithNN:
             oscillators = OscillatorClass(num_oscillators=num_oscillators,
                                           initial_phase=initial_phase, frequency=1.0,
                                           amplitude=amplitude,
-                                          neuron_number=neuron_number, tau_r=tau_r,
-                                          tau_a=tau_a, isMuscular=isMuscular, device=device)
-            oscillators.w = 0 # Making sure, it outputs literally the value of oscillators
-            oscillators.o = 1
+                                          neuron_number=neuron_number, tau_r=[[tau_r],[tau_r/2]],
+                                          tau_a=[[tau_a],[tau_a/2]], isMuscular=isMuscular, device=device)
+            # oscillators.w = 0 # Making sure, it outputs literally the value of oscillators
+            # oscillators.o = 1
             return oscillators, None
 
-            # Initialize the oscillators for the right leg
-            # right_oscillators = {
-            #     'quadriceps_right': OscillatorClass(num_oscillators=1,
-            #                                      initial_phase=initial_phase, frequency=frequency_right['quadriceps'],
-            #                                      amplitude=amplitude, neuron_number=4,
-            #                                      tau_r=tau_r, tau_a=tau_a),
-            #     'hamstrings_right': OscillatorClass(num_oscillators=1,
-            #                                      initial_phase=initial_phase, frequency=frequency_right['hamstrings'],
-            #                                      amplitude=amplitude, neuron_number=2,
-            #                                      tau_r=tau_r, tau_a=tau_a),
-            #     'hip_flexors_right': OscillatorClass(num_oscillators=1,
-            #                                       initial_phase=initial_phase, frequency=frequency_right['hip_flexors'],
-            #                                       amplitude=amplitude, neuron_number=3,
-            #                                       tau_r=tau_r, tau_a=tau_a),
-            #     'hip_extensors_right': OscillatorClass(num_oscillators=1,
-            #                                         initial_phase=initial_phase,
-            #                                         frequency=frequency_right['hip_extensors'],
-            #                                         amplitude=amplitude, neuron_number=5,
-            #                                         tau_r=tau_r, tau_a=tau_a),
-            #     'ankle_motor_right': OscillatorClass(num_oscillators=1,
-            #                                       initial_phase=initial_phase, frequency=frequency_right['ankle_motor'],
-            #                                       amplitude=amplitude, neuron_number=1,
-            #                                       tau_r=tau_r, tau_a=tau_a)
-            # }
-            #
-            # # Initialize the oscillators for the left leg
-            # left_oscillators = {
-            #     'quadriceps_left': OscillatorClass(num_oscillators=1,
-            #                                      initial_phase=initial_phase+math.pi, frequency=frequency_left['quadriceps'],
-            #                                      amplitude=amplitude, neuron_number=4,
-            #                                      tau_r=tau_r, tau_a=tau_a),
-            #     'hamstrings_left': OscillatorClass(num_oscillators=1,
-            #                                      initial_phase=initial_phase+math.pi, frequency=frequency_left['hamstrings'],
-            #                                      amplitude=amplitude, neuron_number=4,
-            #                                      tau_r=tau_r, tau_a=tau_a),
-            #     'hip_flexors_left': OscillatorClass(num_oscillators=1,
-            #                                       initial_phase=initial_phase+math.pi, frequency=frequency_left['hip_flexors'],
-            #                                       amplitude=amplitude, neuron_number=3,
-            #                                       tau_r=tau_r, tau_a=tau_a),
-            #     'hip_extensors_left': OscillatorClass(num_oscillators=1,
-            #                                         initial_phase=initial_phase+math.pi,
-            #                                         frequency=frequency_left['hip_extensors'],
-            #                                         amplitude=amplitude, neuron_number=5,
-            #                                         tau_r=tau_r, tau_a=tau_a),
-            #     'ankle_dorsiflexors_left': OscillatorClass(num_oscillators=1,
-            #                                              initial_phase=initial_phase+math.pi,
-            #                                              frequency=frequency_left['ankle_dorsiflexors'],
-            #                                              amplitude=amplitude, neuron_number=3,
-            #                                              tau_r=tau_r, tau_a=tau_a),
-            #     'ankle_plantarflexors_left': OscillatorClass(num_oscillators=1,
-            #                                                initial_phase=initial_phase+math.pi,
-            #                                                frequency=frequency_left['ankle_plantarflexors'],
-            #                                                amplitude=amplitude, neuron_number=6,
-            #                                                tau_r=tau_r, tau_a=tau_a)
-            # }
         else:  # Regular same size oscillator
             frequency_right = 0.5
             frequency_left = 1.5
@@ -601,9 +489,9 @@ class MatsuokaNetworkWithNN:
 
 class HHMatsuokaOscillator(MatsuokaOscillator):
     def __init__(self, num_oscillators, amplitude=1.0, frequency=1.0, initial_phase=0.0, neuron_number=2, tau_r=16.0,
-                 tau_a=48.0, weights=None, u=None, beta=2.5, dt=0.5):
+                 tau_a=48.0, weights=None, u=None, beta=2.5, dt=0.5, isMuscular=False, device='cuda'):
         super(HHMatsuokaOscillator, self).__init__(num_oscillators, amplitude, frequency, initial_phase,
-                                                         neuron_number, tau_r, tau_a, weights, u, beta, dt)
+                                                         neuron_number, tau_r, tau_a, weights, u, beta, isMuscular, device)
 
         self.neurons = HHNeuron()
         # print(self.neurons)
@@ -637,7 +525,7 @@ class HHMatsuokaOscillator(MatsuokaOscillator):
         self.decay_counter_n = 0
 
 
-    def step(self, weights=None, right_form=False):
+    def step(self, weights=None, weights_origin=None, right_form=False):
         """
             Perform a single update step using Hodgkin-Huxley neurons.
             """
@@ -656,6 +544,8 @@ class HHMatsuokaOscillator(MatsuokaOscillator):
         # Adjust weights dimension if num_oscillators == 1
         if self.num_oscillators == 1 and self.weights.dim() == 1:
             weights_tmp = weights_tmp.unsqueeze(0)  # Shape becomes (1, neuron_number)
+        else:
+            weights_tmp = weights_tmp.reshape(self.num_oscillators, self.neuron_number)
 
         # Compute I_ext
         I_ext = self.u + torch.einsum("ij,ij->ij", weights_tmp, (self.v/1000))

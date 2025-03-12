@@ -1,3 +1,5 @@
+import copy
+
 import torch
 from .actors import ActorCriticWithTargets, Actor, ActorTwinCriticWithTargets, ActorCritic
 from .critics import Critic, ValueHead
@@ -397,3 +399,39 @@ class ActorCriticModelNetwork(BaseModel):
                 torso=MLP(self.neuron_shape, self.activation_fn),
                 head=ValueHead()),
             observation_normalizer=normalizers.MeanStd())
+
+
+class ResidualSACModel(torch.nn.Module):
+    def __init__(self, original_model, freeze_layers=1):
+        super(ResidualSACModel, self).__init__()
+
+        # Copy the original network architecture
+        self.model = original_model
+
+        # Freeze layers in the actor
+        self._freeze_layers(self.model.actor.torso, freeze_layers)
+
+        # Freeze layers in the critics
+        self._freeze_layers(self.model.critic_1.torso, freeze_layers)
+        self._freeze_layers(self.model.critic_2.torso, freeze_layers)
+
+        # Ensure target networks are updated
+        self.model.target_actor = copy.deepcopy(self.model.actor)
+        self.model.target_critic_1 = copy.deepcopy(self.model.critic_1)
+        self.model.target_critic_2 = copy.deepcopy(self.model.critic_2)
+
+    @staticmethod
+    def _freeze_layers(model, freeze_layers):
+        """
+        Freezes the first `freeze_layers` layers in a given MLP model.
+        """
+        layer_count = 0
+        for layer in model.children():
+            if isinstance(layer, torch.nn.Linear):
+                if layer_count < freeze_layers:
+                    for param in layer.parameters():
+                        param.requires_grad = False
+                layer_count += 1
+
+    def get_model(self):
+        return self.model

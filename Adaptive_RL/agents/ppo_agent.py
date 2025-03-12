@@ -20,7 +20,7 @@ class PPO(base_agent.BaseAgent):
         self.model = neural_networks.ActorCriticModelNetwork(hidden_size=hidden_size, hidden_layers=hidden_layers,
                                                              return_normalizer=normalizer,
                                                              discount_factor=gamma).get_model()
-        self.replay_buffer = Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
+        self.replay = Segment(size=replay_buffer_size, batch_iterations=batch_iterations,
                                                       batch_size=batch_size, discount_factor=discount_factor,
                                                       trace_decay=trace_decay)
         self.actor_updater = neural_networks.ClippedRatio(learning_rate=learning_rate, ratio_clip=clip_range,
@@ -45,7 +45,7 @@ class PPO(base_agent.BaseAgent):
 
     def initialize(self, observation_space, action_space, seed=None):
         self.model.initialize(observation_space, action_space)
-        self.replay_buffer.initialize(seed)
+        self.replay.initialize(seed)
         self.actor_updater.initialize(self.model)
         self.critic_updater.initialize(self.model)
         self.decay_flag = False
@@ -65,7 +65,7 @@ class PPO(base_agent.BaseAgent):
 
     def update(self, observations, rewards, resets, terminations, steps):
         # Store the last transitions in the replay.
-        self.replay_buffer.store(observations=self.last_observations, actions=self.last_actions,
+        self.replay.store(observations=self.last_observations, actions=self.last_actions,
                                  next_observations=observations, rewards=rewards, resets=resets,
                                  terminations=terminations, log_probs=self.last_log_probs)
 
@@ -76,14 +76,14 @@ class PPO(base_agent.BaseAgent):
             self.model.return_normalizer.record(rewards)
 
         # Update the model if the replay is ready.
-        if self.replay_buffer.ready():
+        if self.replay.ready():
             self._update()
 
         if self.decay_flag: # Reducing noise to stabilize training
             self.actor_updater.learning_rate *= self.decay_lr
             self.critic_updater.lr_critic *= self.decay_lr
 
-    def test_step(self, observations):
+    def test_step(self, observations, steps=None):
         # Sample actions for testing.
         return self._test_step(observations).cpu().numpy()
 
@@ -117,45 +117,49 @@ class PPO(base_agent.BaseAgent):
         return values, next_values
 
     def _update(self):
+
         # Compute the lambda-returns.
-        batch = self.replay_buffer.get_full('observations', 'next_observations')
+        batch = self.replay.get_full("observations", "next_observations")
         values, next_values = self._evaluate(**batch)
-        values, next_values = values.cpu().numpy(), next_values.cpu().numpy()
-        self.replay_buffer.compute_returns(values, next_values)
+        values, next_values = values.numpy(), next_values.numpy()
+        self.replay.compute_returns(values, next_values)
 
         train_actor = True
         actor_iterations = 0
         critic_iterations = 0
-        keys = 'observations', 'actions', 'advantages', 'log_probs', 'returns'
+        keys = "observations", "actions", "advantages", "log_probs", "returns"
 
         # Update both the actor and the critic multiple times.
-        for batch in self.replay_buffer.get(*keys):
+        for batch in self.replay.get(*keys):
             if train_actor:
                 batch = {k: torch.as_tensor(v) for k, v in batch.items()}
                 infos = self._update_actor_critic(**batch)
                 actor_iterations += 1
             else:
-                batch = {k: torch.as_tensor(batch[k])
-                         for k in ('observations', 'returns')}
+                batch = {
+                    k: torch.as_tensor(batch[k])
+                    for k in ("observations", "returns")
+                }
                 infos = dict(critic=self.critic_updater(**batch))
             critic_iterations += 1
 
             # Stop earlier the training of the actor.
             if train_actor:
-                train_actor = not infos['actor']['stop'].cpu().numpy()
+                train_actor = not infos["actor"]["stop"].numpy()
 
-            # for key in infos:
-            #     for k, v in infos[key].items():
-            #         logger.store(key + '/' + k, v.cpu().numpy())
+            for key in infos:
+                for k, v in infos[key].items():
+                    logger.store(key + "/" + k, v.numpy())
 
-        # logger.store('actor/iterations', actor_iterations)
-        # logger.store('critic/iterations', critic_iterations)
+        logger.store("actor/iterations", actor_iterations)
+        logger.store("critic/iterations", critic_iterations)
 
         # Update the normalizers.
         if self.model.observation_normalizer:
             self.model.observation_normalizer.update()
         if self.model.return_normalizer:
             self.model.return_normalizer.update()
+
 
     def _update_actor_critic(self, observations, actions, advantages, log_probs, returns):
         actor_infos = self.actor_updater(observations, actions, advantages, log_probs)

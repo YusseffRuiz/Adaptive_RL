@@ -5,7 +5,7 @@ Humanoid-v4:
   cpg:
     num_oscillators: 1
     neuron_number: 2
-    tau_r: 2.0
+    tau_r: 1.0 # antes 6 y 36
     tau_a: 12.0
 
   DDPG:
@@ -44,16 +44,16 @@ Humanoid-v4:
   SAC:
     training:
       batch_size: 265
-      replay_buffer_size : 8192
+      replay_buffer_size : 4000
       learning_rate: 0.00034
-      gamma: 0.95
+      gamma: 0.99
       steps: 6000000
       learning_starts: 10000
-      noise : 0.15
+      noise : 0.1
 
 
     model:
-      neuron_number: [256, 256]
+      neuron_number: [400, 300]
       layers_number : 2
 
 
@@ -152,24 +152,24 @@ myoAmp1DoFWalk-v0:
   cpg:
     num_oscillators: 2
     neuron_number: 2
-    tau_r: 8.0
-    tau_a: 48.0
+    tau_r: 16.0 # antes 16 y 96, o 32 y 192
+    tau_a: 96.0
 
   SAC:
     training:
       batch_size: 256
-      replay_buffer_size: 1000000.0
-      learning_rate: 0.00034
-      lr_critic : 6.081e-5
-      gamma: 0.99
+      replay_buffer_size: 100000.0
+      learning_rate: 3.53e-4
+      lr_critic : 1.4e-5
+      gamma: 0.98
       steps: 4e7
       learning_starts: 20000
       noise: 0.15
 
 
     model:
-      neuron_number: [1024, 512, 256]
-      layers_number: 3
+      neuron_number: [1024, 1024]
+      layers_number: 2
 
 
   PPO:
@@ -187,21 +187,19 @@ myoAmp1DoFWalk-v0:
       normalization: true
 
 
-      neuron_number: [ 1024 512 256 ]
-      layers_number: 3
+      neuron_number: [1024 1024]
+      layers_number: 2
 
   MPO:
     training:
-      learning_rate: 2.54e-05
+      learning_rate: 3.53e-5
       lr_critic: 6.081e-05
       lr_dual: 0.00213
       decay_lr: 0.98
-      hidden_size: 1024
-      hidden_layers: 3
       discount_factor: 0.95
       gamma: 0.95
       batch_size: 256
-      replay_buffer_size: 32768
+      replay_buffer_size: 100000
       steps: 1e7
 
     model:
@@ -229,21 +227,45 @@ myoOSLHillyTerrainWalk-v0:
   cpg:
     num_oscillators: 2
     neuron_number: 2
-    tau_r: 2.0
-    tau_a: 12.0
+    tau_r: 16.0
+    tau_a: 96.0
 
   SAC:
     training:
       batch_size: 256
-      replay_buffer_size: 1000000.0
-      learning_rate: 0.00034
-      lr_critic : 6.081e-5
-      gamma: 0.99
-      steps: 1e7
-      learning_starts: 20000
-      noise: 0.15
+      replay_buffer_size: 100000.0
+      learning_rate: 3.53e-4
+      lr_critic: 2.4e-5
+      gamma: 0.97
+      steps: 4e7
+      learning_starts: 40000
+      noise: 0.1
 
 
     model:
-      neuron_number: 256
+      neuron_number: [ 1024, 512 ]
+      layers_number: 2
+
+
+myoOSLRoughTerrainWalk-v0:
+  cpg:
+    num_oscillators: 2
+    neuron_number: 2
+    tau_r: 16.0
+    tau_a: 96.0
+
+  SAC:
+    training:
+      batch_size: 256
+      replay_buffer_size: 100000.0
+      learning_rate: 3.53e-4
+      lr_critic: 2.4e-5
+      gamma: 0.97
+      steps: 4e7
+      learning_starts: 40000
+      noise: 0.1
+
+
+    model:
+      neuron_number: [ 1024, 512 ]
       layers_number: 2

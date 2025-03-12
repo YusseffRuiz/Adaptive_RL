@@ -102,7 +102,6 @@ class Sequential:
                 if self.use_cpg:
                     osc = self.environments[i].get_osc_output()
                 self.lengths[i] = 0
-
             observations.append(ob)
 
             if self.muscles:
@@ -110,7 +109,6 @@ class Sequential:
                     muscle_states.append(np.concatenate((muscle, osc)))
                 else:
                     muscle_states.append(muscle)
-
         observations = np.array(observations, np.float32)
         if self.muscles:
             muscle_states = np.array(muscle_states, np.float32)

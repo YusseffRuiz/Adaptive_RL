@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument('--seq', type=int, default=1, help='Number of sequential environments.')
     parser.add_argument('--parallel', type=int, default=1, help='Number of parallel environments.')
     parser.add_argument('--early', action='store_true', help='Early stopping if we do not have rewards improvement')
+    parser.add_argument('--residual_path', type=str, default=None, help='Residual Checkpoint Path')
 
     # Hyperparameters
     parser.add_argument('--learning_rate', type=float, default=3.56987e-05, help='Learning rate for the actor.')
@@ -56,7 +57,8 @@ def parse_args():
 def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
-        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False, muscle_flag=False, device='cuda'):
+        cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False, muscle_flag=False, residual_path=None,
+        device='cuda'):
     """
     :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
@@ -93,6 +95,10 @@ def train_agent(
     checkpoint_folder = None
     config = {}
     dep_params = Adaptive_RL.default_params()
+    path_tmp = None
+    if residual_path is not None:
+        path_tmp = path
+        path = residual_path + 'logs/'
 
     if path:
         # Load last checkpoint, not best
@@ -118,6 +124,8 @@ def train_agent(
                dep_params = config.DEP
 
             print("Loaded Config")
+    if residual_path is not None:
+        path = path_tmp
 
     # Build the training environment.
     myo_flag = False
@@ -161,14 +169,15 @@ def train_agent(
     # Load the weights of the agent form a checkpoint.
     step_number = 0
     if checkpoint_path:
-        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=environment, muscle_flag=muscle_flag)
+        agent, step_number = Adaptive_RL.load_agent(config, checkpoint_path, env=environment, muscle_flag=muscle_flag,
+                                                    residual=residual_path)
     else:
         agent.initialize(observation_space=environment.observation_space, action_space=environment.action_space,
                          seed=seed)
     if muscle_flag:
         agent.expl.get_params(get_print=True)
     if cpg_flag:
-        print(environment.cpg_model.print_characteristics())
+        print(test_environment.environments[0].cpg_model.print_characteristics())
     args['agent'] = agent.get_config(print_conf=True)
     args['trainer'] = trainer.dump_trainer()
     # Initialize the logger to save data to the path
@@ -186,8 +195,8 @@ def train_agent(
     trainer.initialize(
         agent=agent, environment=environment,
         test_environment=test_environment, step_saved=step_number, muscle_flag=muscle_flag)
-    trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay=agent.replay,
-                       save_path=checkpoint_folder)
+    # trainer.load_model(agent=agent, actor_updater=agent.actor_updater, replay=agent.replay,
+    #                    save_path=checkpoint_folder)
     # Train.
     trainer.run()
     # agent = trainer.agent
@@ -210,6 +219,7 @@ if __name__ == "__main__":
     experiment_number = args.experiment_number
     muscle_flag = args.muscles
     progress = args.P
+    residual_path = args.residual_path
 
     save_folder = args.f
 
@@ -337,7 +347,8 @@ if __name__ == "__main__":
                     trainer=Adaptive_RL.Trainer(steps=max_steps, epoch_steps=epochs, save_steps=save_steps,
                                                 early_stopping=early_stopping),
                     path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
-                    cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r, muscle_flag=muscle_flag)
+                    cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r, muscle_flag=muscle_flag,
+                    residual_path=residual_path)
 
         print("Training Done")
     else:
