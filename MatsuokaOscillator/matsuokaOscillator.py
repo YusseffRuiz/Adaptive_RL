@@ -203,10 +203,9 @@ class MatsuokaOscillator:
         torch.clamp(self.z, min=-10, max=10)
         tmp_output = self.activation_function(self.x - torch.mean(self.x))
 
-        if self.isMuscular:
-            tmp_output[1] = tmp_output[1] * 2.44  ## Experimento 2 con 2.88
+        if self.isMuscular: # PlaceHolder for amplitude modification
             self.output = tmp_output
-            self.y = torch.clamp(self.output, min=-2.88, max=2.88)
+            self.y = torch.clamp(self.output, min=-1, max=1)
         else:
             self.output = self.amplitude * tmp_output
             self.y = torch.clamp(self.output, min=-self.amplitude, max=self.amplitude)
@@ -315,7 +314,7 @@ class MatsuokaNetworkWithNN:
         self.num_oscillators = num_oscillators
         self.neuron_number = neuron_number
         self.action_dim = da
-        self.feedback_strength = 0.3
+        self.feedback_strength = 0.4
         self.parameters_dimension = self.num_oscillators * self.neuron_number
         self.min_value = np.min(min_value)
         self.max_value = np.max(max_value)
@@ -389,10 +388,10 @@ class MatsuokaNetworkWithNN:
         output_actions = oscillators_helper.env_selection(weights=params_input, action_dim=self.action_dim, output=oscillators_output,
                                        device=self.device)
         tmp_value = output_actions[-1]
-        output_actions = np.clip(output_actions, a_min=self.min_value, a_max=self.max_value)  #Except Ankle Motor
+        output_actions = np.clip(output_actions, a_min=-self.max_value, a_max=self.max_value)  #Except Ankle Motor
         if self.isMuscular:  # Ankle motor exception
             output_actions[-1] = tmp_value
-            output_actions = np.clip(output_actions, a_min=-2.88, a_max=2.88)
+            output_actions = np.clip(output_actions, a_min=-1, a_max=1)
         # Assert to check for NaNs in output_actions
         assert not np.any(np.isnan(output_actions)), f"Error: output_actions contains NaN values! {output_actions}"
 

@@ -11,6 +11,7 @@ import os
 from scipy.signal import savgol_filter
 import seaborn as sns
 from scipy import stats
+from scipy.signal import find_peaks
 
 def get_name_environment(name, cpg_flag=False, algorithm=None, experiment_number=0, create=False, external_folder=None,
                          hh_neuron=False):
@@ -123,13 +124,16 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             obs, reward, done, info, _ = env.step(action)
             if muscle_flag:
                 muscle_states = env.muscle_states
-            # phase_1 = obs[0]
-            # phase_2 = obs[3]
             phase_1, phase_2, phase_3, phase_4 = env.get_osc_output()
-            phases_1.append(phase_1)
-            phases_2.append(phase_2)
-            phases_3.append(phase_3)
-            phases_4.append(phase_4)
+            public_obs = env.unwrapped.public_joints()
+            # phases_1.append(phase_1)
+            # phases_2.append(phase_2)
+            # phases_3.append(phase_3)
+            # phases_4.append(phase_4)
+            phases_1.append(public_obs[0,0]) # 0,0 is left Hip
+            phases_2.append(public_obs[0,1]) # 0,1 is right Hip
+            phases_3.append(public_obs[1,0]) # 1,0 is left Ankle
+            phases_4.append(public_obs[1,1]) # 1,1 is right Ankle
             # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
@@ -141,8 +145,9 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        plot_data(phases_1, phases_2, data1_name="knee_r", data2_name="knee_l", title="Knee Motion")
-        plot_data(phases_3, phases_4, data1_name="ankle_r", data2_name="ankle_l", title="Ankle Motion")
+        # plot_data(phases_1, phases_2, data1_name="hip_r", data2_name="hip_l", title="Hip Motion")
+        # plot_data(phases_3, phases_4, data1_name="ankle_r", data2_name="ankle_l", title="Ankle Motion")
+        # get_motion_pattern(phases_1, joint="Right Hip")
         total_rewards.append(episode_reward)
         print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}")
     average_reward = np.mean(total_rewards)
@@ -150,19 +155,20 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
 
 
-def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, duration=1500, env_name=None, deterministic=False, cpg=False):
+def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, duration=1000, env_name=None, deterministic=False, cpg=False):
     save_folder = f"Experiments/{env_name}/images"
     action_dim = len(env.action_space.sample())
     if cpg:
         action_dim = env.da
     successful_episodes = 0
     max_attempts_per_episode = 50  # Maximum retries per episode
-    min_reward = 400
+    min_reward = 1800
+    min_distance = 8
     muscle_flag = hasattr(env, "muscle_states")
     if alg == "PPO" or alg == "PPO-CPG":
         min_reward = 100
     if action_dim == 70:
-        min_reward = 5000
+        min_reward = 10000
     total_rewards = []
     total_joint_angles = []
     total_velocity_angles = []
@@ -195,6 +201,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                     obs, *_ = env.reset()
             lstm_states = None
             reward = 0
+            distance = 0
             ep_energy = []
             ep_velocity = []
             ep_acceleration = []
@@ -225,12 +232,12 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                     action = action[0, :]
                 if alg == "random":
                     obs, rw, done, info = env.step(action)
-                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(info[0])
+                    position, velocity, joint_angles, joint_velocity, torques, step_energy, distance = get_data(info[0])
                 else:
                     obs, rw, done, info, extras = env.step(action)
                     if muscle_flag:
                         muscle_states = env.muscle_states
-                    position, velocity, joint_angles, joint_velocity, torques, step_energy = get_data(extras, muscles=muscle_flag)
+                    position, velocity, joint_angles, joint_velocity, torques, step_energy, distance = get_data(extras, muscles=muscle_flag)
 
                 if done and not fall:
                     ending_step = step
@@ -250,13 +257,13 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
                 ep_energy.append(step_energy * assistance_value)
 
             # Check success criteria
-            if reward >= min_reward:  # Successful episode
+            if distance >= min_distance:  # Successful episode
                 success = True
                 successful_episodes += 1
-                total_distance.append(position)
+                total_distance.append(distance)
                 ending_steps.append(ending_step)
                 total_rewards.append(reward)
-                total_energy.append(np.sum(ep_energy, axis=1))
+                total_energy.append(np.sum(ep_energy))
                 total_velocity_angles.append(np.array(ep_joint_velocities))
                 total_torques.append(np.array(ep_torques))
                 total_joint_angles.append(np.array(ep_joints))
@@ -278,6 +285,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     total_torques = np.array(total_torques)
     total_joint_angles = np.array(total_joint_angles)
     total_energy = np.array(total_energy)
+    total_energy_per_meter = np.array(get_energy_per_meter(total_energy, total_distance))
     total_velocity = np.array(total_velocity)
     total_accelerations = np.array(total_accelerations)
     total_error = np.array(total_error)
@@ -289,7 +297,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     if average_energy < 0: average_energy=0
     print(f"Average Reward over {episodes_num} episodes: {average_reward:.2f}")
     print(f"Average Speed and Distance over {episodes_num} episodes: {velocity_total:.2f} m/s with "
-          f"total energy: {average_energy:.2f} Joules per meter, travelled {average_distance:.2f} meters")
+          f"total energy: {np.sum(total_energy_per_meter)/episodes_num:.2f} Joules per meter, travelled {average_distance:.2f} meters")
     joints = np.array(separate_joints(total_joint_angles, action_dim))
     # joints_vel = separate_joints(total_velocity_angles, action_dim)
     # joints_torque = separate_joints(total_torques, action_dim)
@@ -299,6 +307,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
         'distance': total_distance,
         'phase_error': total_error,
         'total_energy': total_energy,
+        'total_energy_per_meter': total_energy_per_meter,
         'energy': average_energy,
         'joints': joints,
         'falls' : ep_fall,
@@ -502,22 +511,19 @@ def get_data(info, muscles=False):
     "total_energy": np.sum(action) in N/m
     :return: specific values
     """
+    position = info["position"]
+    joint_angles = info["joint_angles"] * 180 / math.pi
+    joint_velocity = info["joint_velocities"] * 180 / math.pi
+    torques = info["torques"]
+    distance = info["distance_from_origin"]
     if not muscles:
-        position = info["distance_from_origin"]
         velocity = info["x_velocity"]
-        joint_angles = info["joint_angles"] * 180/math.pi
-        joint_velocity = info["joint_velocities"] * 180 / math.pi
-        torques = info["torques"]
         step_energy = torques*info["joint_velocities"]
     else:
-        position = info["distance_from_origin"]
         velocity = info["velocity"]
-        joint_angles = info["joint_angles"] * 180 / math.pi
-        joint_velocity = info["joint_velocities"] * 180 / math.pi
-        torques = info["torques"]
-        step_energy = torques * info["joint_velocities"]
+        step_energy = info["step_energy"]
 
-    return position, velocity, joint_angles, joint_velocity, torques, step_energy
+    return position, velocity, joint_angles, joint_velocity, torques, step_energy, distance
 
 
 def separate_joints(joint_list, action_dim):
@@ -632,12 +638,9 @@ def get_jerk(acceleration, dt):
     return np.diff(acceleration)/dt
 
 
-def get_energy_per_meter(total_energy, total_distance, average, save_folder=None, plot_fig=False, x_range=(0,40), norm=False):
-    episodes, time_steps = total_energy.shape
-    energy_per_episode = np.sum(total_energy, axis=1)  # Sum energy across steps for each
-    time_steps = total_energy.shape[1]
+def get_energy_per_meter(total_energy, total_distance, save_folder=None, plot_fig=False, x_range=(0,40), norm=False):
     # Calculate energy per meter for each episode
-    energy_per_meter = energy_per_episode / total_distance  # This gives the energy per meter for each episode
+    energy_per_meter = total_energy / total_distance  # This gives the energy per meter for each episode
     # Normalize values for better visualization
     energy_per_meter_normalized = (energy_per_meter - np.min(energy_per_meter)) / (
             np.max(energy_per_meter) - np.min(energy_per_meter)
@@ -806,7 +809,7 @@ def compare_motion_pair(results, algos, save_folder=None, auto_close=False, plac
     """
     normal_vs_cpg_pairs = []
     others = []
-    if place == 'knee':
+    if place == 'hip':
         indexes = [0,3]
     elif place == 'ankle':
         indexes = [2,5]
@@ -874,6 +877,9 @@ def compare_vertical(data, algos, data_name="data_comparison", units=" ", save_f
         plt.waitforbuttonpress()
     plt.close()
 
+    if len(data) == 2:
+        statistical_test(data[0], data[1], value=data_name)
+
 
 def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save_folder=None, auto_close=False):
     """
@@ -913,15 +919,17 @@ def compare_horizontal(data, algos, data_name="data_comparison", units=" ", save
     if not auto_close:
         plt.waitforbuttonpress()
     plt.close()
+    if len(data) == 2:
+        statistical_test(data[0], data[1], value=data_name)
 
 
-def statistical_test(cpg_data, base_data):
+def statistical_test(cpg_data, base_data, value=''):
     t_stat, p_value = stats.ttest_ind(cpg_data, base_data)
-    print("The t-test statistic is", t_stat, "and the p-value is", p_value)
+    print("The t-test statistic is", t_stat, "and the p-value is", p_value, " for the ", value, " value")
     if p_value < 0.05:
-        print("P-value < 0.05, showing significant difference between groups, rejecting null Hypothesis")
+        print("P-value < 0.05, showing significant difference between groups, rejecting null Hypothesis for the ", value, " value")
     else:
-        print("P-value >= 0.05, Fail to reject null Hypothesis")
+        print("P-value >= 0.05, Fail to reject null Hypothesis for the ", value, " value")
     return t_stat, p_value
 
 
@@ -968,3 +976,93 @@ def cut_values_at_zero(data):
         return np.array(output)
     else:
         raise ValueError("Input array must be at least 1-dimensional.")
+
+
+def get_motion_pattern(data, joint="Joint", plot=False):
+    autocorr = np.correlate(data, data, mode='full')
+    # autocorr = correlate(data, data, mode='full')  # Compute autocorrelation
+    autocorr = autocorr[len(autocorr) // 2:]  # Take positive lags
+
+    # Find peaks in autocorrelation to detect cycles
+    peaks, _ = find_peaks(autocorr, height=0.1 * max(autocorr), distance=10)
+    if len(peaks) > 1:
+        cycle_length = peaks[1] - peaks[0]  # Approximate cycle length
+    else:
+        cycle_length = len(data) // 5  # Default fallback
+
+    if cycle_length < 5:
+        print("No clear pattern detected.")
+        return
+
+    pattern_segment = data[:cycle_length]  # Extract first cycle
+    if plot:
+        plt.figure(figsize=(8, 5))
+        label = "Detected " + joint + " Motion Pattern"
+        plt.plot(pattern_segment, label=label, color='b')
+        plt.xlabel("Time (frames)")
+        plt.ylabel(f"{joint} Joint Angle")
+        plt.title(label)
+        plt.legend()
+        plt.show(block=False)
+        plt.waitforbuttonpress()
+        plt.close()
+
+    return cycle_length, peaks
+
+
+# Process multiple episodes and extract aligned motion cycles
+def process_multiple_episodes(motion_episodes, joint="Joint"):
+    """
+    Process hip motion data across multiple episodes and extract aligned cycles.
+
+    Returns:
+    - all_patterns: Aligned motion cycles from all episodes.
+    - mean_pattern: Average motion cycle across all episodes.
+    - std_pattern: Standard deviation of motion cycles.
+    """
+    all_patterns = []
+
+    for episode_idx, hip_motion in enumerate(motion_episodes):
+        cycle_length, peaks = get_motion_pattern(hip_motion)
+
+        if cycle_length < 5:
+            print(f"Episode {episode_idx}: No clear pattern detected.")
+            continue
+
+        # Extract motion cycles based on detected peaks
+        extracted_cycles = []
+        for i in range(len(peaks) - 1):
+            cycle_start, cycle_end = peaks[i], peaks[i] + int(cycle_length)
+            if cycle_end <= len(hip_motion):
+                extracted_cycles.append(hip_motion[cycle_start:cycle_end])
+
+        if extracted_cycles:
+            all_patterns.append(np.mean(extracted_cycles, axis=0))  # Compute mean per episode
+
+    # Convert to array for statistical analysis
+    all_patterns = np.array(all_patterns)
+
+    # Compute mean and standard deviation across all episodes
+    mean_pattern = np.mean(all_patterns, axis=0)
+    std_pattern = np.std(all_patterns, axis=0)
+
+    plt.figure(figsize=(10, 6))
+
+    # Compute 95% confidence interval
+    conf_int = stats.norm.interval(0.95, loc=mean_pattern, scale=std_pattern)
+
+    # Plot mean motion pattern
+    label = "Mean " + joint + "Motion"
+    plt.plot(mean_pattern, label=label, color="blue")
+
+    # Confidence interval shading
+    plt.fill_between(range(len(mean_pattern)), conf_int[0], conf_int[1], alpha=0.3, color="blue", label="CI")
+
+    plt.xlabel("Time (frames)")
+    plt.ylabel(f"{joint} Angle")
+    title = "Mean " + joint + " Motion Cycle Across Episodes"
+    plt.title(title)
+    plt.legend()
+    plt.show()
+
+    return all_patterns, mean_pattern, std_pattern

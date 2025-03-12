@@ -24,6 +24,10 @@ class CPGWrapper(gym.Wrapper):
             osc_weights = action[-self.params:]
             action = action[:-self.params]
             u_values = self.unwrapped.public_joints()
+            # 0,0 is left Hip
+            # 0,1 is right Hip
+            # 1,0 is left Ankle
+            # 1,1 is right Ankle
             action = self.cpg_model.step(action, osc_weights, u_values)
         return self.env.step(action)
 

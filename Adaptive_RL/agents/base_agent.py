@@ -61,8 +61,7 @@ class BaseAgent(abc.ABC):
         step_number = 0
         if match is not None:
             step_number = int(match.group(1))
-
-        self.model.load_state_dict(torch.load(path, weights_only=True))
+        self.model.load_state_dict(torch.load(path, weights_only=True), strict=False)
         self.model.eval()
 
         return step_number

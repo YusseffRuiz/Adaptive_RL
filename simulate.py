@@ -5,7 +5,6 @@ import argparse
 import os
 import numpy as np
 from Adaptive_RL import logger
-from MatsuokaOscillator import MatsuokaNetworkWithNN
 
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -63,7 +62,7 @@ def main_running():
                                                                  hh_neuron=hh)
 
     if 'myo' in env_name:
-        env = Adaptive_RL.MyoSuite(env_name, reset_type='random', scaled_actions=False)
+        env = Adaptive_RL.MyoSuite(env_name, reset_type='static', scaled_actions=False)
     else:
         if experiment or video_record:
             env = Adaptive_RL.Gym(env_name, render_mode="rgb_array")
@@ -145,6 +144,7 @@ def main_running():
                     rewards = []
                     joints_hip = []
                     joints_ankle = []
+                    energy_per_meter = []
 
                     algos_found = []
 
@@ -154,6 +154,7 @@ def main_running():
                             algos_found.append(algo)
                             velocities.append(results[algo]['velocity'])
                             energies.append(results[algo]['energy'])
+                            energy_per_meter.append(results[algo]['total_energy_per_meter'])
                             distances.append(results[algo]['distance'])
                             rewards.append(results[algo]['reward'])
                             tmp_joints_r = results[algo]['joints'][0]
@@ -176,6 +177,9 @@ def main_running():
                     trials.compare_vertical(data=energies, algos=algos_found, data_name="Energy per Second",
                                             units="Joules/s", save_folder=save_exp, auto_close=auto_close)
 
+                    trials.compare_vertical(data=energy_per_meter, algos=algos_found, data_name="Energy per Meter",
+                                            units="Joules/s", save_folder=save_exp, auto_close=auto_close)
+
                     # Perform distance comparison using horizontal bars
                     trials.compare_horizontal(data=distances, algos=algos_found, data_name="Distance Travelled",
                                               units="Mts", save_folder=save_exp, auto_close=auto_close)
@@ -183,7 +187,7 @@ def main_running():
                     # Perform reward comparison using vertical bars
                     trials.compare_vertical(data=rewards, algos=algos_found, data_name="Rewards", save_folder=save_exp, auto_close=auto_close)
 
-                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close, place='knee')
+                    trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close, place='hip')
 
                     if muscle_flag:
                         trials.compare_motion_pair(results=results, algos=algos_found, save_folder=save_exp, auto_close=auto_close, place='ankle')
@@ -191,6 +195,7 @@ def main_running():
                     # Perform velocity comparison
                     trials.compare_velocity(velocities=velocities, algos=algos_found, save_folder=save_exp,
                                             auto_close=auto_close)
+
 
                 else:
                     print(f"Not enough results found for comparison. Expected at least 2 results.")
@@ -217,7 +222,7 @@ def main_running():
                 right_hip_movement_clean = trials.cut_values_at_zero(right_hip_movement_clean)
                 left_hip_movement_clean = trials.cut_values_at_zero(left_hip_movement_clean)
 
-                trials.get_energy_per_meter(energies, distances, avg_energies, plot_fig=True, save_folder=save_folder)
+                trials.get_energy_per_meter(energies, distances, plot_fig=True, save_folder=save_folder)
                 trials.statistical_analysis(data=velocities, y_axis_name="Velocity(m/s)", x_axis_name="Time",
                                             title="Velocity across time", mean_calc=True, save_folder=save_folder)
                 trials.plot_phase(right_hip_movement_clean, left_hip_movement_clean, algo=algorithm, name="Joint Motion", save_folder=save_folder)
