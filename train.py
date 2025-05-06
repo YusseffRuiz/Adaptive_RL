@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument('-hh', action='store_true', help='Whether to enable HH Neurons, hidden.')
     parser.add_argument('--muscles', action='store_true', help='The use of DEP to map and create muscles.')
     parser.add_argument('--P', action='store_true', help='Whether to show complete progress bar.')
+    parser.add_argument('--separate_action', action='store_true', help='Separate last OSL action.')
 
     # General Paramenters
     parser.add_argument('--experiment_number', type=int, default=0, help='Experiment number for logging.')
@@ -58,7 +59,7 @@ def train_agent(
         agent, environment, trainer=Adaptive_RL.Trainer(), parallel=1, sequential=1, seed=0,
         checkpoint="last", path=None, cpg_flag=False, hh=False, cpg_oscillators=2,
         cpg_neurons=2, cpg_tau_r=32.0, cpg_tau_a=96.0, progress=False, muscle_flag=False, residual_path=None,
-        device='cuda'):
+        separate_flag=False, device='cuda'):
     """
     :param progress: Show or not progress bar
     :param cpg_amplitude: Amplitud for the Matsuoka Calculations
@@ -132,7 +133,7 @@ def train_agent(
     _environment = f"'{environment}', render_mode='rgb_array'"
     if 'myo' in env_name:
         myo_flag = True
-        _environment = f"'{environment}', reset_type='random', scaled_actions=False"
+        _environment = f"'{environment}', reset_type='random', scaled_actions=False, max_episode_steps=2000"
     cpg_model = None
     if cpg_flag:
         cpg_model = Adaptive_RL.get_cpg_model(env_name, cpg_oscillators, cpg_neurons, cpg_tau_r,cpg_tau_a, hh)
@@ -144,12 +145,14 @@ def train_agent(
 
 
     environment = Adaptive_RL.parallelize.distribute(_environment, parallel, sequential, cpg_flag=cpg_flag,
-                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag,
+                                                     separate_flag=separate_flag)
     environment.initialize(seed=seed)
 
     # Build the testing environment.
     test_environment = Adaptive_RL.parallelize.distribute(_environment, cpg_flag=cpg_flag,
-                                                     muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+                                                        muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag,
+                                                        separate_flag=separate_flag)
     test_environment.initialize(seed=seed + 1000000)
     # _test_environment = _environment
     # test_environment = deprl.custom_distributed.distribute(
@@ -220,6 +223,7 @@ if __name__ == "__main__":
     muscle_flag = args.muscles
     progress = args.P
     residual_path = args.residual_path
+    separate_flag = args.separate_action
 
     save_folder = args.f
 
@@ -348,7 +352,7 @@ if __name__ == "__main__":
                                                 early_stopping=early_stopping),
                     path=log_dir, cpg_flag=cpg_flag, hh=hh, progress=progress, cpg_oscillators=cpg_oscillator,
                     cpg_neurons=cpg_neurons, cpg_tau_a=cpg_tau_a, cpg_tau_r=cpg_tau_r, muscle_flag=muscle_flag,
-                    residual_path=residual_path)
+                    residual_path=residual_path, separate_flag=separate_flag)
 
         print("Training Done")
     else:

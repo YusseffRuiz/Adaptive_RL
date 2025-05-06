@@ -1,3 +1,5 @@
+import traceback
+
 import gymnasium as gym
 import numpy as np
 from abc import ABC, abstractmethod
@@ -154,6 +156,7 @@ class ExceptionWrapper(AbstractWrapper):
         except Exception as e:
             # logger.log(f"Simulator exception thrown: {e}")
             print(f"Simulator exception thrown: {e}")
+            traceback.print_exc()  # 🔥 Show full traceback
             observation = self.last_observation
             reward = 0
             done = 1
@@ -174,6 +177,14 @@ class GymWrapper(ExceptionWrapper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.muscles_enable=True
+
+    def remove_action_osl(self, osc_size=0):
+        if osc_size>0:
+            self.action_space = gym.spaces.Box(
+                low=np.concatenate([self.unwrapped.sim.model.actuator_ctrlrange[:self.unwrapped.sim.model.na, 0], np.full((osc_size,), -1)]),
+                high=np.concatenate([self.unwrapped.sim.model.actuator_ctrlrange[:self.unwrapped.sim.model.na, 1], np.full((osc_size,), -1)]),
+                dtype=np.float32
+            )
 
     def render(self, *args, **kwargs):
         kwargs["mode"] = "window"

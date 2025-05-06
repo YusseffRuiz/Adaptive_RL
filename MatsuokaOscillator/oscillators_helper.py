@@ -86,6 +86,8 @@ def env_selection(action_dim, weights, device, output=None):
         cpg_values = weight_conversion_humanoid(weights, device, output=output)
     elif action_dim == 70:
         cpg_values = weight_conversion_myoleg(weights, device, output=output)
+    elif action_dim == 69:
+        cpg_values = weight_conversion_ampSeparated(weights, device, output=output)
     elif action_dim == 7:
         cpg_values = weight_conversion_ant(weights, device, output=output)
     else:
@@ -236,6 +238,71 @@ def weight_conversion_myoleg(weights, device, output=None):
         output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['ankle_plantarflexors_left']], plantarflexor_value)
         return output_tensor
 
+def weight_conversion_ampSeparated(weights, device, output=None):
+    """
+    Map the weights or CPG output to specific muscle groups in the MyoLeg model.
+
+    Parameters:
+    - weights: The DRL-generated control weights (or external input).
+    - device: Device on which the tensors are stored.
+    - output: If CPG-generated output is available, map it to muscles instead of using weights.
+
+    Returns:
+    - Mapped values for the muscles in the model.
+    """
+
+    if output is None:
+        # Hip Dvalues based on absolute value of weights
+        hip_flexor_r_value = (weights[MUSCLE_GROUP_MYOSIM['hip_flexors_right']]).mean()
+        hip_extensor_r_value = (weights[MUSCLE_GROUP_MYOSIM['hip_extensors_right']]).mean()
+        # hamstrings_r_value = (weights[MUSCLE_GROUP_MYOSIM['hamstrings_right']]).mean()
+
+        if hip_flexor_r_value > hip_extensor_r_value:
+            # weight_hip_r = (hip_flexor_r_value + hamstrings_r_value)/2
+            weight_hip_r = hip_flexor_r_value
+        else:
+            # weight_hip_r = - (hip_extensor_r_value + hamstrings_r_value)/2
+            weight_hip_r = - hip_extensor_r_value
+
+        hip_flexor_l_value = (weights[MUSCLE_GROUP_MYOSIM['hip_flexors_left']]).mean()
+        hip_extensor_l_value = (weights[MUSCLE_GROUP_MYOSIM['hip_extensors_left']]).mean()
+        # hamstrings_l_value = (weights[MUSCLE_GROUP_MYOSIM['hamstrings_left']]).mean()
+
+        if hip_flexor_l_value > hip_extensor_l_value:
+            # weight_hip_l = (hip_flexor_l_value + hamstrings_l_value)/2
+            weight_hip_l = hip_flexor_l_value
+        else:
+            # weight_hip_l = -(hip_extensor_l_value + hamstrings_l_value)/2
+            weight_hip_l = -hip_extensor_l_value
+
+
+        weights_tmp = torch.tensor([weight_hip_r, weight_hip_l],
+                                   dtype=torch.float32, device=device)
+        return weights_tmp
+    else:
+
+        # We assume weights or output has dimension 71 (for 70 muscles + 1 motor)
+        # Map CPG output to muscle groups (for when the CPG outputs the control signals)
+        # [row 0 are hips, 0 for left, 1 for right.]
+        # [Row 1 is for Ankles, 0 for left, 1 for right/Motor]
+        output_tensor = weights  # Assuming weights is preallocated
+        hip_flexor_value = max(output[1].item(), 0)  # Positive values for dorsiflexion.
+        hip_extensor_value = max(-output[1].item(), 0)  # Negative values for hip extensor.
+        # output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_right']], output[1,0])
+        # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_right']], output[1,0])
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_right']], hip_flexor_value)
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_right']], hip_extensor_value)
+
+        # Left ankle dorsiflexor and plantarflexor muscles
+        hip_flexor_value = max(output[0].item(), 0)  # Positive values for dorsiflexion.
+        hip_extensor_value = max(-output[0].item(), 0)  # Negative values for plantarflexion.
+        # output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['quadriceps_left']], output[1,1])
+        # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']], output[1,1])
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_flexors_left']], hip_flexor_value)
+        output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']] = weights_output_helper_myosim(output_tensor[MUSCLE_GROUP_MYOSIM['hip_extensors_left']], hip_extensor_value)
+        # output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']] = weights_output_helper_myosim(
+        #     output_tensor[MUSCLE_GROUP_MYOSIM['hamstrings_left']], hip_extensor_value)
+        return output_tensor
 
 def weights_output_helper_myosim(weights, oscillator):
     return W_drl*weights + W_osc*oscillator

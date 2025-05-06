@@ -2,7 +2,7 @@ from .environments import Gym, MyoSuite
 from .wrappers import ActionRescaler, TimeFeature, GymWrapper
 from .cpg_wrapper import CPGWrapper
 
-def apply_wrapper(env, muscle_flag=False, cpg_flag=False, cpg_model=None, myo_flag=False, direct=False):
+def apply_wrapper(env, muscle_flag=False, cpg_flag=False, cpg_model=None, myo_flag=False, direct=False, separate_flag=False):
     if direct:
         return GymWrapper(env)
     else:
@@ -13,9 +13,15 @@ def apply_wrapper(env, muscle_flag=False, cpg_flag=False, cpg_model=None, myo_fl
             env = f"Gym({env})"
         if muscle_flag:
             if cpg_flag:
-                return GymWrapper(CPGWrapper(eval(env), cpg_model=cpg_model, use_cpg=True))
+                output_env = GymWrapper(CPGWrapper(eval(env), cpg_model=cpg_model, use_cpg=True))
+                if separate_flag:
+                    output_env.remove_action_osl(output_env.params)
+                return output_env
             else:
-                return GymWrapper(eval(env))
+                output_env = GymWrapper(eval(env))
+                if separate_flag:
+                    output_env.remove_action_osl()
+                return output_env
         else:
             if cpg_flag:
                 return CPGWrapper(eval(env), cpg_model=cpg_model, use_cpg=True)

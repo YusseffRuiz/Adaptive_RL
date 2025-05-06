@@ -152,23 +152,23 @@ myoAmp1DoFWalk-v0:
   cpg:
     num_oscillators: 2
     neuron_number: 2
-    tau_r: 16.0 # antes 16 y 96, o 32 y 192
+    tau_r: 16.0
     tau_a: 96.0
 
   SAC:
     training:
       batch_size: 256
       replay_buffer_size: 100000.0
-      learning_rate: 3.53e-4
-      lr_critic : 1.4e-5
-      gamma: 0.98
-      steps: 4e7
+      learning_rate: 4.53e-4
+      lr_critic : 4.4e-5
+      gamma: 0.97
+      steps: 1.5e7
       learning_starts: 20000
-      noise: 0.15
+      noise: 0.12
 
 
     model:
-      neuron_number: [1024, 1024]
+      neuron_number: [1024, 512]
       layers_number: 2
 
 
@@ -203,7 +203,7 @@ myoAmp1DoFWalk-v0:
       steps: 1e7
 
     model:
-      neuron_number: [1024, 1024]
+      neuron_number: [1024, 512]
       layers_number: 2
 
     DEP:
@@ -234,8 +234,8 @@ myoOSLHillyTerrainWalk-v0:
     training:
       batch_size: 256
       replay_buffer_size: 100000.0
-      learning_rate: 3.53e-4
-      lr_critic: 2.4e-5
+      learning_rate: 4.53e-4
+      lr_critic: 3.4e-5
       gamma: 0.97
       steps: 4e7
       learning_starts: 40000
@@ -264,6 +264,29 @@ myoOSLRoughTerrainWalk-v0:
       steps: 4e7
       learning_starts: 40000
       noise: 0.1
+
+
+    model:
+      neuron_number: [ 1024, 512 ]
+      layers_number: 2
+
+myoAmpSimpleTrack:
+  cpg:
+    num_oscillators: 2
+    neuron_number: 2
+    tau_r: 16.0 # antes 16 y 96, o 32 y 192
+    tau_a: 96.0
+
+  SAC:
+    training:
+      batch_size: 256
+      replay_buffer_size: 100000.0
+      learning_rate: 4.53e-4
+      lr_critic: 4.4e-5
+      gamma: 0.97
+      steps: 1.5e7
+      learning_starts: 20000
+      noise: 0.12
 
 
     model:

@@ -1,0 +1,38 @@
+agent:
+  agent: SAC
+  batch_size: 256
+  discount_factor: 0.98
+  hidden_layers: 2
+  hidden_size:
+  - 1024
+  - 512
+  learning_rate: 0.000453
+  learning_starts: 20000
+  lr_critic: 0.00034
+  noise_std: 0.12
+  replay_buffer_size: 100000.0
+  return_step: 3
+  steps_between_batches: 30
+  tau: 0.005
+checkpoint: last
+cpg_flag: true
+cpg_neurons: 2
+cpg_oscillators: 2
+cpg_tau_a: 96.0
+cpg_tau_r: 16.0
+device: NVIDIA GeForce RTX 3070 Ti Laptop GPU
+environment: myoAmp1DoFWalk-v0
+hh: false
+muscle_flag: true
+parallel: 12
+path: training/myoAmp1DoFWalk-v0-SAC-CPG/3/logs/
+progress: true
+residual_path: null
+seed: 0
+sequential: 12
+trainer:
+  early_stopping: false
+  epoch_steps: 100000
+  max_steps: 70000000
+  save_steps: 200000
+  test_episodes: 20

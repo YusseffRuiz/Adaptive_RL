@@ -83,7 +83,6 @@ class Trainer:
                 else:
                     greedy_episode = None
                 assert not np.isnan(observations.sum())
-
                 actions = self.agent.step(observations, self.steps, muscle_states, greedy_episode)
             else:
                 actions = self.agent.step(observations, self.steps)

@@ -12,10 +12,10 @@ class Sequential:
     """Environment Vectorization"""
 
     def __init__(self, environment, max_episode_steps, workers, muscle_flag=False, cpg_flag=False, cpg_model=None,
-                 myo_flag=False):
+                 myo_flag=False, separate_flag=False):
         # self.environments = [environment for _ in range(workers)]
         self.environments = [
-            build_env_from_dict(environment, muscle_flag, cpg_flag, cpg_model, myo_flag) for _ in range(workers)
+            build_env_from_dict(environment, muscle_flag, cpg_flag, cpg_model, myo_flag, separate_flag) for _ in range(workers)
         ]
         self.max_episode_steps = max_episode_steps
         self.observation_space = self.environments[0].observation_space
@@ -25,6 +25,7 @@ class Sequential:
         self.use_cpg = cpg_flag
         self.muscles = muscle_flag
         self.myo_flag = myo_flag
+        self.separate_flag = separate_flag
 
     def initialize(self, seed=0):
         # group seed is given, the others are determined from it
@@ -41,13 +42,19 @@ class Sequential:
         Returns:
         - np.array: An array of initial observations from all environments, formatted as float32.
         """
+
+        """
+        TODO: Arreglar tema de musculos, que esta iniciando como 72, en vez de los 69
+        """
         self.lengths = np.zeros(len(self.environments), int)
         if self.muscles:
             observations = [env.reset() for env in self.environments]
-            muscle_states = [env.get_wrapper_attr('muscle_states') for env in self.environments]
+            muscle_states = np.array([env.get_wrapper_attr('muscle_states') for env in self.environments])
+            if self.separate_flag:
+                muscle_states = muscle_states[:,:-1]
             if self.use_cpg:
                 osc_states = [env.get_osc_output() for env in self.environments]
-                muscle_states = np.concatenate((np.array(muscle_states), osc_states), axis=1)
+                muscle_states = np.concatenate((muscle_states, osc_states), axis=1)
             return np.array(observations, np.float32), muscle_states
         else:
             observations = [env.reset()[0] for env in self.environments]
@@ -76,11 +83,12 @@ class Sequential:
         terminations = []
         observations = []  # Observations for the actions selection.
         muscle_states = [] # In case muscle states are gathered
-
         for i in range(len(self.environments)):
             ob, rew, term, *_ = self.environments[i].step(actions[i])
             if self.muscles:
                 muscle = self.environments[i].get_wrapper_attr('muscle_states')
+                if self.separate_flag:
+                    muscle = muscle[:-1]
             if self.use_cpg:
                 osc = self.environments[i].get_osc_output()
 
@@ -92,6 +100,7 @@ class Sequential:
             resets.append(reset)
             terminations.append(term)
 
+
             if reset:
                 if not self.myo_flag:
                     ob, _ = self.environments[i].reset()
@@ -99,11 +108,12 @@ class Sequential:
                     ob = self.environments[i].reset()
                 if self.muscles:
                     muscle = self.environments[i].get_wrapper_attr('muscle_states')
+                    if self.separate_flag:
+                        muscle = muscle[:-1]
                 if self.use_cpg:
                     osc = self.environments[i].get_osc_output()
                 self.lengths[i] = 0
             observations.append(ob)
-
             if self.muscles:
                 if self.use_cpg:
                     muscle_states.append(np.concatenate((muscle, osc)))
@@ -141,14 +151,14 @@ class Sequential:
             return np.array(outs)
 
 def proc(action_pipe, index, environment, max_episode_steps, workers_per_group, output_queue, group_seed,
-         muscles_flag=False,cpg_flag=False, cpg_model=None, myo_flag=False):
+         muscles_flag=False,cpg_flag=False, cpg_model=None, myo_flag=False, separate_flag=False):
     """Process holding a sequential group of environments.
     Parameters:
     :param action_pipe: actions being processed
     :param index: number of observation being processed to the queue
     """
     envs = Sequential(environment, max_episode_steps, workers_per_group, muscle_flag=muscles_flag, cpg_flag=cpg_flag,
-                      cpg_model=cpg_model, myo_flag=myo_flag)
+                      cpg_model=cpg_model, myo_flag=myo_flag, separate_flag=separate_flag)
     envs.initialize(seed=group_seed)
 
     observations = envs.start()
@@ -163,7 +173,7 @@ class Parallel:
     """A group of sequential environments used in parallel for GPU performance."""
 
     def __init__(self, environment, worker_groups, workers_per_group, max_episode_steps, muscle_flag=False,
-                 cpg_flag=False, cpg_model=None, myo_flag=False):
+                 cpg_flag=False, cpg_model=None, myo_flag=False, separate_flag=False):
         """
         Initializes a Parallel group of environments that are executed in parallel.
 
@@ -181,6 +191,7 @@ class Parallel:
         self.myo_flag = myo_flag
         self.cpg_flag = cpg_flag
         self.cpg_model = cpg_model
+        self.separate_flag = separate_flag
 
     def initialize(self, seed):
         """
@@ -188,9 +199,8 @@ class Parallel:
         """
         mp.set_start_method('spawn')
         context = mp.get_context('spawn')
-
         dummy_environment = build_env_from_dict(self.environment, muscle_flag=self.muscles, cpg_flag=self.cpg_flag,
-                                                cpg_model=self.cpg_model, myo_flag=self.myo_flag)
+                                                cpg_model=self.cpg_model, myo_flag=self.myo_flag, separate_flag=self.separate_flag)
 
         self.observation_space = dummy_environment.observation_space
         self.action_space = dummy_environment.action_space
@@ -214,7 +224,7 @@ class Parallel:
             self.processes.append(mp.Process(target=proc, args=(worker_end, i, self.environment, self.max_episode_steps,
                                                     self.workers_per_group, self.output_queue, group_seed,
                                                                 self.muscles, self.cpg_flag, self.cpg_model,
-                                                                self.myo_flag)
+                                                                self.myo_flag, self.separate_flag)
             ))
             self.processes[-1].daemon = True
             self.processes[-1].start()
@@ -273,7 +283,6 @@ class Parallel:
         actions_list = np.split(actions, self.worker_groups)
         for actions, pipe in zip(actions_list, self.action_pipes):
             pipe.send(actions)
-
         for _ in range(self.worker_groups):
             if self.muscles:
                 index, (observations, muscle_states,infos) = self.output_queue.get()
@@ -301,7 +310,7 @@ class Parallel:
 
 
 def distribute(environment, worker_groups=1, workers_per_group=1, cpg_flag=False, muscle_flag=False, cpg_model=None,
-               myo_flag=False):
+               myo_flag=False, separate_flag=False):
     """
     Distributes workers over parallel and sequential groups.
 
@@ -325,14 +334,14 @@ def distribute(environment, worker_groups=1, workers_per_group=1, cpg_flag=False
         return Sequential(
             environment, max_episode_steps=max_episode_steps,
             workers=workers_per_group, cpg_flag=cpg_flag,
-            muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+            muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag, separate_flag=separate_flag)
 
     return Parallel(
         environment, worker_groups=worker_groups,
         workers_per_group=workers_per_group,
         max_episode_steps=max_episode_steps, cpg_flag=cpg_flag,
-        muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+        muscle_flag=muscle_flag, cpg_model=cpg_model, myo_flag=myo_flag, separate_flag=separate_flag)
 
 
-def build_env_from_dict(env, muscle_flag=False, cpg_flag=False, cpg_model=None, myo_flag=False):
-    return apply_wrapper(env, muscle_flag=muscle_flag, cpg_flag=cpg_flag, cpg_model=cpg_model, myo_flag=myo_flag)
+def build_env_from_dict(env, muscle_flag=False, cpg_flag=False, cpg_model=None, myo_flag=False, separate_flag=False):
+    return apply_wrapper(env, muscle_flag=muscle_flag, cpg_flag=cpg_flag, cpg_model=cpg_model, myo_flag=myo_flag, separate_flag=separate_flag)

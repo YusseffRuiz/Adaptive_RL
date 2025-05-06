@@ -90,6 +90,80 @@ def search_trained_algorithms(env_name, algorithms_list, save_folder="training",
     return algorithms_found
 
 
+def evaluate_envs(model=None, model2=None, env=None, env2=None, algorithm="random", num_episodes=5, no_done=False, max_episode_steps=1000):
+    total_rewards = []
+    range_episodes = num_episodes
+    mujoco_env = hasattr(env, "sim")
+    muscle_flag = hasattr(env, "muscles_enable")
+    for step in range(range_episodes):
+        if mujoco_env:
+            obs = env.reset()
+            if env2:
+                obs2 = env2.reset()
+        else:
+            obs = env.reset()[0]
+        if muscle_flag:
+            muscle_states = env.muscle_states
+        done = False
+        episode_reward = 0
+        cnt = 0
+        phases_1 = []
+        phases_2 = []
+        phases_3 = []
+        phases_4 = []
+        while not done:
+            cnt += 1
+            with torch.no_grad():
+                if algorithm != "random":
+                    if muscle_flag:
+                        action = model.test_step(observations=obs, muscle_states=muscle_states, steps=step)
+                    else:
+                        action = model.test_step(observations=obs, steps=step)
+                else:
+                    action = env.action_space.sample()
+                    # action = model.test_step(observations=obs, muscle_states=muscle_states, steps=step)
+                    if env2:
+                        action2 = model2.test_step(observations=obs2, muscle_states=muscle_states, steps=step)
+            if len(action.shape) > 1:
+                action = action[0, :]
+            obs, reward, done, info, _ = env.step(action2)
+            if env2:
+                obs2, *_ = env2.step(action2)
+            if muscle_flag:
+                muscle_states = env.muscle_states
+            # phase_1, phase_2, phase_3, phase_4 = env.get_osc_output()
+            # public_obs = env.unwrapped.public_joints()
+            # phases_1.append(phase_1)
+            # phases_2.append(phase_2)
+            # phases_3.append(phase_3)
+            # phases_4.append(phase_4)
+            # phases_1.append(public_obs[0,0]) # 0,0 is left Hip
+            # phases_2.append(public_obs[0,1]) # 0,1 is right Hip
+            # phases_1.append(public_obs[1,0]) # 1,0 is left Ankle
+            # phases_2.append(public_obs[1,1]) # 1,1 is right Ankle
+            # cntrl.append(control_signal)
+            if mujoco_env:
+                #Try rendering for MyoSuite
+                # extras = env.extras
+                env.sim.renderer.render_to_window()
+                # env2.sim.renderer.render_to_window()
+            episode_reward += reward
+            if no_done:
+                done = False
+            if cnt >= max_episode_steps:
+                done = True
+
+        # plot_data(phases_1, phases_2, data1_name="hip_l", data2_name="hip_r", title="Hip Motion")
+        # plot_data(phases_3, phases_4, data1_name="ankle_l", data2_name="ankle_r", title="Ankle Motion")
+        # get_motion_pattern(phases_1, joint="Right Hip")
+        total_rewards.append(episode_reward)
+        print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}")
+    average_reward = np.mean(total_rewards)
+    env.close()
+    if env2:
+        env2.close()
+    print(f"Average Reward over {range_episodes} episodes: {average_reward}")
+
 def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=False, max_episode_steps=1000):
     total_rewards = []
     range_episodes = num_episodes
@@ -119,21 +193,23 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
                         action = model.test_step(observations=obs, steps=step)
                 else:
                     action = env.action_space.sample()
+                    # action = model.test_step(observations=obs, muscle_states=muscle_states, steps=step)
             if len(action.shape) > 1:
                 action = action[0, :]
-            obs, reward, done, info, _ = env.step(action)
+            obs, reward, done, info, extras = env.step(action)
+            position, velocity, joint_angles, joint_velocity, torques, step_energy, distance = get_data(extras, muscles=muscle_flag)
             if muscle_flag:
                 muscle_states = env.muscle_states
-            phase_1, phase_2, phase_3, phase_4 = env.get_osc_output()
-            public_obs = env.unwrapped.public_joints()
+            # phase_1, phase_2, phase_3, phase_4 = env.get_osc_output()
+            # public_obs = env.unwrapped.public_joints()
             # phases_1.append(phase_1)
             # phases_2.append(phase_2)
             # phases_3.append(phase_3)
             # phases_4.append(phase_4)
-            phases_1.append(public_obs[0,0]) # 0,0 is left Hip
-            phases_2.append(public_obs[0,1]) # 0,1 is right Hip
-            phases_3.append(public_obs[1,0]) # 1,0 is left Ankle
-            phases_4.append(public_obs[1,1]) # 1,1 is right Ankle
+            # phases_1.append(public_obs[0,0]) # 0,0 is left Hip
+            # phases_2.append(public_obs[0,1]) # 0,1 is right Hip
+            # phases_1.append(public_obs[1,0]) # 1,0 is left Ankle
+            # phases_2.append(public_obs[1,1]) # 1,1 is right Ankle
             # cntrl.append(control_signal)
             if mujoco_env:
                 #Try rendering for MyoSuite
@@ -145,11 +221,11 @@ def evaluate(model=None, env=None, algorithm="random", num_episodes=5, no_done=F
             if cnt >= max_episode_steps:
                 done = True
 
-        # plot_data(phases_1, phases_2, data1_name="hip_r", data2_name="hip_l", title="Hip Motion")
-        # plot_data(phases_3, phases_4, data1_name="ankle_r", data2_name="ankle_l", title="Ankle Motion")
+        # plot_data(phases_1, phases_2, data1_name="hip_l", data2_name="hip_r", title="Hip Motion")
+        # plot_data(phases_3, phases_4, data1_name="ankle_l", data2_name="ankle_r", title="Ankle Motion")
         # get_motion_pattern(phases_1, joint="Right Hip")
         total_rewards.append(episode_reward)
-        print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}")
+        print(f"Episode {step + 1}/{range_episodes}: Reward = {episode_reward}, distance = {distance}")
     average_reward = np.mean(total_rewards)
     env.close()
     print(f"Average Reward over {range_episodes} episodes: {average_reward}")
@@ -163,7 +239,7 @@ def evaluate_experiment(agent=None, env=None, alg="random", episodes_num=5, dura
     successful_episodes = 0
     max_attempts_per_episode = 50  # Maximum retries per episode
     min_reward = 1800
-    min_distance = 8
+    min_distance = 3
     muscle_flag = hasattr(env, "muscle_states")
     if alg == "PPO" or alg == "PPO-CPG":
         min_reward = 100
@@ -449,6 +525,8 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
     data2 = np.mean(data2, axis=0)
     data1 = cut_values_at_zero(data1)
     data2 = cut_values_at_zero(data2)
+    assert data1.shape == data2.shape, "Data must be the same shape"
+
     cross_corr = np.correlate(data1 - np.mean(data1), data2 - np.mean(data2), mode='full')
     cross_corr /= np.max(cross_corr)  # Normalize
     lags = np.arange(-len(data1) + 1, len(data1))
@@ -479,7 +557,7 @@ def perform_autocorrelation(data1, data2, joint="joint", save_folder=None):
         plt.show(block=False)
         plt.waitforbuttonpress()
         plt.close()
-
+    return lags, cross_corr
 
 def get_data(info, muscles=False):
     """
@@ -589,7 +667,7 @@ def plot_data(data, data2=None, data1_name=None, data2_name=None, y_min_max=None
     plt.close()
 
 
-def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="Data", mean_calc=True, save_folder=None, figure_name="figure"):
+def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="Data", mean_calc=True, save_folder=None):
 
     # Calculate moving mean with window size and standard deviation
     if mean_calc:
@@ -621,7 +699,7 @@ def statistical_analysis(data, y_axis_name="Value", x_axis_name="Time", title="D
     ax.legend()
     if save_folder is not None:
         # Define the path where the image will be saved
-        image_path = os.path.join(save_folder, f"{figure_name}.png")
+        image_path = os.path.join(save_folder, f"{title}.png")
         plt.savefig(image_path)
     # Show the plot
     plt.show(block=False)
@@ -681,6 +759,13 @@ def get_energy_per_meter(total_energy, total_distance, save_folder=None, plot_fi
     return energy_per_meter
 
 
+def get_statistical_values(data):
+    mean = np.mean(data, axis=1)
+    std = np.std(data, axis=1)
+    var = np.var(data, axis=1)
+    return mean, std, var
+
+
 def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False):
     """
         Compare the velocity between two models (RL and RL + CPG) and plot them.
@@ -690,7 +775,15 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False
         :param save_folder:
     """
     colors = plt.colormaps.get_cmap("tab10").colors  # Default color cycle
+    min_len = 1500
+    for i, velocity in enumerate(velocities):
+        mean_velocity = np.mean(velocity, axis=0)
+        mean_velocity = cut_values_at_zero(mean_velocity)
+        zero_index = len(mean_velocity)
+        if zero_index < min_len:
+            min_len = zero_index
 
+    # Trim all arrays to the minimum length
     for i, velocity in enumerate(velocities):
         # Cut the arrays after the first occurrence of zero
         mean_velocity = np.mean(velocity, axis=0)
@@ -700,9 +793,9 @@ def compare_velocity(velocities, algos, dt=1, save_folder=None, auto_close=False
         var = np.var(velocity, axis=0)
 
         #Make shape of arrays the same
-        zero_index = len(mean_velocity)
-        std_dev = std_dev[:zero_index]
-        var = var[:zero_index]
+        mean_velocity = mean_velocity[:min_len]
+        std_dev = std_dev[:min_len]
+        var = var[:min_len]
 
         # Get the max values for the deviations
         max_std = np.max(std_dev)
